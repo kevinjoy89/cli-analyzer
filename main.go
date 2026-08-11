@@ -51,6 +51,20 @@ func buildMenu() *menu.Menu {
 	}
 
 	help := menu.NewMenu()
+	if goruntime.GOOS != "darwin" {
+		// macOS's About lives in the AppMenu role; Windows/Linux have no such
+		// role, so surface the About dialog at the top of Help.
+		help.Append(menu.Text("About CLI Analyzer", nil, func(_ *menu.CallbackData) {
+			if appCtx != nil {
+				_, _ = runtime.MessageDialog(appCtx, runtime.MessageDialogOptions{
+					Title:   "About CLI Analyzer",
+					Message: "CLI Analyzer " + gui.AppVersion + "\n\n扫描并清理 CLI 工具的磁盘占用。",
+					Icon:    appIcon,
+				})
+			}
+		}))
+		help.Append(menu.Separator())
+	}
 	help.Append(menu.Text("GitHub Repository", nil, func(_ *menu.CallbackData) {
 		if appCtx != nil {
 			runtime.BrowserOpenURL(appCtx, repoURL)
