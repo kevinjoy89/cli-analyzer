@@ -61,7 +61,7 @@ type SubEntry struct {
 
 // Cleanable is one deletable item.
 type Cleanable struct {
-	ID    string `json:"id"`   // stable: tool|kind|path
+	ID    string `json:"id"` // stable: tool|kind|path
 	Tool  string `json:"tool"`
 	Path  string `json:"path"`
 	Bytes int64  `json:"bytes"`

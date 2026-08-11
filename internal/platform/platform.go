@@ -23,7 +23,7 @@ const (
 	MacCaches     RootKind = "macos-caches"
 	MacPrefs      RootKind = "macos-preferences"
 	// Windows only:
-	AppData     RootKind = "appdata"
+	AppData      RootKind = "appdata"
 	LocalAppData RootKind = "localappdata"
 )
 

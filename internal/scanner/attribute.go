@@ -195,7 +195,10 @@ func reAttributeVendors(tools map[string]*toolBuilder, order []string) {
 		}
 		all = append(all, owner{tb, dirs})
 	}
-	type move struct{ from, to *toolBuilder; b Binary }
+	type move struct {
+		from, to *toolBuilder
+		b        Binary
+	}
 	var moves []move
 	for _, id := range order {
 		tb := tools[id]
