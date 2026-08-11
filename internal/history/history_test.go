@@ -151,6 +151,30 @@ func TestRecordNilIgnored(t *testing.T) {
 	}
 }
 
+// TestTrendsDedupsSameDay verifies multiple scans within one day collapse to a
+// single point (the latest snapshot), so the chart never shows duplicate dates
+// or a flat line for same-day rescans.
+func TestTrendsDedupsSameDay(t *testing.T) {
+	withTempDB(t)
+	now := time.Now()
+	if err := Record(mkRes(rfc3339(now.Add(-time.Minute)), tool("npm", 100))); err != nil {
+		t.Fatal(err)
+	}
+	if err := Record(mkRes(rfc3339(now), tool("npm", 200))); err != nil {
+		t.Fatal(err)
+	}
+	tr, err := Trends(30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tr.Points) != 1 {
+		t.Fatalf("同一天应聚合成 1 个点, got %d", len(tr.Points))
+	}
+	if tr.Points[0].Cleanable != 200 {
+		t.Errorf("应保留当天最新快照 cleanable=200, got %d", tr.Points[0].Cleanable)
+	}
+}
+
 // TestTrendsEmptySerializesWithoutNull verifies no-history Trends never emits
 // null for points/topGrowers (nil slices would crash the frontend).
 func TestTrendsEmptySerializesWithoutNull(t *testing.T) {

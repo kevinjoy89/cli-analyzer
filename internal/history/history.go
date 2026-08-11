@@ -162,10 +162,16 @@ func Trends(days int) (*TrendsResult, error) {
 		if err != nil || t.Before(cutoff) {
 			continue
 		}
-		out.Points = append(out.Points, Point{
+		p := Point{
 			Date:      t.Format("2006-01-02"),
 			Footprint: s.footprint, Cleanable: s.cleanable, User: s.user,
-		})
+		}
+		// 同一天多次扫描只保留最后一个快照，避免趋势图出现重复日期与平直线
+		if n := len(out.Points); n > 0 && out.Points[n-1].Date == p.Date {
+			out.Points[n-1] = p
+		} else {
+			out.Points = append(out.Points, p)
+		}
 	}
 	out.TopGrowers = topGrowers(db, all, 5)
 	return out, nil
