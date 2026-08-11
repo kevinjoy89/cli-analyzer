@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 
+	"cli-analyzer/internal/history"
 	"cli-analyzer/internal/scanner"
 )
 
@@ -36,6 +37,8 @@ func runScan(args []string) int {
 			fmt.Fprintf(stderr(), "scan failed: %v\n", err)
 			return 1
 		}
+		// 只有真实扫描才追加历史；命中缓存时已有记录，不重复写入
+		_ = history.Record(res)
 	} else if len(filters) > 0 {
 		res = filterResult(res, filters)
 	}

@@ -459,6 +459,43 @@ body.platform-linux #header { padding-top: 10px; }
 .pref-row input:focus, .pref-row select:focus { outline: none; border-color: var(--accent); }
 .pref-row.check input { margin-left: 0; accent-color: var(--accent); width: 13px; height: 13px; }
 
+/* reminder bar (cleanable threshold) */
+.reminder-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 18px;
+    background: color-mix(in srgb, var(--amber) 14%, transparent);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    flex-shrink: 0;
+}
+.reminder-bar.hidden { display: none; }
+.reminder-chip {
+    background: color-mix(in srgb, var(--amber) 20%, transparent);
+    color: var(--amber);
+    border: 1px solid color-mix(in srgb, var(--amber) 45%, transparent);
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-size: 11px;
+    white-space: nowrap;
+}
+.reminder-more { color: var(--muted); font-size: 11px; }
+
+/* usage trends panel */
+.modal-box.wide-lg { width: 860px; }
+.trend-chart { padding: 4px 0 8px; }
+.trend-legend { display: flex; gap: 16px; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+.trend-legend .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
+.trend-legend .dot.user { background: var(--user); }
+.trend-legend .dot.clean { background: var(--clean); }
+.trend-section { margin-top: 14px; }
+.trend-section h4 { margin: 0 0 6px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.trend-growers { display: flex; flex-direction: column; gap: 4px; }
+.grower-row { display: flex; align-items: center; gap: 10px; padding: 5px 8px; background: var(--panel-2); border-radius: 5px; font-size: 12px; }
+.grower-rank { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--panel); color: var(--muted); font-size: 11px; font-family: var(--mono); flex-shrink: 0; }
+.grower-name { flex: 1; }
+
 /* ---- toast ---- */
 .toast {
     position: fixed;

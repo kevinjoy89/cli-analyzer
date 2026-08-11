@@ -10,6 +10,7 @@ import (
 
 	"cli-analyzer/internal/cleaner"
 	"cli-analyzer/internal/config"
+	"cli-analyzer/internal/history"
 	"cli-analyzer/internal/scanner"
 	"cli-analyzer/internal/trash"
 
@@ -58,6 +59,8 @@ func (s *ScannerService) Scan() {
 			runtime.EventsEmit(s.ctx, "scan:done", map[string]any{"error": err.Error()})
 			return
 		}
+		// 追加历史快照（失败静默，不影响扫描主流程）
+		_ = history.Record(res)
 		s.mu.Lock()
 		s.last = res
 		s.mu.Unlock()
@@ -144,6 +147,48 @@ func (s *ScannerService) SetTrashConfig(cfgJSON string) string {
 	}
 	c := config.Load()
 	c.Trash = tc
+	if err := config.Save(c); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// GetTrends 返回最近 days 天内的占用趋势 JSON（points + topGrowers）
+func (s *ScannerService) GetTrends(days int) string {
+	tr, err := history.Trends(days)
+	if err != nil {
+		b, _ := json.Marshal(map[string]any{"error": err.Error()})
+		return string(b)
+	}
+	b, _ := json.Marshal(tr)
+	return string(b)
+}
+
+// GetTopGrowers 返回最近 30 天 cleanable 增量 Top 5
+func (s *ScannerService) GetTopGrowers() string {
+	tr, err := history.Trends(30)
+	if err != nil {
+		b, _ := json.Marshal(map[string]any{"error": err.Error()})
+		return string(b)
+	}
+	b, _ := json.Marshal(tr.TopGrowers)
+	return string(b)
+}
+
+// GetReminderConfig 返回 cleanable 阈值提醒配置 JSON
+func (s *ScannerService) GetReminderConfig() string {
+	b, _ := json.Marshal(config.Load().Reminder)
+	return string(b)
+}
+
+// SetReminderConfig 保存阈值提醒配置；成功返回 ""，失败返回错误信息
+func (s *ScannerService) SetReminderConfig(cfgJSON string) string {
+	var rc config.ReminderConfig
+	if err := json.Unmarshal([]byte(cfgJSON), &rc); err != nil {
+		return err.Error()
+	}
+	c := config.Load()
+	c.Reminder = rc
 	if err := config.Save(c); err != nil {
 		return err.Error()
 	}

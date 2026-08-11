@@ -1,6 +1,6 @@
 import './style.css';
 
-import {Clean, GetLastResult, GetTrashConfig, GetVersion, OpenURL, PurgeNow, Restore, Scan, SetTrashConfig, TrashInfo, TrashList} from '../wailsjs/go/gui/ScannerService';
+import {Clean, GetLastResult, GetReminderConfig, GetTrashConfig, GetTrends, GetVersion, OpenURL, PurgeNow, Restore, Scan, SetReminderConfig, SetTrashConfig, TrashInfo, TrashList} from '../wailsjs/go/gui/ScannerService';
 import {Environment, EventsOn} from '../wailsjs/runtime/runtime';
 
 // ---- types mirroring the Go JSON contract ----
@@ -22,6 +22,10 @@ interface CleanReport { dryRun: boolean; deleted: string[]; freedBytes: number; 
 interface TrashInfoData { items: number; totalBytes: number; earliestExpiresAt: string }
 interface TrashItem { id: string; original: string; tool: string; kind: string; bytes: number; trashedAt: string; expiresAt: string }
 interface TrashConfig { retentionDays: number; expireAction: string; useTrash: boolean }
+interface Point { date: string; footprint: number; cleanable: number; user: number }
+interface Grower { tool: string; deltaBytes: number }
+interface TrendsResult { points: Point[]; topGrowers: Grower[] }
+interface ReminderConfig { thresholdBytes: number }
 
 // ---- state ----
 let result: ScanResult | null = null;
@@ -442,7 +446,10 @@ async function refreshTrashList() {
 // ---- preferences ----
 async function openPrefs() {
     let cfg: TrashConfig;
+    let rem: ReminderConfig;
     try { cfg = JSON.parse(await GetTrashConfig()); } catch { cfg = {retentionDays: 7, expireAction: 'system-trash', useTrash: true}; }
+    try { rem = JSON.parse(await GetReminderConfig()); } catch { rem = {thresholdBytes: 5 * 1024 * 1024 * 1024}; }
+    const threshGB = (rem.thresholdBytes || 5 * 1024 * 1024 * 1024) / (1024 * 1024 * 1024);
     el('prefsBody').innerHTML = `
         <label class="pref-row">回收站保留天数
             <input id="prefRetention" type="number" min="1" max="365" value="${cfg.retentionDays}"/>
@@ -456,6 +463,10 @@ async function openPrefs() {
         <label class="pref-row check">
             <input id="prefUseTrash" type="checkbox" ${cfg.useTrash ? 'checked' : ''}/>
             <span>清理默认移入内置回收站（取消则直接删除）</span>
+        </label>
+        <label class="pref-row">清理提醒阈值
+            <input id="prefThreshold" type="number" min="0" step="0.5" value="${threshGB.toFixed(1)}"/>
+            <span>GB</span>
         </label>`;
     el('prefsModal').classList.remove('hidden');
     el('prefsSave').onclick = async () => {
@@ -464,12 +475,92 @@ async function openPrefs() {
             expireAction: (el('prefExpire') as HTMLSelectElement).value,
             useTrash: (el('prefUseTrash') as HTMLInputElement).checked,
         };
+        const rem2: ReminderConfig = {
+            thresholdBytes: Math.round(parseFloat((el('prefThreshold') as HTMLInputElement).value || '5') * 1024 * 1024 * 1024),
+        };
         const err = await SetTrashConfig(JSON.stringify(next));
+        const rerr = await SetReminderConfig(JSON.stringify(rem2));
         el('prefsModal').classList.add('hidden');
-        if (err) showToast('保存失败: ' + err, true);
-        else { showToast('配置已保存'); refreshTrashInfo(); }
+        if (err || rerr) showToast('保存失败: ' + (err || rerr), true);
+        else { showToast('配置已保存'); refreshTrashInfo(); refreshReminder(); }
     };
     el('prefsCancel').onclick = () => el('prefsModal').classList.add('hidden');
+}
+
+// ---- usage trends ----
+// 阈值提醒条：cleanable 超过阈值的工具在顶部常驻提示
+async function refreshReminder() {
+    const bar = el('reminderBar');
+    if (!result) { bar.classList.add('hidden'); return; }
+    let thresh = 5 * 1024 * 1024 * 1024;
+    try { thresh = (JSON.parse(await GetReminderConfig()) as ReminderConfig).thresholdBytes || thresh; } catch { /* 默认 */ }
+    const over = result.tools.filter(t => t.cleanableBytes > thresh);
+    if (!over.length) { bar.classList.add('hidden'); return; }
+    bar.innerHTML = over.slice(0, 3).map(t =>
+        `<span class="reminder-chip" title="${esc(t.name)} 可安全清理 ${hb(t.cleanableBytes)}">${esc(t.name)} 可清理 ${hb(t.cleanableBytes)}</span>`).join('')
+        + (over.length > 3 ? `<span class="reminder-more">等 ${over.length} 个工具超过阈值</span>` : '')
+        + `<button id="reminderGo" class="btn small">去清理</button>`;
+    bar.classList.remove('hidden');
+    el('reminderGo').onclick = () => {
+        const first = over[0];
+        if (first) { selected = first.name; selectedCleanIds.clear(); expandedCleanIds.clear(); renderToolList(); renderDetail(); }
+    };
+}
+
+function openTrends() {
+    el('trendsModal').classList.remove('hidden');
+    refreshTrends();
+}
+
+async function refreshTrends() {
+    let tr: TrendsResult;
+    try {
+        const parsed = JSON.parse(await GetTrends(30));
+        if (parsed.error) { el('trendChart').innerHTML = `<div class="warn">${esc(parsed.error)}</div>`; return; }
+        tr = parsed;
+    } catch (e) {
+        el('trendChart').innerHTML = `<div class="warn">趋势读取失败: ${String(e)}</div>`;
+        return;
+    }
+    renderTrendChart(el('trendChart'), tr.points);
+    renderGrowers(el('trendGrowers'), tr.topGrowers);
+}
+
+// 手写 SVG 折线，延续零依赖风格；历史不足两个点提示"数据积累中"
+const CHART_W = 760, CHART_H = 240, CHART_PAD = 34;
+function renderTrendChart(container: HTMLElement, points: Point[]) {
+    if (points.length < 2) {
+        container.innerHTML = '<div class="empty">数据积累中 — 完成两次扫描后即可查看趋势</div>';
+        return;
+    }
+    const max = Math.max(1, ...points.map(p => p.footprint));
+    const xs = (i: number) => CHART_PAD + i * (CHART_W - 2 * CHART_PAD) / (points.length - 1);
+    const ys = (v: number) => CHART_H - CHART_PAD - (v / max) * (CHART_H - 2 * CHART_PAD);
+    const path = (pick: (p: Point) => number) =>
+        points.map((p, i) => `${i ? 'L' : 'M'}${xs(i).toFixed(1)},${ys(pick(p)).toFixed(1)}`).join(' ');
+    const step = Math.max(1, Math.floor(points.length / 6));
+    const labels = points.map((p, i) => (i % step === 0 || i === points.length - 1)
+        ? `<text x="${xs(i)}" y="${CHART_H - CHART_PAD + 16}" text-anchor="middle" font-size="10" fill="var(--muted)">${esc(p.date.slice(5))}</text>` : '').join('');
+    container.innerHTML = `
+        <div class="trend-legend">
+            <span><i class="dot user"></i>总占用</span>
+            <span><i class="dot clean"></i>可清理</span>
+        </div>
+        <svg viewBox="0 0 ${CHART_W} ${CHART_H}" preserveAspectRatio="xMidYMid meet" width="100%">
+            <path d="${path(p => p.footprint)}" fill="none" stroke="var(--user)" stroke-width="2" opacity="0.9"/>
+            <path d="${path(p => p.cleanable)}" fill="none" stroke="var(--clean)" stroke-width="2" opacity="0.9"/>
+            ${labels}
+            <text x="${CHART_PAD}" y="${CHART_PAD - 8}" font-size="11" fill="var(--muted)">${hb(max)}</text>
+        </svg>`;
+}
+
+function renderGrowers(container: HTMLElement, growers: Grower[]) {
+    if (!growers.length) {
+        container.innerHTML = '<div class="muted">暂无数据 — 完成两次扫描后可查看增量排行</div>';
+        return;
+    }
+    container.innerHTML = growers.map((g, i) =>
+        `<div class="grower-row"><span class="grower-rank">${i + 1}</span><span class="grower-name">${esc(g.tool)}</span><span class="size clean">+${hb(g.deltaBytes)}</span></div>`).join('');
 }
 
 // ---- scan flow ----
@@ -504,6 +595,10 @@ async function init() {
     // preferences panel (opened from the native menu)
     EventsOn('open-prefs', () => openPrefs());
 
+    // usage trends panel
+    el('trendsBtn').onclick = openTrends;
+    el('trendsClose').onclick = () => el('trendsModal').classList.add('hidden');
+
     // theme toggle: system -> light -> dark -> system
     applyTheme('system');
     el('themeBtn').onclick = () => {
@@ -534,7 +629,7 @@ async function init() {
             if (parsed && (!selected || !parsed.tools.some(t => t.name === selected))) {
                 selected = parsed.tools[0]?.name ?? null;
             }
-            renderSummary(); renderToolList(); renderDetail(); refreshTrashInfo();
+            renderSummary(); renderToolList(); renderDetail(); refreshTrashInfo(); refreshReminder();
         } catch (err) {
             showToast('扫描结果解析失败', true);
         }
@@ -548,6 +643,7 @@ async function init() {
     }
 
     refreshTrashInfo();
+    refreshReminder();
 }
 
 init();

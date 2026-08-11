@@ -15,9 +15,12 @@
         </div>
         <div class="header-actions">
             <span id="scanState" class="scan-state"></span>
+            <button id="trendsBtn" class="btn" title="磁盘占用趋势">趋势</button>
             <button id="rescanBtn" class="btn primary">重新扫描</button>
         </div>
     </header>
+
+    <div id="reminderBar" class="reminder-bar hidden"></div>
 
     <section id="summary" class="summary">
         <div class="stat"><span class="stat-label">总占用</span><span id="sumFootprint" class="stat-value">–</span></div>
@@ -80,6 +83,22 @@
         <div class="modal-actions">
             <button id="prefsCancel" class="btn">取消</button>
             <button id="prefsSave" class="btn primary">保存</button>
+        </div>
+    </div>
+</div>
+
+<div id="trendsModal" class="modal hidden">
+    <div class="modal-box wide-lg">
+        <h3>占用趋势</h3>
+        <div id="trendsBody" class="modal-body">
+            <div id="trendChart" class="trend-chart"></div>
+            <div class="trend-section">
+                <h4>可清理增量 Top 5</h4>
+                <div id="trendGrowers" class="trend-growers"></div>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button id="trendsClose" class="btn">关闭</button>
         </div>
     </div>
 </div>

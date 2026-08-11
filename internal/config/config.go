@@ -27,10 +27,20 @@ type TrashConfig struct {
 	UseTrash bool `json:"useTrash"`
 }
 
+// ReminderConfig 是 cleanable 阈值提醒的配置项
+type ReminderConfig struct {
+	// ThresholdBytes 是提醒阈值，默认 5 GB
+	ThresholdBytes int64 `json:"thresholdBytes"`
+}
+
 // Config 是应用的本地配置
 type Config struct {
-	Trash TrashConfig `json:"trash"`
+	Trash    TrashConfig    `json:"trash"`
+	Reminder ReminderConfig `json:"reminder"`
 }
+
+// defaultThresholdBytes 是阈值提醒的默认值（5 GB）
+const defaultThresholdBytes int64 = 5 * 1024 * 1024 * 1024
 
 // dataRoot 可被测试替换，指向隔离的临时目录
 var dataRoot = platform.DataRoot
@@ -45,6 +55,9 @@ func Default() *Config {
 			RetentionDays: 7,
 			ExpireAction:  ExpireActionSystemTrash,
 			UseTrash:      true,
+		},
+		Reminder: ReminderConfig{
+			ThresholdBytes: defaultThresholdBytes,
 		},
 	}
 }
@@ -91,5 +104,8 @@ func (c *Config) normalize() {
 	}
 	if c.Trash.ExpireAction != ExpireActionSystemTrash && c.Trash.ExpireAction != ExpireActionPermanent {
 		c.Trash.ExpireAction = ExpireActionSystemTrash
+	}
+	if c.Reminder.ThresholdBytes <= 0 {
+		c.Reminder.ThresholdBytes = defaultThresholdBytes
 	}
 }

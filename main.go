@@ -119,7 +119,7 @@ func buildMenu() *menu.Menu {
 func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
-		case "scan", "clean", "cache", "trash", "version", "--version", "-v", "help", "-h", "--help":
+		case "scan", "clean", "cache", "trash", "trends", "version", "--version", "-v", "help", "-h", "--help":
 			os.Exit(cli.Run(os.Args[1:]))
 		}
 		// "gui" and anything else fall through to the window.

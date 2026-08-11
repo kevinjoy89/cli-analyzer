@@ -34,6 +34,7 @@ CLI Analyzer 扫描系统上安装的 CLI 工具，归因每个工具的总磁�
   - **USER**（配置、历史、venv）—— 仅展示，**任何情况下都不会被自动删除**（硬门槛在 cleaner 层，`--yes` 也无法绕过）
 - **内置回收站**：清理项先搬进应用自带的回收站（同文件系统，瞬时完成、可恢复），默认保留 7 天（可在"首选项"配置）；到期后默认移入系统回收站，或按配置彻底删除。GUI 底部常驻显示回收站占用与最早到期时间，让"已清理"与"已释放空间"区分开来
 - **恢复**：可从 GUI 回收站面板或 `cli-analyzer trash restore` 还原项目；`clean --permanent` 可跳过内置回收站直接删除
+- **占用趋势**：每次扫描自动追加历史快照；GUI 趋势视图（手写 SVG 折线）展示总占用/可清理随时间的变化与 cleanable 增量 Top 5，并可在某工具可清理量超过阈值时在顶部提醒（阈值可在"首选项"配置）
 - **树形明细**：可清理项展开显示一级子目录占用（如 `~/.npm` → `_cacache` 10G / `_npx` 764M），可只勾选部分子项单独清理；子路径删除同样经过 SAFE 门槛与守卫（必须是扫描归因过的父项子路径）
 - **双接口**：CLI（`scan` / `clean` / `cache` / `version`）+ 原生 GUI
 
@@ -73,6 +74,7 @@ cli-analyzer clean --permanent       # 立即彻底删除，跳过内置回收�
 cli-analyzer trash list              # 列出内置回收站项目
 cli-analyzer trash restore <id>      # 恢复一个项目到原路径
 cli-analyzer trash empty             # 清空内置回收站（彻底删除）
+cli-analyzer trends [天数]           # 查看最近 N 天占用趋势（默认 30 天）
 cli-analyzer cache --clear           # 清除扫描缓存
 cli-analyzer                         # 打开 GUI
 ```

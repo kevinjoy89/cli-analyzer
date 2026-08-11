@@ -10,8 +10,20 @@ export function GetLastResult() {
   return window['go']['gui']['ScannerService']['GetLastResult']();
 }
 
+export function GetReminderConfig() {
+  return window['go']['gui']['ScannerService']['GetReminderConfig']();
+}
+
+export function GetTopGrowers() {
+  return window['go']['gui']['ScannerService']['GetTopGrowers']();
+}
+
 export function GetTrashConfig() {
   return window['go']['gui']['ScannerService']['GetTrashConfig']();
+}
+
+export function GetTrends(arg1) {
+  return window['go']['gui']['ScannerService']['GetTrends'](arg1);
 }
 
 export function GetVersion() {
@@ -32,6 +44,10 @@ export function Restore(arg1) {
 
 export function Scan() {
   return window['go']['gui']['ScannerService']['Scan']();
+}
+
+export function SetReminderConfig(arg1) {
+  return window['go']['gui']['ScannerService']['SetReminderConfig'](arg1);
 }
 
 export function SetTrashConfig(arg1) {

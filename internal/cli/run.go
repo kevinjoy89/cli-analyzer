@@ -32,6 +32,8 @@ func Run(args []string) int {
 		return runCache(args[1:])
 	case "trash":
 		return runTrash(args[1:])
+	case "trends":
+		return runTrends(args[1:])
 	case "version", "--version", "-v":
 		fmt.Fprintf(stdout(), "cli-analyzer %s\n", Version)
 		return 0
@@ -52,6 +54,7 @@ func usage() {
   cli-analyzer clean [-a|--all] [-n|--dry-run] [-y|--yes] [-j|--json] [--list] [--permanent] [工具...]
   cli-analyzer cache [--clear]
   cli-analyzer trash [list|restore <id>|empty]
+  cli-analyzer trends [天数]   # 查看占用趋势与可清理增量 Top 5（默认最近 30 天）
   cli-analyzer version
   cli-analyzer gui        # 打开图形界面（无参数时默认）
 
