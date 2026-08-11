@@ -1,0 +1,124 @@
+name: Release
+
+# 打 tag（v*，如 v0.1.0）即构建三平台安装包并创建 GitHub Release。
+# 建议 tag 版本与 wails.json 的 productVersion 保持一致。
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # softprops/action-gh-release 需要写权限来创建 Release
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macos
+          - os: windows-latest
+            platform: windows
+          - os: ubuntu-22.04
+            platform: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Derive version from tag
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Install Wails CLI
+        shell: bash
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+
+      # ---- Linux 系统依赖（webkit2gtk 4.1）----
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev build-essential pkg-config
+
+      # ---- macOS：通用二进制 dmg ----
+      - name: Install create-dmg (macOS)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: brew install create-dmg
+
+      - name: Build dmg (macOS)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: ./scripts/build-dmg.sh
+
+      # ---- Windows：NSIS 安装器 + 便携 zip（wails -nsis 自动处理 NSIS）----
+      - name: Build Windows installer and portable zip
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          wails build -platform windows/amd64 -nsis
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item build/bin/*.exe dist/ -Force
+          Compress-Archive -Path build/bin/cli-analyzer.exe, build/windows/icon.ico `
+            -DestinationPath "dist/CLI-Analyzer-$env:VERSION-windows-amd64-portable.zip" -Force
+
+      # ---- Linux：deb + 便携 tar.gz ----
+      - name: Build Linux deb and portable archive
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          wails build -platform linux/amd64
+          mkdir -p dist/deb/DEBIAN dist/deb/usr/bin dist/deb/usr/share/applications
+          cp build/bin/cli-analyzer dist/deb/usr/bin/
+          cat > dist/deb/usr/share/applications/cli-analyzer.desktop <<'EOF'
+          [Desktop Entry]
+          Name=CLI Analyzer
+          Comment=Scan and clean CLI tool disk usage
+          Exec=cli-analyzer
+          Type=Application
+          Terminal=false
+          Categories=Utility;
+          EOF
+          cat > dist/deb/DEBIAN/control <<EOF
+          Package: cli-analyzer
+          Version: ${VERSION}
+          Architecture: amd64
+          Maintainer: kevinjoy89
+          Description: Scan and clean CLI tool disk usage
+          EOF
+          dpkg-deb --build --root-owner-group dist/deb "dist/CLI-Analyzer-${VERSION}-linux-amd64.deb"
+          tar -czf "dist/CLI-Analyzer-${VERSION}-linux-amd64.tar.gz" -C build/bin cli-analyzer
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.platform }}
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: artifacts/**/*
+          draft: true
+          generate_release_notes: true
