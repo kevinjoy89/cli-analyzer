@@ -201,6 +201,10 @@ func TestInfoStats(t *testing.T) {
 
 func TestPurge(t *testing.T) {
 	withTrashRoot(t)
+	var trashed []string
+	orig := systemTrashFn
+	systemTrashFn = func(p string) error { trashed = append(trashed, p); return os.RemoveAll(p) }
+	defer func() { systemTrashFn = orig }()
 	src := mkSource(t, "purge-me")
 	if err := Trash(src, Item{Tool: "t", Kind: "cache", Bytes: 1}); err != nil {
 		t.Fatal(err)
@@ -211,6 +215,10 @@ func TestPurge(t *testing.T) {
 	}
 	if got := itemIDs(t); len(got) != 0 {
 		t.Errorf("Purge 后仍有 %d 项", len(got))
+	}
+	// 默认配置（system-trash）下 Purge 应移入系统回收站，而非直接删除
+	if len(trashed) != 1 {
+		t.Errorf("默认配置下 Purge 应调用系统回收站，实际调用 %d 次", len(trashed))
 	}
 }
 

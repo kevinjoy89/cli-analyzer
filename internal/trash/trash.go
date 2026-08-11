@@ -186,14 +186,16 @@ func List() ([]Item, error) {
 	return out, nil
 }
 
-// Purge 立即彻底删除指定项目（跳过系统回收站），返回成功删除的 id 与逐项错误
+// Purge 立即清出回收站中指定项目；处理方式遵循过期配置——默认移到系统回收站
+// （最后一道保险），配置为 permanent 时才彻底删除
 func Purge(ids []string) (deleted []string, errs []string) {
+	action := config.Load().Trash.ExpireAction
 	for _, id := range ids {
 		if id == "" || filepath.Base(id) != id {
 			errs = append(errs, id+": 无效的回收站项目 id")
 			continue
 		}
-		if err := os.RemoveAll(filepath.Join(Root(), id)); err != nil {
+		if err := removeExpired(filepath.Join(Root(), id), action); err != nil {
 			errs = append(errs, id+": "+err.Error())
 			continue
 		}
