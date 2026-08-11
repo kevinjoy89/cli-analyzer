@@ -36,7 +36,7 @@ CLI Analyzer 扫描系统上安装的 CLI 工具，归因每个工具的总磁�
 - **恢复**：可从 GUI 回收站面板或 `cli-analyzer trash restore` 还原项目；`clean --permanent` 可跳过内置回收站直接删除
 - **占用趋势**：每次扫描自动追加历史快照；GUI 趋势视图（手写 SVG 折线）展示总占用/可清理随时间的变化与 cleanable 增量 Top 5，并可在某工具可清理量超过阈值时在顶部提醒（阈值可在"首选项"配置）
 - **树形明细**：可清理项展开显示一级子目录占用（如 `~/.npm` → `_cacache` 10G / `_npx` 764M），可只勾选部分子项单独清理；子路径删除同样经过 SAFE 门槛与守卫（必须是扫描归因过的父项子路径）
-- **双接口**：CLI（`scan` / `clean` / `cache` / `version`）+ 原生 GUI
+- **双接口**：CLI（`scan` / `clean` / `cache` / `trash` / `trends` / `version`）+ 原生 GUI
 
 ## 安装
 
@@ -122,14 +122,17 @@ pyenv        -   759.8 MB  0 B        759.8 MB  pyenv
 ## 项目结构
 
 ```
-main.go             # argv 分发：scan/clean/cache/version → CLI；否则 Wails GUI
+main.go             # argv 分发：scan/clean/cache/trash/trends/version → CLI；否则 Wails GUI
 gui/service.go      # Wails 绑定（唯一 import wails 的文件）
 internal/scanner/   # 发现→分类→归因→可清理判定（纯核心）
 internal/rules/     # 两级规则表 + 通用解析器
 internal/platform/  # 各 OS 数据根目录与可执行检测（build tags）
 internal/disk/      # 并行目录大小测量（无 du 依赖）
-internal/cleaner/   # SAFE 硬门槛 + 守卫 + 删除
-internal/cli/       # scan / clean / cache 子命令
+internal/cleaner/   # SAFE 硬门槛 + 守卫 + 延迟删除
+internal/trash/     # 内置回收站：延迟删除/恢复/过期清除 + 各平台系统回收站
+internal/config/    # 本地配置（保留期、过期动作、提醒阈值）
+internal/history/   # SQLite 扫描快照，供占用趋势分析
+internal/cli/       # scan / clean / cache / trash / trends 子命令
 ```
 
 ## 参与贡献

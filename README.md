@@ -36,7 +36,7 @@ CLI Analyzer scans every CLI tool installed on your machine, attributes its **to
 - **Restore** — restore a trashed item from the GUI trash panel or `cli-analyzer trash restore`; `clean --permanent` skips the built-in trash entirely
 - **Usage trends** — every scan appends a snapshot; view total/cleanable over time (SVG chart) and the top cleanable growers, with a threshold reminder when a tool's cleanable space exceeds a configurable limit
 - **Tree drill-down** — expand a cleanable item to its one-level child dirs (`~/.npm` → `_cacache` 10G / `_npx` 764M) and clean only the selected children. Sub-path deletion passes the same SAFE gate + guard (must be a child of an already-scanned, attributed parent)
-- **Two interfaces** — CLI (`scan` / `clean` / `cache` / `version`) + native GUI
+- **Two interfaces** — CLI (`scan` / `clean` / `cache` / `trash` / `trends` / `version`) + native GUI
 
 ## Installation
 
@@ -122,14 +122,17 @@ pyenv        -   759.8 MB  0 B        759.8 MB  pyenv
 ## Project layout
 
 ```
-main.go             # argv dispatch: scan/clean/cache/version → CLI; otherwise Wails GUI
+main.go             # argv dispatch: scan/clean/cache/trash/trends/version → CLI; otherwise Wails GUI
 gui/service.go      # Wails bindings (the only file importing wails)
 internal/scanner/   # discover → classify → attribute → cleanability (pure core)
 internal/rules/     # two-level rules table + generic parser
 internal/platform/  # per-OS data roots & executable detection (build tags)
 internal/disk/      # parallel directory size measurement (no du dependency)
-internal/cleaner/   # SAFE hard gate + guard + deletion
-internal/cli/       # scan / clean / cache subcommands
+internal/cleaner/   # SAFE hard gate + guard + deferred deletion
+internal/trash/     # built-in trash: defer/restore/sweep + per-OS system trash
+internal/config/    # local config (retention, expire action, reminder threshold)
+internal/history/   # scan snapshots in SQLite for usage trends
+internal/cli/       # scan / clean / cache / trash / trends subcommands
 ```
 
 ## Contributing
