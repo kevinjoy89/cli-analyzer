@@ -14,7 +14,7 @@ func stdout() io.Writer { return out }
 func stderr() io.Writer { return errOut }
 
 // Version is the CLI/GUI version string.
-const Version = "0.1.0"
+const Version = "0.1.1"
 
 // Run dispatches CLI subcommands. args excludes argv[0]; the root main.go
 // routes scan/clean/cache/version here and everything else to the Wails GUI.

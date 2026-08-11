@@ -78,7 +78,7 @@ func TestRunVersion(t *testing.T) {
 	if code := Run([]string{"version"}); code != 0 {
 		t.Fatalf("version exit = %d, want 0", code)
 	}
-	if !strings.Contains(buf.String(), "cli-analyzer 0.1.0") {
+	if !strings.Contains(buf.String(), "cli-analyzer 0.1.1") {
 		t.Errorf("version output = %q", buf.String())
 	}
 }
@@ -90,7 +90,7 @@ func TestRunVersionShortFlags(t *testing.T) {
 		if code := Run([]string{a}); code != 0 {
 			t.Errorf("%s exit = %d, want 0", a, code)
 		}
-		if !strings.Contains(buf.String(), "cli-analyzer 0.1.0") {
+		if !strings.Contains(buf.String(), "cli-analyzer 0.1.1") {
 			t.Errorf("%s output = %q", a, buf.String())
 		}
 	}

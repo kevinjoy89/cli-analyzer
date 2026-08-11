@@ -15,7 +15,7 @@ import (
 )
 
 // AppVersion is the app version shown in the UI footer and About dialog.
-const AppVersion = "0.1.0"
+const AppVersion = "0.1.1"
 
 // ScannerService is the Wails binding the frontend calls.
 type ScannerService struct {
@@ -90,5 +90,5 @@ func (s *ScannerService) OpenURL(url string) {
 	runtime.BrowserOpenURL(s.ctx, url)
 }
 
-// GetVersion returns the app version string (e.g. "0.1.0").
+// GetVersion returns the app version string (e.g. "0.1.1").
 func (s *ScannerService) GetVersion() string { return AppVersion }
