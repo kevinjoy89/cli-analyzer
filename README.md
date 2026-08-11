@@ -34,7 +34,7 @@ CLI Analyzer scans every CLI tool installed on your machine, attributes its **to
   - **USER** (config, history, venv) — display-only, **never auto-deleted**. The hard gate lives in the cleaner layer; `--yes` cannot bypass it
 - **Built-in trash** — deletions go to the app's own trash first (same filesystem, instant), recoverable for 7 days (configurable in 首选项); expired items move to the OS trash or are deleted permanently
 - **Restore** — restore a trashed item from the GUI trash panel or `cli-analyzer trash restore`; `clean --permanent` skips the built-in trash entirely
-- **Usage trends** — every scan appends a snapshot; view total/cleanable over time (SVG chart) and the top cleanable growers, with a threshold reminder when a tool's cleanable space exceeds a configurable limit
+- **Usage trends** — every scan appends a snapshot; view total/cleanable over time (SVG chart) and the top cleanable growers, with a bell reminder when a tool's cleanable space exceeds a configurable limit (click it to list the tools and jump to one)
 - **Tree drill-down** — expand a cleanable item to its one-level child dirs (`~/.npm` → `_cacache` 10G / `_npx` 764M) and clean only the selected children. Sub-path deletion passes the same SAFE gate + guard (must be a child of an already-scanned, attributed parent)
 - **Two interfaces** — CLI (`scan` / `clean` / `cache` / `trash` / `trends` / `version`) + native GUI
 
