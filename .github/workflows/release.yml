@@ -70,10 +70,10 @@ jobs:
           # 按芯片分开打包：Apple Silicon (arm64) 与 Intel (amd64) 各一个 dmg。
           # 复制成无空格文件名，避免 release 资产名中的空格被转成点。
           ./scripts/build-dmg.sh arm64
-          cp "dist/CLI Analyzer-${VERSION}-arm64.dmg" "dist/CLI-Analyzer-${VERSION}-darwin-arm64.dmg"
+          cp "dist/CLI Analyzer-${VERSION}-arm64.dmg" "dist/CLI-Analyzer-${VERSION}-macos-arm64.dmg"
           rm "dist/CLI Analyzer-${VERSION}-arm64.dmg"
           ./scripts/build-dmg.sh amd64
-          cp "dist/CLI Analyzer-${VERSION}-amd64.dmg" "dist/CLI-Analyzer-${VERSION}-darwin-amd64.dmg"
+          cp "dist/CLI Analyzer-${VERSION}-amd64.dmg" "dist/CLI-Analyzer-${VERSION}-macos-amd64.dmg"
           rm "dist/CLI Analyzer-${VERSION}-amd64.dmg"
 
       # ---- Windows：NSIS 安装器 + 便携 zip ----
