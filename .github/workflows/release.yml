@@ -76,7 +76,13 @@ jobs:
           cp "dist/CLI Analyzer-${VERSION}-amd64.dmg" "dist/CLI-Analyzer-${VERSION}-darwin-amd64.dmg"
           rm "dist/CLI Analyzer-${VERSION}-amd64.dmg"
 
-      # ---- Windows：NSIS 安装器 + 便携 zip（wails -nsis 自动处理 NSIS）----
+      # ---- Windows：NSIS 安装器 + 便携 zip ----
+      # wails -nsis 需要系统里有 makensis，否则会静默跳过安装器生成。
+      - name: Install NSIS (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: choco install nsis -y
+
       - name: Build Windows installer and portable zip
         if: matrix.platform == 'windows'
         shell: pwsh

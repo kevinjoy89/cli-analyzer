@@ -1,7 +1,7 @@
 import './style.css';
 
 import {Clean, GetLastResult, GetVersion, OpenURL, Scan} from '../wailsjs/go/gui/ScannerService';
-import {EventsOn} from '../wailsjs/runtime/runtime';
+import {Environment, EventsOn} from '../wailsjs/runtime/runtime';
 
 // ---- types mirroring the Go JSON contract ----
 interface Binary { name: string; path: string; real: string; size: number }
@@ -380,6 +380,14 @@ async function rescan() {
 }
 
 async function init() {
+    // Windows/Linux have a native titlebar above the content; mark the platform
+    // so CSS can drop the top padding that only exists to clear the macOS
+    // traffic lights / drag area.
+    try {
+        const env = await Environment();
+        document.body.classList.add('platform-' + env.platform);
+    } catch { /* non-Wails context (plain browser preview) */ }
+
     el('rescanBtn').onclick = rescan;
     el('filter').addEventListener('input', (e) => { filterText = (e.target as HTMLInputElement).value; renderToolList(); });
 

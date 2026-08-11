@@ -4,12 +4,14 @@ import (
 	"context"
 	"embed"
 	"os"
+	goruntime "runtime"
 
 	"cli-analyzer/gui"
 	"cli-analyzer/internal/cli"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/menu"
+	"github.com/wailsapp/wails/v2/pkg/menu/keys"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
@@ -28,14 +30,25 @@ const repoURL = "https://github.com/kevinjoy89/cli-analyzer"
 // appCtx is set in OnStartup and used by menu callbacks (e.g. open a URL).
 var appCtx context.Context
 
-// buildMenu builds the macOS menu bar. A custom menu replaces Wails' default
-// one, which drops only the stock "Edit" menu; the standard App and Window
-// menus are kept, and a Help menu links to the project's GitHub repo and
-// issue tracker.
+// buildMenu builds the menu bar. On macOS a custom menu replaces Wails' default
+// one (dropping only the stock "Edit" menu) and keeps the standard App and
+// Window menus. Windows/Linux have no app/window role menus, so they get a
+// File (Quit) menu instead. Every platform shares the Help menu linking to the
+// project's GitHub repo and issue tracker.
 func buildMenu() *menu.Menu {
 	appMenu := menu.NewMenu()
-	appMenu.Append(menu.AppMenu())    // standard app menu: About, Hide, Quit
-	appMenu.Append(menu.WindowMenu()) // standard window menu: Minimize, Zoom, …
+	if goruntime.GOOS == "darwin" {
+		appMenu.Append(menu.AppMenu())    // standard app menu: About, Hide, Quit
+		appMenu.Append(menu.WindowMenu()) // standard window menu: Minimize, Zoom, …
+	} else {
+		file := menu.NewMenu()
+		file.Append(menu.Text("Quit", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
+			if appCtx != nil {
+				runtime.Quit(appCtx)
+			}
+		}))
+		appMenu.Append(menu.SubMenu("File", file))
+	}
 
 	help := menu.NewMenu()
 	help.Append(menu.Text("GitHub Repository", nil, func(_ *menu.CallbackData) {

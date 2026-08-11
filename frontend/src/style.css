@@ -109,6 +109,10 @@ html, body {
     -webkit-user-select: none;
     user-select: none;
 }
+/* Windows/Linux have a native titlebar above the content; the 40px top padding
+   only exists to clear the macOS traffic lights, so collapse it there. */
+body.platform-windows #header,
+body.platform-linux #header { padding-top: 10px; }
 #header button, #header input, #header .logo {
     --wails-draggable: no-drag;
 }
