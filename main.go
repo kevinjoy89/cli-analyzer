@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"os"
 
@@ -8,9 +9,11 @@ import (
 	"cli-analyzer/internal/cli"
 
 	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 //go:embed all:frontend/dist
@@ -18,6 +21,38 @@ var assets embed.FS
 
 //go:embed build/appicon.png
 var appIcon []byte
+
+// repoURL is the project's GitHub home; the Help menu links to it.
+const repoURL = "https://github.com/kevinjoy89/cli-analyzer"
+
+// appCtx is set in OnStartup and used by menu callbacks (e.g. open a URL).
+var appCtx context.Context
+
+// buildMenu builds the macOS menu bar. A custom menu replaces Wails' default
+// one, which drops only the stock "Edit" menu; the standard App and Window
+// menus are kept, and a Help menu links to the project's GitHub repo and
+// issue tracker.
+func buildMenu() *menu.Menu {
+	appMenu := menu.NewMenu()
+	appMenu.Append(menu.AppMenu())    // standard app menu: About, Hide, Quit
+	appMenu.Append(menu.WindowMenu()) // standard window menu: Minimize, Zoom, …
+
+	help := menu.NewMenu()
+	help.Append(menu.Text("GitHub Repository", nil, func(_ *menu.CallbackData) {
+		if appCtx != nil {
+			runtime.BrowserOpenURL(appCtx, repoURL)
+		}
+	}))
+	help.Append(menu.Separator())
+	help.Append(menu.Text("Report an Issue", nil, func(_ *menu.CallbackData) {
+		if appCtx != nil {
+			runtime.BrowserOpenURL(appCtx, repoURL+"/issues/new")
+		}
+	}))
+	appMenu.Append(menu.SubMenu("Help", help))
+
+	return appMenu
+}
 
 // main dispatches on argv: scan/clean/cache/version run as a CLI; gui or no
 // arguments open the Wails desktop window. One binary, both interfaces.
@@ -39,7 +74,11 @@ func main() {
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 24, G: 26, B: 32, A: 1},
-		OnStartup:        srv.Startup,
+		OnStartup: func(ctx context.Context) {
+			appCtx = ctx
+			srv.Startup(ctx)
+		},
+		Menu: buildMenu(),
 		Bind: []interface{}{
 			srv,
 		},
