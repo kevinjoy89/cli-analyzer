@@ -20,6 +20,10 @@ type Sizer struct {
 	// Errors counts unreadable subtrees encountered during walks.
 	Errors int
 
+	// Skip, when non-empty, lists absolute directory paths to exclude from
+	// measurement（如内置回收站根目录）。遍历期间只读。
+	Skip map[string]bool
+
 	mu sync.Mutex
 }
 
@@ -48,6 +52,10 @@ func (s *Sizer) walkDir(root string) int64 {
 		if err != nil {
 			s.countErr()
 			return nil // keep walking siblings
+		}
+		// 跳过配置的排除目录（如内置回收站），不进入其子树
+		if d.IsDir() && s.Skip[p] {
+			return filepath.SkipDir
 		}
 		info, err := d.Info()
 		if err != nil {

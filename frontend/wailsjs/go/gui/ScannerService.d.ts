@@ -6,10 +6,22 @@ export function Clean(arg1:Array<string>,arg2:boolean):Promise<string>;
 
 export function GetLastResult():Promise<string>;
 
+export function GetTrashConfig():Promise<string>;
+
 export function GetVersion():Promise<string>;
 
 export function OpenURL(arg1:string):Promise<void>;
 
+export function PurgeNow(arg1:Array<string>):Promise<string>;
+
+export function Restore(arg1:string):Promise<string>;
+
 export function Scan():Promise<void>;
 
+export function SetTrashConfig(arg1:string):Promise<string>;
+
 export function Startup(arg1:context.Context):Promise<void>;
+
+export function TrashInfo():Promise<string>;
+
+export function TrashList():Promise<string>;

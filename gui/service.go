@@ -9,7 +9,9 @@ import (
 	"sync"
 
 	"cli-analyzer/internal/cleaner"
+	"cli-analyzer/internal/config"
 	"cli-analyzer/internal/scanner"
+	"cli-analyzer/internal/trash"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -92,3 +94,58 @@ func (s *ScannerService) OpenURL(url string) {
 
 // GetVersion returns the app version string (e.g. "0.1.1").
 func (s *ScannerService) GetVersion() string { return AppVersion }
+
+// TrashInfo 返回内置回收站的占用统计 JSON（项数 / 总占用 / 最早到期时间）
+func (s *ScannerService) TrashInfo() string {
+	b, _ := json.Marshal(trash.Info())
+	return string(b)
+}
+
+// TrashList 返回回收站项目列表 JSON（按移入时间倒序）
+func (s *ScannerService) TrashList() string {
+	items, err := trash.List()
+	if err != nil {
+		b, _ := json.Marshal(map[string]any{"error": err.Error()})
+		return string(b)
+	}
+	b, _ := json.Marshal(items)
+	return string(b)
+}
+
+// Restore 恢复回收站中指定项目，返回 {"restored": 实际路径} 或 {"error": ...}
+func (s *ScannerService) Restore(id string) string {
+	restored, err := trash.Restore(id)
+	if err != nil {
+		b, _ := json.Marshal(map[string]any{"error": err.Error()})
+		return string(b)
+	}
+	b, _ := json.Marshal(map[string]any{"restored": restored})
+	return string(b)
+}
+
+// PurgeNow 立即彻底删除回收站中的指定项目（跳过系统回收站）
+func (s *ScannerService) PurgeNow(ids []string) string {
+	deleted, errs := trash.Purge(ids)
+	b, _ := json.Marshal(map[string]any{"deleted": deleted, "errors": errs})
+	return string(b)
+}
+
+// GetTrashConfig 返回当前回收站配置 JSON
+func (s *ScannerService) GetTrashConfig() string {
+	b, _ := json.Marshal(config.Load().Trash)
+	return string(b)
+}
+
+// SetTrashConfig 保存回收站配置；成功返回 ""，失败返回错误信息
+func (s *ScannerService) SetTrashConfig(cfgJSON string) string {
+	var tc config.TrashConfig
+	if err := json.Unmarshal([]byte(cfgJSON), &tc); err != nil {
+		return err.Error()
+	}
+	c := config.Load()
+	c.Trash = tc
+	if err := config.Save(c); err != nil {
+		return err.Error()
+	}
+	return ""
+}

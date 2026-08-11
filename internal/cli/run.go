@@ -30,6 +30,8 @@ func Run(args []string) int {
 		return runClean(args[1:])
 	case "cache":
 		return runCache(args[1:])
+	case "trash":
+		return runTrash(args[1:])
 	case "version", "--version", "-v":
 		fmt.Fprintf(stdout(), "cli-analyzer %s\n", Version)
 		return 0
@@ -47,8 +49,9 @@ func usage() {
 
 用法:
   cli-analyzer scan [-j|--json] [--full] [--refresh] [--order=size|name] [工具...]
-  cli-analyzer clean [-a|--all] [-n|--dry-run] [-y|--yes] [-j|--json] [--list] [工具...]
+  cli-analyzer clean [-a|--all] [-n|--dry-run] [-y|--yes] [-j|--json] [--list] [--permanent] [工具...]
   cli-analyzer cache [--clear]
+  cli-analyzer trash [list|restore <id>|empty]
   cli-analyzer version
   cli-analyzer gui        # 打开图形界面（无参数时默认）
 

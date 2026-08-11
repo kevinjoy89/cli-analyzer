@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"cli-analyzer/internal/cleaner"
+	"cli-analyzer/internal/config"
 	"cli-analyzer/internal/scanner"
 )
 
@@ -23,6 +24,7 @@ func runClean(args []string) int {
 	jsonOut := fs.Bool("j", false, "output JSON report")
 	fs.BoolVar(jsonOut, "json", false, "output JSON report")
 	list := fs.Bool("list", false, "list cleanable items and exit")
+	permanent := fs.Bool("permanent", false, "immediately delete, skip the built-in trash")
 	fs.SetOutput(stderr())
 	if err := fs.Parse(reorderFlags(args)); err != nil {
 		return 1
@@ -77,12 +79,21 @@ func runClean(args []string) int {
 		}
 	}
 
-	report := cleaner.Clean(res, chosen, *dryRun)
+	var report scanner.CleanReport
+	if *permanent {
+		report = cleaner.CleanPermanent(res, chosen, *dryRun)
+	} else {
+		report = cleaner.Clean(res, chosen, *dryRun)
+	}
 	if *jsonOut {
 		b, _ := json.MarshalIndent(report, "", "  ")
 		fmt.Fprintln(stdout(), string(b))
 	} else {
-		fmt.Fprintf(stdout(), "删除 %d 项，释放 %s\n", len(report.Deleted), humanBytes(report.Freed))
+		modeWord := "删除"
+		if !*permanent && config.Load().Trash.UseTrash {
+			modeWord = "移入回收站"
+		}
+		fmt.Fprintf(stdout(), "%s %d 项，释放 %s\n", modeWord, len(report.Deleted), humanBytes(report.Freed))
 		for _, s := range report.Skipped {
 			fmt.Fprintf(stdout(), "跳过: %s\n", s)
 		}

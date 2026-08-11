@@ -1,6 +1,6 @@
 import './style.css';
 
-import {Clean, GetLastResult, GetVersion, OpenURL, Scan} from '../wailsjs/go/gui/ScannerService';
+import {Clean, GetLastResult, GetTrashConfig, GetVersion, OpenURL, PurgeNow, Restore, Scan, SetTrashConfig, TrashInfo, TrashList} from '../wailsjs/go/gui/ScannerService';
 import {Environment, EventsOn} from '../wailsjs/runtime/runtime';
 
 // ---- types mirroring the Go JSON contract ----
@@ -19,6 +19,9 @@ interface ScanResult {
     roots: Record<string, string[]>; walkErrors: number;
 }
 interface CleanReport { dryRun: boolean; deleted: string[]; freedBytes: number; skipped: string[]; errors: string[] }
+interface TrashInfoData { items: number; totalBytes: number; earliestExpiresAt: string }
+interface TrashItem { id: string; original: string; tool: string; kind: string; bytes: number; trashedAt: string; expiresAt: string }
+interface TrashConfig { retentionDays: number; expireAction: string; useTrash: boolean }
 
 // ---- state ----
 let result: ScanResult | null = null;
@@ -373,6 +376,102 @@ function showConfirmModal(items: PickItem[]) {
     el('modalCancel').onclick = () => el('modal').classList.add('hidden');
 }
 
+// ---- built-in trash ----
+let trashItems: TrashItem[] = [];
+
+// 刷新状态栏常驻的回收站占用信息（空回收站显示 0 B）
+async function refreshTrashInfo() {
+    try {
+        const info: TrashInfoData = JSON.parse(await TrashInfo());
+        const total = info.totalBytes || 0;
+        el('trashInfo').textContent = total > 0 ? `${hb(total)} · ${info.items} 项` : '0 B';
+        el('trashBtn').title = info.earliestExpiresAt
+            ? `内置回收站 ${hb(total)} · ${info.items} 项 · 最早 ${fmtTime(info.earliestExpiresAt)} 到期释放`
+            : '内置回收站：清理项在保留期内可恢复';
+    } catch { el('trashInfo').textContent = '0 B'; }
+}
+
+function openTrashPanel() {
+    el('trashModal').classList.remove('hidden');
+    refreshTrashList();
+}
+
+async function refreshTrashList() {
+    const body = el('trashBody');
+    try {
+        const parsed = JSON.parse(await TrashList());
+        if (parsed.error) { body.innerHTML = `<div class="warn">${esc(parsed.error)}</div>`; return; }
+        trashItems = parsed;
+    } catch (e) {
+        body.innerHTML = `<div class="warn">回收站读取失败: ${String(e)}</div>`;
+        return;
+    }
+    if (!trashItems.length) { body.innerHTML = '<div class="empty">回收站为空</div>'; return; }
+    body.innerHTML = trashItems.map(it => `
+        <div class="trash-item">
+            <div class="trash-head">
+                <span class="badge safe">${esc(it.kind)}</span>
+                <span class="trash-tool">${esc(it.tool)}</span>
+                <span class="size clean">${hb(it.bytes)}</span>
+                <span class="trash-exp">${fmtTime(it.trashedAt)} 移入 · ${fmtTime(it.expiresAt)} 到期</span>
+            </div>
+            <div class="trash-path" title="${esc(it.original)}">${esc(it.original)}</div>
+            <div class="trash-actions">
+                <button class="btn small" data-restore="${esc(it.id)}">恢复</button>
+                <button class="btn small danger" data-purge="${esc(it.id)}">彻底删除</button>
+            </div>
+        </div>`).join('');
+    body.querySelectorAll<HTMLButtonElement>('[data-restore]').forEach(btn => {
+        btn.onclick = async () => {
+            const r = JSON.parse(await Restore(btn.dataset.restore!));
+            if (r.error) showToast('恢复失败: ' + r.error, true);
+            else showToast('已恢复到 ' + r.restored);
+            refreshTrashList(); refreshTrashInfo();
+        };
+    });
+    body.querySelectorAll<HTMLButtonElement>('[data-purge]').forEach(btn => {
+        btn.onclick = async () => {
+            const r = JSON.parse(await PurgeNow([btn.dataset.purge!]));
+            if ((r.errors ?? []).length) showToast('清除失败: ' + r.errors.join('; '), true);
+            else showToast('已彻底删除');
+            refreshTrashList(); refreshTrashInfo();
+        };
+    });
+}
+
+// ---- preferences ----
+async function openPrefs() {
+    let cfg: TrashConfig;
+    try { cfg = JSON.parse(await GetTrashConfig()); } catch { cfg = {retentionDays: 7, expireAction: 'system-trash', useTrash: true}; }
+    el('prefsBody').innerHTML = `
+        <label class="pref-row">回收站保留天数
+            <input id="prefRetention" type="number" min="1" max="365" value="${cfg.retentionDays}"/>
+        </label>
+        <label class="pref-row">到期后
+            <select id="prefExpire">
+                <option value="system-trash" ${cfg.expireAction === 'system-trash' ? 'selected' : ''}>移动到系统回收站</option>
+                <option value="permanent" ${cfg.expireAction === 'permanent' ? 'selected' : ''}>彻底删除</option>
+            </select>
+        </label>
+        <label class="pref-row check">
+            <input id="prefUseTrash" type="checkbox" ${cfg.useTrash ? 'checked' : ''}/>
+            <span>清理默认移入内置回收站（取消则直接删除）</span>
+        </label>`;
+    el('prefsModal').classList.remove('hidden');
+    el('prefsSave').onclick = async () => {
+        const next: TrashConfig = {
+            retentionDays: Math.max(1, parseInt((el('prefRetention') as HTMLInputElement).value) || 7),
+            expireAction: (el('prefExpire') as HTMLSelectElement).value,
+            useTrash: (el('prefUseTrash') as HTMLInputElement).checked,
+        };
+        const err = await SetTrashConfig(JSON.stringify(next));
+        el('prefsModal').classList.add('hidden');
+        if (err) showToast('保存失败: ' + err, true);
+        else { showToast('配置已保存'); refreshTrashInfo(); }
+    };
+    el('prefsCancel').onclick = () => el('prefsModal').classList.add('hidden');
+}
+
 // ---- scan flow ----
 async function rescan() {
     setScanning(true, '扫描中…');
@@ -390,6 +489,20 @@ async function init() {
 
     el('rescanBtn').onclick = rescan;
     el('filter').addEventListener('input', (e) => { filterText = (e.target as HTMLInputElement).value; renderToolList(); });
+
+    // built-in trash panel
+    el('trashBtn').onclick = openTrashPanel;
+    el('trashClose').onclick = () => el('trashModal').classList.add('hidden');
+    el('trashPurgeAll').onclick = async () => {
+        const ids = trashItems.map(it => it.id);
+        if (!ids.length) return;
+        const r = JSON.parse(await PurgeNow(ids));
+        showToast((r.errors ?? []).length ? '清空失败: ' + r.errors.join('; ') : `已清空 ${r.deleted.length} 项`, (r.errors ?? []).length > 0);
+        refreshTrashList(); refreshTrashInfo();
+    };
+
+    // preferences panel (opened from the native menu)
+    EventsOn('open-prefs', () => openPrefs());
 
     // theme toggle: system -> light -> dark -> system
     applyTheme('system');
@@ -421,7 +534,7 @@ async function init() {
             if (parsed && (!selected || !parsed.tools.some(t => t.name === selected))) {
                 selected = parsed.tools[0]?.name ?? null;
             }
-            renderSummary(); renderToolList(); renderDetail();
+            renderSummary(); renderToolList(); renderDetail(); refreshTrashInfo();
         } catch (err) {
             showToast('扫描结果解析失败', true);
         }
@@ -433,6 +546,8 @@ async function init() {
     } catch (e) {
         console.error('load cache failed', e);
     }
+
+    refreshTrashInfo();
 }
 
 init();

@@ -10,6 +10,10 @@ export function GetLastResult() {
   return window['go']['gui']['ScannerService']['GetLastResult']();
 }
 
+export function GetTrashConfig() {
+  return window['go']['gui']['ScannerService']['GetTrashConfig']();
+}
+
 export function GetVersion() {
   return window['go']['gui']['ScannerService']['GetVersion']();
 }
@@ -18,10 +22,30 @@ export function OpenURL(arg1) {
   return window['go']['gui']['ScannerService']['OpenURL'](arg1);
 }
 
+export function PurgeNow(arg1) {
+  return window['go']['gui']['ScannerService']['PurgeNow'](arg1);
+}
+
+export function Restore(arg1) {
+  return window['go']['gui']['ScannerService']['Restore'](arg1);
+}
+
 export function Scan() {
   return window['go']['gui']['ScannerService']['Scan']();
 }
 
+export function SetTrashConfig(arg1) {
+  return window['go']['gui']['ScannerService']['SetTrashConfig'](arg1);
+}
+
 export function Startup(arg1) {
   return window['go']['gui']['ScannerService']['Startup'](arg1);
+}
+
+export function TrashInfo() {
+  return window['go']['gui']['ScannerService']['TrashInfo']();
+}
+
+export function TrashList() {
+  return window['go']['gui']['ScannerService']['TrashList']();
 }

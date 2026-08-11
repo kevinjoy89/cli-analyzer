@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"cli-analyzer/internal/config"
 	"cli-analyzer/internal/scanner"
+	"cli-analyzer/internal/trash"
 )
 
 // subItem pairs a sub entry with its owning cleanable, so a child path can be
@@ -26,11 +28,25 @@ type subItem struct {
 //   - Only Tier "safe" items are ever removed; anything else lands in Skipped
 //     regardless of caller intent or flags.
 //   - Guards are re-checked at delete time (not just scan time): the path must
-//     be absolute, free of "..", outside forbidden system roots, and — for
-//     old-version items — not equal to the tool's current version path.
+//     be absolute, free of "..", outside forbidden system roots, not the trash
+//     root, and — for old-version items — not equal to the tool's current
+//     version path.
+//   - Deletion is deferred by default: SAFE items move into the built-in trash
+//     (recoverable within the retention window) unless the config disables it.
 //
 // When dryRun is true nothing is touched and Deleted stays empty.
 func Clean(result *scanner.ScanResult, ids []string, dryRun bool) scanner.CleanReport {
+	return clean(result, ids, dryRun, false)
+}
+
+// CleanPermanent 强制直接删除（跳过内置回收站），供 `clean --permanent` 使用；
+// SAFE 门禁与 guard 检查不变
+func CleanPermanent(result *scanner.ScanResult, ids []string, dryRun bool) scanner.CleanReport {
+	return clean(result, ids, dryRun, true)
+}
+
+// clean 是 Clean / CleanPermanent 的公共实现；permanent 为 true 时直接删除
+func clean(result *scanner.ScanResult, ids []string, dryRun bool, permanent bool) scanner.CleanReport {
 	report := scanner.CleanReport{
 		DryRun:  dryRun,
 		Deleted: []string{},
@@ -55,15 +71,24 @@ func Clean(result *scanner.ScanResult, ids []string, dryRun bool) scanner.CleanR
 		}
 	}
 
-	del := func(path string, bytes int64) {
+	// 默认延迟删除；仅当永久模式或配置禁用回收站时才真正删除
+	useTrash := !permanent && config.Load().Trash.UseTrash
+	remove := func(path string, bytes int64, tool, kind string) {
 		if dryRun {
 			report.Deleted = append(report.Deleted, path)
 			report.Freed += bytes
 			return
 		}
-		if err := os.RemoveAll(path); err != nil {
-			report.Errors = append(report.Errors, path+": "+err.Error())
-			return
+		if useTrash {
+			if err := trash.Trash(path, trash.Item{Tool: tool, Kind: kind, Bytes: bytes}); err != nil {
+				report.Errors = append(report.Errors, path+": "+err.Error())
+				return
+			}
+		} else {
+			if err := os.RemoveAll(path); err != nil {
+				report.Errors = append(report.Errors, path+": "+err.Error())
+				return
+			}
 		}
 		report.Deleted = append(report.Deleted, path)
 		report.Freed += bytes
@@ -79,7 +104,7 @@ func Clean(result *scanner.ScanResult, ids []string, dryRun bool) scanner.CleanR
 				report.Skipped = append(report.Skipped, c.Path+" ("+reason+")")
 				continue
 			}
-			del(c.Path, c.Bytes)
+			remove(c.Path, c.Bytes, c.Tool, c.Kind)
 			continue
 		}
 		if si, ok := subs[id]; ok {
@@ -91,7 +116,7 @@ func Clean(result *scanner.ScanResult, ids []string, dryRun bool) scanner.CleanR
 				report.Skipped = append(report.Skipped, si.sub.Path+" ("+reason+")")
 				continue
 			}
-			del(si.sub.Path, si.sub.Bytes)
+			remove(si.sub.Path, si.sub.Bytes, si.parent.Tool, si.parent.Kind)
 			continue
 		}
 		report.Skipped = append(report.Skipped, id+" (unknown item)")
@@ -110,6 +135,9 @@ func guard(c *scanner.Cleanable) string {
 	}
 	if forbidden(clean) {
 		return "path is a forbidden system root"
+	}
+	if clean == trash.Root() {
+		return "path is the trash root"
 	}
 	if c.CurrentPath != "" && clean == filepath.Clean(c.CurrentPath) {
 		return "refusing to delete the current version"

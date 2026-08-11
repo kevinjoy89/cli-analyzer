@@ -30,8 +30,10 @@ CLI Analyzer scans every CLI tool installed on your machine, attributes its **to
 - **Detection** — enumerates `$PATH` executables, resolves symlinks, and classifies each by install source (versioned installer / brew formula / npm package / pipx / pyenv shim / go / cargo / other)
 - **Attribution** — total footprint = executable + package dir (`Cellar`, `node_modules`, `versions/…`) + platform data dirs (`~/.cache/<name>`, `~/.config/<name>`, `~/.local/share/<name>`, macOS `~/Library/*`, Windows `%APPDATA%`…)
 - **Two-level safety model**
-  - **SAFE** (caches, old versions, backups, package-manager caches) — deletable after per-item confirmation
+  - **SAFE** (caches, old versions, backups, package-manager caches) — moved into the built-in trash (recoverable) after per-item confirmation
   - **USER** (config, history, venv) — display-only, **never auto-deleted**. The hard gate lives in the cleaner layer; `--yes` cannot bypass it
+- **Built-in trash** — deletions go to the app's own trash first (same filesystem, instant), recoverable for 7 days (configurable in 首选项); expired items move to the OS trash or are deleted permanently
+- **Restore** — restore a trashed item from the GUI trash panel or `cli-analyzer trash restore`; `clean --permanent` skips the built-in trash entirely
 - **Tree drill-down** — expand a cleanable item to its one-level child dirs (`~/.npm` → `_cacache` 10G / `_npx` 764M) and clean only the selected children. Sub-path deletion passes the same SAFE gate + guard (must be a child of an already-scanned, attributed parent)
 - **Two interfaces** — CLI (`scan` / `clean` / `cache` / `version`) + native GUI
 
@@ -64,9 +66,13 @@ Cross-platform installers (macOS dmg / Windows installer / Linux deb + AppImage)
 ```bash
 cli-analyzer scan                    # scan (first run is slower, cached afterwards)
 cli-analyzer scan --refresh --json   # force a rescan, JSON output
-cli-analyzer clean                   # interactive, per-item SAFE cleanup
+cli-analyzer clean                   # interactive, per-item SAFE cleanup (into built-in trash)
 cli-analyzer clean --dry-run --all   # show the plan only, delete nothing
 cli-analyzer clean --yes kimi        # clean all SAFE items for a specific tool
+cli-analyzer clean --permanent       # delete immediately, skip the built-in trash
+cli-analyzer trash list              # list built-in trash items
+cli-analyzer trash restore <id>      # restore an item to its original path
+cli-analyzer trash empty             # empty the built-in trash (permanent)
 cli-analyzer cache --clear           # clear the scan cache
 cli-analyzer                         # open the GUI
 ```
@@ -87,6 +93,8 @@ pyenv        -   759.8 MB  0 B        759.8 MB  pyenv
 ```
 
 **Safety model**: only SAFE-level items (caches / old versions / backups / package-manager caches) are cleaned; USER-level (config / history / venv) is display-only. Old-version cleanup always keeps the current version (e.g. the symlink target for `claude`).
+
+**Deferred deletion**: SAFE items are moved into the app's built-in trash first — same filesystem, instant, and recoverable. They stay there for the retention window (default 7 days, configurable in 首选项) and are then purged: by default into the OS trash, or permanently if configured. The GUI status bar shows the trash occupancy and the earliest expiry, so "cleaned" and "space released" stay distinct. Use `clean --permanent` to bypass the built-in trash.
 
 ### Cleaning boundaries — verified, never listed as SAFE
 

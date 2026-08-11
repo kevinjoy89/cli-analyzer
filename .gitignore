@@ -19,3 +19,6 @@ build/darwin/Info.dev.plist
 # 本地工具 / 环境
 .claude
 .omo
+.codex
+.opencode
+.codegraph

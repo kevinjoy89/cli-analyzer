@@ -30,8 +30,10 @@ CLI Analyzer 扫描系统上安装的 CLI 工具，归因每个工具的总磁�
 - **检测**：枚举 `$PATH` 可执行文件，解析符号链接，按真实路径分类到安装源（versioned 安装器 / brew formula / npm 包 / pipx / pyenv shim / go / cargo / 其他）
 - **归因**：每个工具的总占用 = 可执行文件 + 包目录（Cellar、node_modules、versions/…）+ 平台数据目录（`~/.cache/<名>`、`~/.config/<名>`、`~/.local/share/<名>`、macOS `~/Library/*`、Windows `%APPDATA%`…）
 - **两级清理安全模型**
-  - **SAFE**（缓存、旧版本、备份、包管理器缓存）—— 逐项确认后可删除
+  - **SAFE**（缓存、旧版本、备份、包管理器缓存）—— 逐项确认后先移入内置回收站（可恢复）
   - **USER**（配置、历史、venv）—— 仅展示，**任何情况下都不会被自动删除**（硬门槛在 cleaner 层，`--yes` 也无法绕过）
+- **内置回收站**：清理项先搬进应用自带的回收站（同文件系统，瞬时完成、可恢复），默认保留 7 天（可在"首选项"配置）；到期后默认移入系统回收站，或按配置彻底删除。GUI 底部常驻显示回收站占用与最早到期时间，让"已清理"与"已释放空间"区分开来
+- **恢复**：可从 GUI 回收站面板或 `cli-analyzer trash restore` 还原项目；`clean --permanent` 可跳过内置回收站直接删除
 - **树形明细**：可清理项展开显示一级子目录占用（如 `~/.npm` → `_cacache` 10G / `_npx` 764M），可只勾选部分子项单独清理；子路径删除同样经过 SAFE 门槛与守卫（必须是扫描归因过的父项子路径）
 - **双接口**：CLI（`scan` / `clean` / `cache` / `version`）+ 原生 GUI
 
@@ -64,9 +66,13 @@ wails build        # → build/bin/cli-analyzer
 ```bash
 cli-analyzer scan                    # 扫描（首次较慢，之后读缓存秒开）
 cli-analyzer scan --refresh --json   # 强制重扫并输出 JSON
-cli-analyzer clean                   # 交互式逐项确认清理 SAFE 项
+cli-analyzer clean                   # 交互式逐项确认清理 SAFE 项（先入内置回收站）
 cli-analyzer clean --dry-run --all   # 只显示清理计划，不删除
 cli-analyzer clean --yes kimi        # 清理指定工具的全部 SAFE 项
+cli-analyzer clean --permanent       # 立即彻底删除，跳过内置回收站
+cli-analyzer trash list              # 列出内置回收站项目
+cli-analyzer trash restore <id>      # 恢复一个项目到原路径
+cli-analyzer trash empty             # 清空内置回收站（彻底删除）
 cli-analyzer cache --clear           # 清除扫描缓存
 cli-analyzer                         # 打开 GUI
 ```
@@ -87,6 +93,8 @@ pyenv        -   759.8 MB  0 B        759.8 MB  pyenv
 ```
 
 **安全模型**：只有 SAFE 级（缓存/旧版本/备份/包管理器缓存）会被清理；USER 级（配置/历史/venv）仅展示。旧版本清理会自动保留当前版本（如 claude 的软链接目标）。
+
+**延迟删除**：SAFE 项先搬进应用自带的内置回收站（同文件系统、瞬时完成、可恢复），在保留期（默认 7 天，可在"首选项"配置）内可随时还原；到期后默认移入系统回收站，或按配置彻底删除。GUI 状态栏会展示回收站占用与最早到期时间，`clean --permanent` 可跳过内置回收站。
 
 ### 清理安全边界（经过实测核验，以下一律不列入 SAFE）
 

@@ -10,6 +10,7 @@ import (
 	"cli-analyzer/internal/disk"
 	"cli-analyzer/internal/platform"
 	"cli-analyzer/internal/rules"
+	"cli-analyzer/internal/trash"
 )
 
 // Scan runs the full pipeline: discover PATH executables, classify them into
@@ -17,6 +18,8 @@ import (
 // classify cleanables. Unless Options.NoCache is set, the result is cached.
 func Scan(opts Options) (*ScanResult, error) {
 	start := time.Now()
+	// 顺带清除内置回收站的过期项（静默，失败不影响扫描）
+	trash.Sweep()
 	ruleTable := rules.Load()
 
 	execs := discoverExecs()
@@ -69,7 +72,8 @@ func Scan(opts Options) (*ScanResult, error) {
 		order = append(order, name)
 	}
 
-	sizer := &disk.Sizer{}
+	// 测量时排除内置回收站，避免自我归因/自我清理
+	sizer := &disk.Sizer{Skip: map[string]bool{trash.Root(): true}}
 	attribute(tools, order, ruleTable, opts, sizer)
 
 	res := finalize(tools, order, opts)

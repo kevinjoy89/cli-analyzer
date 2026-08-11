@@ -37,11 +37,44 @@ var appCtx context.Context
 // project's GitHub repo and issue tracker.
 func buildMenu() *menu.Menu {
 	appMenu := menu.NewMenu()
+
+	// prefsCallback 通知前端打开首选项面板（前端监听 "open-prefs" 事件）
+	prefsCallback := func(_ *menu.CallbackData) {
+		if appCtx != nil {
+			runtime.EventsEmit(appCtx, "open-prefs")
+		}
+	}
+
 	if goruntime.GOOS == "darwin" {
-		appMenu.Append(menu.AppMenu())    // standard app menu: About, Hide, Quit
+		// 手动构建 App 菜单，使"首选项…"紧跟在 About 之下（平台惯例，Cmd+,）
+		appMenu.Append(menu.Text("About CLI Analyzer", nil, func(_ *menu.CallbackData) {
+			if appCtx != nil {
+				_, _ = runtime.MessageDialog(appCtx, runtime.MessageDialogOptions{
+					Title:   "About CLI Analyzer",
+					Message: "CLI Analyzer " + gui.AppVersion + "\n\n扫描并清理 CLI 工具的磁盘占用。",
+					Icon:    appIcon,
+				})
+			}
+		}))
+		appMenu.Append(menu.Separator())
+		appMenu.Append(menu.Text("首选项…", keys.CmdOrCtrl(","), prefsCallback))
+		appMenu.Append(menu.Separator())
+		appMenu.Append(menu.Text("Hide CLI Analyzer", keys.CmdOrCtrl("h"), func(_ *menu.CallbackData) {
+			if appCtx != nil {
+				runtime.Hide(appCtx)
+			}
+		}))
+		appMenu.Append(menu.Text("Quit CLI Analyzer", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
+			if appCtx != nil {
+				runtime.Quit(appCtx)
+			}
+		}))
 		appMenu.Append(menu.WindowMenu()) // standard window menu: Minimize, Zoom, …
 	} else {
 		file := menu.NewMenu()
+		// 首选项位于退出按钮上方（Windows/Linux）
+		file.Append(menu.Text("首选项…", keys.CmdOrCtrl(","), prefsCallback))
+		file.Append(menu.Separator())
 		file.Append(menu.Text("Quit", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
 			if appCtx != nil {
 				runtime.Quit(appCtx)
@@ -86,7 +119,7 @@ func buildMenu() *menu.Menu {
 func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
-		case "scan", "clean", "cache", "version", "--version", "-v", "help", "-h", "--help":
+		case "scan", "clean", "cache", "trash", "version", "--version", "-v", "help", "-h", "--help":
 			os.Exit(cli.Run(os.Args[1:]))
 		}
 		// "gui" and anything else fall through to the window.

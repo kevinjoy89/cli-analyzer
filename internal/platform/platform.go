@@ -67,6 +67,20 @@ func CacheRoot() string {
 	return ".cli-analyzer"
 }
 
+// DataRoot returns the per-user application data directory for this app.
+// 内置回收站、趋势历史等需要持久化的本地状态存放在此，与可随时清空的缓存目录语义分离
+func DataRoot() string {
+	for _, k := range []RootKind{MacAppSupport, XDGData, LocalAppData} {
+		if r := Root(k); r != "" {
+			return filepath.Join(r, "cli-analyzer")
+		}
+	}
+	if h := HomeDir(); h != "" {
+		return filepath.Join(h, ".local", "share", "cli-analyzer")
+	}
+	return ".cli-analyzer"
+}
+
 // PathDirs returns deduplicated, absolute PATH directories. When skipSystem is
 // true, /usr/bin, /bin, /usr/sbin and /sbin are omitted (system-installed
 // tools, rarely worth attributing).
