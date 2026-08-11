@@ -1,0 +1,23 @@
+# 构建产物
+build/bin
+build/.metadata_never_index
+bin
+dist
+frontend/dist
+
+# 前端依赖
+node_modules
+
+# wails 生成代码（每次 build 重新生成，无需入库）
+frontend/wailsjs
+frontend/package.json.md5
+
+# wails 开发配置（build 时生成）
+build/darwin/Info.dev.plist
+
+# macOS
+.DS_Store
+
+# 本地工具 / 环境
+.claude
+.omo

@@ -1,0 +1,430 @@
+import './style.css';
+
+import {Clean, GetLastResult, GetVersion, OpenURL, Scan} from '../wailsjs/go/gui/ScannerService';
+import {EventsOn} from '../wailsjs/runtime/runtime';
+
+// ---- types mirroring the Go JSON contract ----
+interface Binary { name: string; path: string; real: string; size: number }
+interface DataDir { path: string; bytes: number; tier: string; kind: string }
+interface Cleanable { id: string; tool: string; path: string; bytes: number; tier: string; kind: string; keep: string; desc: string; sub: {id: string; path: string; bytes: number}[] }
+interface Tool {
+    name: string; aliases: string[]; installer: string;
+    version: string; updatedAt: string; homepage: string; description: string;
+    binaries: Binary[]; dataDirs: DataDir[]; cleanables: Cleanable[];
+    footprintBytes: number; cleanableBytes: number; userBytes: number;
+}
+interface ScanResult {
+    scannedAt: string; scanTimeMs: number; platform: string; goVersion: string;
+    tools: Tool[]; totals: { footprintBytes: number; cleanableBytes: number; userBytes: number };
+    roots: Record<string, string[]>; walkErrors: number;
+}
+interface CleanReport { dryRun: boolean; deleted: string[]; freedBytes: number; skipped: string[]; errors: string[] }
+
+// ---- state ----
+let result: ScanResult | null = null;
+let selected: string | null = null;
+let filterText = '';
+let selectedCleanIds = new Set<string>();
+let expandedCleanIds = new Set<string>(); // cleanable ids whose sub-breakdown is expanded
+type SortKey = 'name' | 'version' | 'footprint' | 'cleanable' | 'user';
+let sortKey: SortKey = 'footprint';
+let sortDir: 1 | -1 = -1;
+
+// ---- theme ----
+type ThemeMode = 'system' | 'light' | 'dark';
+let themeMode: ThemeMode = 'system';
+const THEME_META: Record<ThemeMode, {icon: string; label: string}> = {
+    system: {icon: '◐', label: '跟随系统'},
+    light: {icon: '☀', label: '明亮'},
+    dark: {icon: '☾', label: '暗黑'},
+};
+
+function systemDark(): boolean {
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
+function applyTheme(mode: ThemeMode) {
+    themeMode = mode;
+    const resolved = mode === 'system' ? (systemDark() ? 'dark' : 'light') : mode;
+    document.documentElement.setAttribute('data-theme', resolved);
+    const meta = THEME_META[mode];
+    el('themeIcon').textContent = meta.icon;
+    el('themeBtn').title = `主题：${meta.label}（点击切换）`;
+}
+
+// ---- helpers ----
+function hb(n: number): string {
+    if (n < 1024) return `${n} B`;
+    const units = ['K', 'M', 'G', 'T'];
+    let v = n;
+    let i = -1;
+    do { v /= 1024; i++; } while (v >= 1024 && i < units.length - 1);
+    return `${v.toFixed(1)} ${units[i]}B`;
+}
+
+function el<T extends HTMLElement>(id: string): T {
+    const e = document.getElementById(id);
+    if (!e) throw new Error(`missing element #${id}`);
+    return e as T;
+}
+
+function fmtTime(ts: string): string {
+    return ts.slice(0, 16).replace('T', ' ');
+}
+
+function showToast(msg: string, isError = false) {
+    const t = el<HTMLDivElement>('toast');
+    t.textContent = msg;
+    t.className = 'toast' + (isError ? ' error' : '');
+    window.clearTimeout((t as unknown as { _t?: number })._t);
+    (t as unknown as { _t?: number })._t = window.setTimeout(() => { t.className = 'toast hidden'; }, 2800);
+}
+
+function setScanning(busy: boolean, label = '') {
+    const s = el('scanState');
+    s.className = 'scan-state' + (busy ? ' busy' : '');
+    s.textContent = busy ? label : '';
+    (el('rescanBtn') as HTMLButtonElement).disabled = busy;
+}
+
+// ---- summary ----
+function renderSummary() {
+    if (!result) return;
+    el('sumFootprint').textContent = hb(result.totals.footprintBytes);
+    el('sumCleanable').textContent = hb(result.totals.cleanableBytes);
+    el('sumUser').textContent = hb(result.totals.userBytes);
+    el('sumTools').textContent = String(result.tools.length);
+    el('lastScan').textContent = result.scannedAt ? `上次扫描 ${result.scannedAt.slice(0, 16).replace('T', ' ')}` : '';
+    const status = el('statusInfo');
+    status.innerHTML = '';
+    const parts: Array<[string, string]> = [
+        ['扫描用时', result.scanTimeMs > 0 ? `${(result.scanTimeMs / 1000).toFixed(1)} s` : '缓存'],
+        ['遍历错误', String(result.walkErrors)],
+        ['平台', result.platform],
+    ];
+    for (const [k, v] of parts) {
+        const span = document.createElement('span');
+        span.textContent = `${k}: ${v}`;
+        status.appendChild(span);
+    }
+}
+
+// ---- tool list ----
+// Only 总占用 / 可清理 are sortable; the rest are plain column labels.
+const COLUMNS: Array<{key: SortKey; label: string; sortable: boolean}> = [
+    {key: 'name', label: '工具', sortable: false},
+    {key: 'version', label: '版本', sortable: false},
+    {key: 'footprint', label: '总占用', sortable: true},
+    {key: 'cleanable', label: '可清理', sortable: true},
+    {key: 'user', label: '用户数据', sortable: true},
+];
+
+function sortTools(tools: Tool[]): Tool[] {
+    const dir = sortDir;
+    const val = (t: Tool, k: SortKey): number | string => {
+        switch (k) {
+            case 'name': return t.name;
+            case 'version': return t.version;
+            case 'footprint': return t.footprintBytes;
+            case 'cleanable': return t.cleanableBytes;
+            case 'user': return t.userBytes;
+        }
+    };
+    return tools.slice().sort((x, y) => {
+        const vx = val(x, sortKey);
+        const vy = val(y, sortKey);
+        if (typeof vx === 'string' && typeof vy === 'string') return vx.localeCompare(vy) * dir;
+        return (Number(vx) - Number(vy)) * dir;
+    });
+}
+
+function renderToolList() {
+    const list = el('toolList');
+    list.innerHTML = '';
+    if (!result) {
+        list.innerHTML = '<div class="empty">暂无数据 — 点击"重新扫描"</div>';
+        return;
+    }
+    const q = filterText.toLowerCase();
+    const tools = sortTools(result.tools.filter(t => !q || t.name.toLowerCase().includes(q) || t.aliases.some(a => a.toLowerCase().includes(q))));
+    const head = document.createElement('div');
+    head.className = 'tool-header';
+    head.innerHTML = COLUMNS.map(({key, label, sortable}) => {
+        if (!sortable) return `<span class="h">${label}</span>`;
+        const arrow = key === sortKey ? (sortDir === -1 ? ' ▼' : ' ▲') : '';
+        return `<button class="h" data-key="${key}">${label}${arrow}</button>`;
+    }).join('');
+    list.appendChild(head);
+    head.querySelectorAll<HTMLButtonElement>('button.h').forEach(btn => {
+        btn.onclick = () => {
+            const k = btn.dataset.key as SortKey;
+            if (k === sortKey) {
+                sortDir = sortDir === -1 ? 1 : -1;
+            } else {
+                sortKey = k;
+                sortDir = (k === 'name') ? 1 : -1;
+            }
+            renderToolList();
+        };
+    });
+    for (const t of tools) {
+        const row = document.createElement('div');
+        row.className = 'tool-row' + (t.name === selected ? ' selected' : '');
+        const clean = t.cleanableBytes > 0 ? `<span class="cleanable-flag">✓</span>` : '';
+        row.innerHTML = `
+            <span class="tool-name" title="${esc(t.name)}">${esc(t.name)}</span>
+            <span class="ver">${esc(t.version || '—')}</span>
+            <span class="num">${hb(t.footprintBytes)}</span>
+            <span class="num clean">${hb(t.cleanableBytes)}${clean}</span>
+            <span class="num user">${hb(t.userBytes)}</span>`;
+        row.onclick = () => { selected = t.name; selectedCleanIds.clear(); expandedCleanIds.clear(); renderToolList(); renderDetail(); };
+        list.appendChild(row);
+    }
+}
+
+// ---- detail ----
+function renderDetail() {
+    const body = el('detailBody');
+    if (!result || !selected) {
+        body.innerHTML = '<div class="empty">← 选择一个工具查看详情</div>';
+        return;
+    }
+    const t = result.tools.find(x => x.name === selected);
+    if (!t) return;
+
+    const installer = t.installer ? `<span class="badge installer">${esc(t.installer)}</span>` : '';
+    const metaItems: string[] = [];
+    if (t.version) metaItems.push(`<span class="meta-item">版本 <b>${esc(t.version)}</b></span>`);
+    if (t.updatedAt) metaItems.push(`<span class="meta-item">最近更新 <b>${fmtTime(t.updatedAt)}</b></span>`);
+    const metaHtml = (t.description || t.homepage || metaItems.length)
+        ? `<div class="detail-meta">
+            ${t.description ? `<div class="meta-desc">${esc(t.description)}</div>` : ''}
+            <div class="meta-row">${metaItems.join('')}${t.homepage ? `<a class="meta-link" id="hpLink" href="#">官网 ↗</a>` : ''}</div>
+          </div>`
+        : '';
+    const binaries = t.binaries.length
+        ? `<div class="detail-list">${t.binaries.map(b =>
+            `<div class="detail-item"><span class="badge safe">bin</span><span class="path" title="${esc(b.real)}">${esc(b.real)}</span><span class="size">${hb(b.size)}</span></div>`).join('')}</div>`
+        : '<div class="detail-list"><div class="detail-item"><span class="muted">无独立二进制（规则表种子）</span></div></div>';
+
+    const dataDirs = t.dataDirs.length
+        ? `<div class="detail-list">${t.dataDirs.map(d =>
+            `<div class="detail-item"><span class="badge ${d.tier}">${d.tier}</span><span class="path" title="${esc(d.path)}">${esc(d.path)}</span><span class="size ${d.tier}">${hb(d.bytes)}</span><span class="keep">${esc(d.kind)}</span></div>`).join('')}</div>`
+        : '';
+
+    const cleanables = t.cleanables.filter(c => c.tier === 'safe');
+    const cleanHtml = cleanables.length
+        ? `<div class="detail-list">${cleanables.map(c => {
+            const checked = selectedCleanIds.has(c.id) ? 'checked' : '';
+            const expanded = expandedCleanIds.has(c.id);
+            const hasSub = (c.sub ?? []).length > 0;
+            const toggle = hasSub
+                ? `<button class="sub-toggle${expanded ? ' expanded' : ''}" data-id="${esc(c.id)}" title="展开 / 折叠明细"><span class="st-caret"></span></button>`
+                : `<span class="sub-toggle spacer"></span>`;
+            return `<div class="clean-block">
+                <div class="detail-item clean-row">
+                    ${toggle}
+                    <input type="checkbox" data-id="${esc(c.id)}" ${checked}/>
+                    <span class="badge safe">${esc(c.kind)}</span>
+                    <span class="path" title="${esc(c.path)}">${esc(c.path)}</span>
+                    <span class="size clean">${hb(c.bytes)}</span>
+                    <span class="keep">${c.keep ? esc(c.keep) : ''}</span>
+                </div>${expanded ? subRows(c, selectedCleanIds.has(c.id)) : ''}
+            </div>`;
+        }).join('')}</div>`
+        : '<div class="detail-list"><div class="detail-item"><span class="muted">没有可安全清理的项目</span></div></div>';
+
+    body.innerHTML = `
+        <div class="detail-head"><h2>${esc(t.name)}</h2>${installer}</div>
+        ${metaHtml}
+        <div class="detail-section"><h4>二进制</h4>${binaries}</div>
+        ${dataDirs ? `<div class="detail-section"><h4>数据目录</h4>${dataDirs}</div>` : ''}
+        <div class="detail-section"><h4>可安全清理（SAFE）</h4>${cleanHtml}</div>
+        <div class="detail-actions">
+            <button id="cleanBtn" class="btn danger">清理选中（SAFE）</button>
+            <span class="sel-info" id="selInfo">已选 ${selectedCleanIds.size} 项</span>
+        </div>`;
+
+    const hp = body.querySelector<HTMLAnchorElement>('#hpLink');
+    if (hp) hp.onclick = (e) => { e.preventDefault(); OpenURL(t.homepage); };
+
+    body.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach(cb => {
+        cb.onchange = () => {
+            const id = cb.dataset.id!;
+            const parentId = cb.dataset.parent;
+            if (parentId) {
+                // child: selecting it deselects the whole-dir parent
+                if (cb.checked) { selectedCleanIds.delete(parentId); selectedCleanIds.add(id); }
+                else selectedCleanIds.delete(id);
+            } else {
+                // whole dir: selecting it deselects all its children
+                if (cb.checked) {
+                    const c = cleanables.find(x => x.id === id);
+                    if (c) for (const sid of subIdsOf(c)) selectedCleanIds.delete(sid);
+                    selectedCleanIds.add(id);
+                } else {
+                    selectedCleanIds.delete(id);
+                }
+            }
+            renderDetail();
+        };
+    });
+    body.querySelectorAll<HTMLButtonElement>('button.sub-toggle').forEach(btn => {
+        btn.onclick = () => {
+            const id = btn.dataset.id!;
+            if (expandedCleanIds.has(id)) expandedCleanIds.delete(id); else expandedCleanIds.add(id);
+            renderDetail();
+        };
+    });
+    const cleanBtn = el<HTMLButtonElement>('cleanBtn');
+    cleanBtn.disabled = selectedCleanIds.size === 0;
+    cleanBtn.onclick = () => {
+        if (selectedCleanIds.size === 0) return;
+        showConfirmModal(selectedItems(t));
+    };
+}
+
+function esc(s: string): string {
+    return s.replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]!));
+}
+
+// One level of size breakdown for a cleanable (its direct children), rendered
+// as indented rows below the checkbox row. Non-empty children are individually
+// selectable; when the parent (whole dir) is checked they are disabled. Capped
+// to keep wide dirs readable.
+const SUB_CAP = 20;
+function subRows(c: Cleanable, parentSelected: boolean): string {
+    const sub = c.sub ?? [];
+    if (!sub.length) return '';
+    const shown = sub.slice(0, SUB_CAP);
+    const more = sub.length - shown.length;
+    const base = c.path.endsWith('/') ? c.path : c.path + '/';
+    const rows = shown.map(s => {
+        const rel = s.path.startsWith(base) ? s.path.slice(base.length) : s.path;
+        const selectable = !!(s.id && s.bytes > 0);
+        if (!selectable) {
+            return `<div class="detail-item sub-row">
+                <span class="sub-path" title="${esc(s.path)}">${esc(rel)}</span>
+                <span class="size muted">0 B</span>
+            </div>`;
+        }
+        const checked = selectedCleanIds.has(s.id) ? 'checked' : '';
+        const disabled = parentSelected ? 'disabled' : '';
+        return `<div class="detail-item sub-row">
+            <input type="checkbox" class="sub-cb" data-id="${esc(s.id)}" data-parent="${esc(c.id)}" ${checked} ${disabled}/>
+            <span class="sub-path" title="${esc(s.path)}">${esc(rel)}</span>
+            <span class="size clean">${hb(s.bytes)}</span>
+        </div>`;
+    }).join('');
+    const moreHtml = more > 0 ? `<div class="sub-more">+ ${more} 个更小的子项…</div>` : '';
+    return `<div class="sub-list">${rows}${moreHtml}</div>`;
+}
+
+// subIdsOf returns the selectable sub-entry ids under a cleanable.
+function subIdsOf(c: Cleanable): string[] {
+    return (c.sub ?? []).map(s => s.id).filter(Boolean);
+}
+
+// selectedItems resolves the currently checked ids (whole cleanables and/or
+// their children) into a flat list for the confirm dialog and Clean call.
+interface PickItem { id: string; path: string; bytes: number; kind: string }
+function selectedItems(t: Tool): PickItem[] {
+    const out: PickItem[] = [];
+    for (const c of t.cleanables) {
+        if (c.tier !== 'safe') continue;
+        if (selectedCleanIds.has(c.id)) {
+            out.push({id: c.id, path: c.path, bytes: c.bytes, kind: c.kind});
+            continue;
+        }
+        for (const s of c.sub ?? []) {
+            if (s.id && selectedCleanIds.has(s.id)) out.push({id: s.id, path: s.path, bytes: s.bytes, kind: c.kind});
+        }
+    }
+    return out;
+}
+
+// ---- confirm modal ----
+function showConfirmModal(items: PickItem[]) {
+    const total = items.reduce((a, c) => a + c.bytes, 0);
+    el('modalTitle').textContent = `确认清理 ${items.length} 项（${hb(total)}）`;
+    el('modalBody').innerHTML = items.map(c =>
+        `<div class="clean-row">
+            <span class="badge safe">${esc(c.kind)}</span>
+            <span class="path" style="flex:1;font-family:var(--mono);font-size:11px;white-space:normal;word-break:break-all">${esc(c.path)}</span>
+            <span class="size" style="font-family:var(--mono);color:var(--clean);white-space:nowrap">${hb(c.bytes)}</span>
+        </div>`).join('')
+        + '<div class="warn">仅删除 SAFE 级项目（缓存/旧版本/备份）。用户数据永远不会被自动删除。</div>';
+    el('modal').classList.remove('hidden');
+    el('modalConfirm').onclick = async () => {
+        el('modal').classList.add('hidden');
+        const ids = items.map(c => c.id);
+        try {
+            const rep: CleanReport = JSON.parse(await Clean(ids, false));
+            const del = (rep.deleted ?? []).length;
+            const skipped = (rep.skipped ?? []).length;
+            const hasErr = (rep.errors ?? []).length > 0;
+            showToast(`清理完成：删除 ${del} 项，释放 ${hb(rep.freedBytes)}${skipped ? `，${skipped} 项被跳过` : ''}`, hasErr);
+            selectedCleanIds.clear();
+            rescan();
+        } catch (e) {
+            showToast('清理失败: ' + String(e), true);
+        }
+    };
+    el('modalCancel').onclick = () => el('modal').classList.add('hidden');
+}
+
+// ---- scan flow ----
+async function rescan() {
+    setScanning(true, '扫描中…');
+    try { await Scan(); } catch (e) { setScanning(false); showToast('扫描启动失败: ' + String(e), true); }
+}
+
+async function init() {
+    el('rescanBtn').onclick = rescan;
+    el('filter').addEventListener('input', (e) => { filterText = (e.target as HTMLInputElement).value; renderToolList(); });
+
+    // theme toggle: system -> light -> dark -> system
+    applyTheme('system');
+    el('themeBtn').onclick = () => {
+        const next: ThemeMode = themeMode === 'system' ? 'light' : themeMode === 'light' ? 'dark' : 'system';
+        applyTheme(next);
+    };
+    if (window.matchMedia) {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+            if (themeMode === 'system') applyTheme('system');
+        });
+    };
+
+    // app version in footer
+    try {
+        const v = await GetVersion();
+        el('appVersion').textContent = `v${v}`;
+    } catch (e) { /* ignore */ }
+
+    EventsOn('scan:done', (payload: unknown) => {
+        setScanning(false);
+        try {
+            if (payload && typeof payload === 'object' && 'error' in (payload as object)) {
+                showToast('扫描失败: ' + JSON.stringify(payload), true);
+                return;
+            }
+            const parsed = typeof payload === 'string' ? JSON.parse(payload) as ScanResult : null;
+            result = parsed;
+            if (parsed && (!selected || !parsed.tools.some(t => t.name === selected))) {
+                selected = parsed.tools[0]?.name ?? null;
+            }
+            renderSummary(); renderToolList(); renderDetail();
+        } catch (err) {
+            showToast('扫描结果解析失败', true);
+        }
+    });
+
+    try {
+        const raw = await GetLastResult();
+        if (raw) { result = JSON.parse(raw); renderSummary(); renderToolList(); renderDetail(); }
+    } catch (e) {
+        console.error('load cache failed', e);
+    }
+}
+
+init();
