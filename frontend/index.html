@@ -17,10 +17,13 @@
             <span id="scanState" class="scan-state"></span>
             <button id="trendsBtn" class="btn" title="磁盘占用趋势">趋势</button>
             <button id="rescanBtn" class="btn primary">重新扫描</button>
+            <button id="bellBtn" class="bell-btn hidden" title="待清理提醒">
+                <span class="bell-icon">🔔</span>
+                <span id="bellCount" class="bell-count"></span>
+            </button>
         </div>
+        <div id="bellPanel" class="bell-panel"></div>
     </header>
-
-    <div id="reminderBar" class="reminder-bar hidden"></div>
 
     <section id="summary" class="summary">
         <div class="stat"><span class="stat-label">总占用</span><span id="sumFootprint" class="stat-value">–</span></div>
@@ -46,7 +49,7 @@
 
     <footer id="statusBar" class="status-bar">
         <span id="statusInfo" class="status-info"></span>
-        <button id="trashBtn" class="trash-btn" title="内置回收站：清理项在保留期内可恢复">回收站 <b id="trashInfo">–</b></button>
+        <button id="trashBtn" class="trash-btn" title="内置回收站：清理项在保留期内可恢复">♻️ 内置回收站 <b id="trashInfo">–</b></button>
         <button id="themeBtn" class="theme-btn" title="切换主题：跟随系统 / 明亮 / 暗黑">
             <span id="themeIcon">◐</span>
         </button>

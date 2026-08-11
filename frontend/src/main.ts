@@ -350,6 +350,36 @@ function selectedItems(t: Tool): PickItem[] {
     return out;
 }
 
+// applyCleanLocally 清理成功后本地立即从扫描快照移除已清理项（含子项），
+// 并重算各工具与总计，无需等待整体重扫即可刷新界面
+function applyCleanLocally(ids: string[]) {
+    if (!result) return;
+    const idSet = new Set(ids);
+    for (const t of result.tools) {
+        let toolFreed = 0;
+        // 整项清理
+        for (const c of t.cleanables) {
+            if (idSet.has(c.id)) { toolFreed += c.bytes; c.bytes = 0; c.sub = []; }
+        }
+        // 子项清理
+        for (const c of t.cleanables) {
+            if (!(c.sub ?? []).length) continue;
+            let subFreed = 0;
+            c.sub = c.sub.filter(s => { if (idSet.has(s.id)) { subFreed += s.bytes; return false; } return true; });
+            c.bytes -= subFreed;
+            toolFreed += subFreed;
+        }
+        t.cleanables = t.cleanables.filter(c => c.bytes > 0);
+        t.cleanableBytes = t.cleanables.reduce((a, c) => a + c.bytes, 0);
+        t.footprintBytes = Math.max(0, t.footprintBytes - toolFreed);
+        t.userBytes = Math.max(0, t.footprintBytes - t.cleanableBytes);
+    }
+    result.tools = result.tools.filter(t => t.cleanableBytes > 0 || t.userBytes > 0 || t.binaries.length > 0);
+    result.totals.footprintBytes = result.tools.reduce((a, t) => a + t.footprintBytes, 0);
+    result.totals.cleanableBytes = result.tools.reduce((a, t) => a + t.cleanableBytes, 0);
+    result.totals.userBytes = result.tools.reduce((a, t) => a + t.userBytes, 0);
+}
+
 // ---- confirm modal ----
 function showConfirmModal(items: PickItem[]) {
     const total = items.reduce((a, c) => a + c.bytes, 0);
@@ -372,6 +402,11 @@ function showConfirmModal(items: PickItem[]) {
             const hasErr = (rep.errors ?? []).length > 0;
             showToast(`清理完成：删除 ${del} 项，释放 ${hb(rep.freedBytes)}${skipped ? `，${skipped} 项被跳过` : ''}`, hasErr);
             selectedCleanIds.clear();
+            if (del > 0) {
+                // 本地立即刷新详情，无需等整体重扫
+                applyCleanLocally(ids);
+                renderSummary(); renderToolList(); renderDetail(); refreshReminder(); refreshTrashInfo();
+            }
             rescan();
         } catch (e) {
             showToast('清理失败: ' + String(e), true);
@@ -429,7 +464,10 @@ async function refreshTrashList() {
         btn.onclick = async () => {
             const r = JSON.parse(await Restore(btn.dataset.restore!));
             if (r.error) showToast('恢复失败: ' + r.error, true);
-            else showToast('已恢复到 ' + r.restored);
+            else {
+                showToast('已恢复到 ' + r.restored);
+                rescan(); // 后台重扫，让主界面详情反映恢复的文件
+            }
             refreshTrashList(); refreshTrashInfo();
         };
     });
@@ -437,7 +475,7 @@ async function refreshTrashList() {
         btn.onclick = async () => {
             const r = JSON.parse(await PurgeNow([btn.dataset.purge!]));
             if ((r.errors ?? []).length) showToast('清除失败: ' + r.errors.join('; '), true);
-            else showToast('已彻底删除');
+            else { showToast('已清除'); rescan(); }
             refreshTrashList(); refreshTrashInfo();
         };
     });
@@ -451,7 +489,8 @@ async function openPrefs() {
     try { rem = JSON.parse(await GetReminderConfig()); } catch { rem = {thresholdBytes: 5 * 1024 * 1024 * 1024}; }
     const threshGB = (rem.thresholdBytes || 5 * 1024 * 1024 * 1024) / (1024 * 1024 * 1024);
     el('prefsBody').innerHTML = `
-        <label class="pref-row">回收站保留天数
+        <div class="pref-head">♻️ 内置回收站</div>
+        <label class="pref-row">保留天数
             <input id="prefRetention" type="number" min="1" max="365" value="${cfg.retentionDays}"/>
         </label>
         <label class="pref-row">到期后
@@ -464,6 +503,7 @@ async function openPrefs() {
             <input id="prefUseTrash" type="checkbox" ${cfg.useTrash ? 'checked' : ''}/>
             <span>清理默认移入内置回收站（取消则直接删除）</span>
         </label>
+        <div class="pref-head">趋势</div>
         <label class="pref-row">清理提醒阈值
             <input id="prefThreshold" type="number" min="0" step="0.5" value="${threshGB.toFixed(1)}"/>
             <span>GB</span>
@@ -488,23 +528,47 @@ async function openPrefs() {
 }
 
 // ---- usage trends ----
-// 阈值提醒条：cleanable 超过阈值的工具在顶部常驻提示
+let reminderTools: Tool[] = [];
+
+// 刷新待清理提醒：按阈值筛选超限工具，更新铃铛徽标与下拉面板
 async function refreshReminder() {
-    const bar = el('reminderBar');
-    if (!result) { bar.classList.add('hidden'); return; }
+    const bell = el('bellBtn');
+    if (!result) { bell.classList.add('hidden'); reminderTools = []; return; }
     let thresh = 5 * 1024 * 1024 * 1024;
     try { thresh = (JSON.parse(await GetReminderConfig()) as ReminderConfig).thresholdBytes || thresh; } catch { /* 默认 */ }
-    const over = result.tools.filter(t => t.cleanableBytes > thresh);
-    if (!over.length) { bar.classList.add('hidden'); return; }
-    bar.innerHTML = over.slice(0, 3).map(t =>
-        `<span class="reminder-chip" title="${esc(t.name)} 可安全清理 ${hb(t.cleanableBytes)}">${esc(t.name)} 可清理 ${hb(t.cleanableBytes)}</span>`).join('')
-        + (over.length > 3 ? `<span class="reminder-more">等 ${over.length} 个工具超过阈值</span>` : '')
-        + `<button id="reminderGo" class="btn small">去清理</button>`;
-    bar.classList.remove('hidden');
-    el('reminderGo').onclick = () => {
-        const first = over[0];
-        if (first) { selected = first.name; selectedCleanIds.clear(); expandedCleanIds.clear(); renderToolList(); renderDetail(); }
-    };
+    reminderTools = result.tools.filter(t => t.cleanableBytes > thresh);
+    if (!reminderTools.length) {
+        bell.classList.add('hidden');
+        el('bellPanel').classList.remove('open');
+        return;
+    }
+    bell.classList.remove('hidden');
+    el('bellCount').textContent = String(reminderTools.length);
+    if (el('bellPanel').classList.contains('open')) renderBellPanel();
+}
+
+// 渲染铃铛下拉面板：待清理工具列表，点击可快速跳转到对应工具
+function renderBellPanel() {
+    const panel = el('bellPanel');
+    if (!reminderTools.length) {
+        panel.innerHTML = '<div class="empty">暂无提醒</div>';
+        return;
+    }
+    const shown = reminderTools.slice(0, 8);
+    panel.innerHTML = shown.map(t =>
+        `<button class="bell-item" data-tool="${esc(t.name)}">
+            <span class="bell-name">${esc(t.name)}</span>
+            <span class="size clean">${hb(t.cleanableBytes)}</span>
+        </button>`).join('')
+        + (reminderTools.length > 8 ? `<div class="bell-more">+ ${reminderTools.length - 8} 个工具…</div>` : '');
+    panel.querySelectorAll<HTMLButtonElement>('.bell-item').forEach(btn => {
+        btn.onclick = () => {
+            const name = btn.dataset.tool!;
+            selected = name; selectedCleanIds.clear(); expandedCleanIds.clear();
+            renderToolList(); renderDetail();
+            el('bellPanel').classList.remove('open');
+        };
+    });
 }
 
 function openTrends() {
@@ -589,6 +653,7 @@ async function init() {
         if (!ids.length) return;
         const r = JSON.parse(await PurgeNow(ids));
         showToast((r.errors ?? []).length ? '清空失败: ' + r.errors.join('; ') : `已清空 ${r.deleted.length} 项`, (r.errors ?? []).length > 0);
+        if (r.deleted?.length) rescan();
         refreshTrashList(); refreshTrashInfo();
     };
 
@@ -598,6 +663,21 @@ async function init() {
     // usage trends panel
     el('trendsBtn').onclick = openTrends;
     el('trendsClose').onclick = () => el('trendsModal').classList.add('hidden');
+
+    // notification bell: toggle dropdown panel, position it at the click site
+    el('bellBtn').onclick = () => {
+        const panel = el('bellPanel');
+        if (panel.classList.contains('open')) { panel.classList.remove('open'); return; }
+        renderBellPanel();
+        panel.style.cssText = ''; // 用 CSS 定位（header 右下角），清除此前可能残留的内联定位
+        panel.classList.add('open');
+    };
+    document.addEventListener('click', (e) => {
+        const panel = el('bellPanel');
+        if (panel.classList.contains('open') && !(e.target as HTMLElement).closest('#bellPanel, #bellBtn')) {
+            panel.classList.remove('open');
+        }
+    });
 
     // theme toggle: system -> light -> dark -> system
     applyTheme('system');
