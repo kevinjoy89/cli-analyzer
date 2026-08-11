@@ -1,6 +1,6 @@
 import './style.css';
 
-import {Clean, GetLastResult, GetReminderConfig, GetTrashConfig, GetTrends, GetVersion, OpenURL, PurgeNow, Restore, Scan, SetReminderConfig, SetTrashConfig, TrashInfo, TrashList} from '../wailsjs/go/gui/ScannerService';
+import {Clean, GetLastResult, GetReminderConfig, GetTrashConfig, GetTrends, GetVersion, OpenURL, PurgeNow, Restore, Scan, SetReminderConfig, SetTheme, SetTrashConfig, TrashInfo, TrashList} from '../wailsjs/go/gui/ScannerService';
 import {Environment, EventsOn} from '../wailsjs/runtime/runtime';
 
 // ---- types mirroring the Go JSON contract ----
@@ -57,6 +57,8 @@ function applyTheme(mode: ThemeMode) {
     const meta = THEME_META[mode];
     el('themeIcon').textContent = meta.icon;
     el('themeBtn').title = `主题：${meta.label}（点击切换）`;
+    // 同步 Windows 原生标题栏/菜单栏主题（macOS/Linux 由系统与 CSS 处理）
+    SetTheme(mode);
 }
 
 // ---- helpers ----

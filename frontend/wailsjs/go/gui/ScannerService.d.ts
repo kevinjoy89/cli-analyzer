@@ -26,6 +26,8 @@ export function Scan():Promise<void>;
 
 export function SetReminderConfig(arg1:string):Promise<string>;
 
+export function SetTheme(arg1:string):Promise<void>;
+
 export function SetTrashConfig(arg1:string):Promise<string>;
 
 export function Startup(arg1:context.Context):Promise<void>;

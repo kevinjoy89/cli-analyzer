@@ -147,9 +147,9 @@ func main() {
 			srv,
 		},
 		Windows: &windows.Options{
-			// 强制 Windows 标题栏与原生菜单栏使用沉浸式暗色模式，
-			// 与应用内的暗色 UI 一致（默认 SystemDefault 会跟随系统浅色主题）
-			Theme: windows.Dark,
+			// 启动时跟随系统主题；运行时由前端主题切换驱动
+			// （gui.ScannerService.SetTheme 调 DWM 沉浸式暗色模式）
+			Theme: windows.SystemDefault,
 		},
 		Mac: &mac.Options{
 			TitleBar: mac.TitleBarHiddenInset(),

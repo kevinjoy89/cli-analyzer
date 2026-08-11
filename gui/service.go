@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"sync"
+	goruntime "runtime"
 
 	"cli-analyzer/internal/cleaner"
 	"cli-analyzer/internal/config"
@@ -97,6 +98,22 @@ func (s *ScannerService) OpenURL(url string) {
 
 // GetVersion returns the app version string (e.g. "0.1.1").
 func (s *ScannerService) GetVersion() string { return AppVersion }
+
+// SetTheme 让 Windows 标题栏与原生菜单栏随前端主题切换（内部调 DWM 沉浸式
+// 暗色模式）；macOS/Linux 由系统与前端 CSS 处理，此处直接跳过
+func (s *ScannerService) SetTheme(mode string) {
+	if s.ctx == nil || goruntime.GOOS != "windows" {
+		return
+	}
+	switch mode {
+	case "light":
+		runtime.WindowSetLightTheme(s.ctx)
+	case "dark":
+		runtime.WindowSetDarkTheme(s.ctx)
+	default: // system
+		runtime.WindowSetSystemDefaultTheme(s.ctx)
+	}
+}
 
 // TrashInfo 返回内置回收站的占用统计 JSON（项数 / 总占用 / 最早到期时间）
 func (s *ScannerService) TrashInfo() string {

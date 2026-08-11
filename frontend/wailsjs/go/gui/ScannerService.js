@@ -50,6 +50,10 @@ export function SetReminderConfig(arg1) {
   return window['go']['gui']['ScannerService']['SetReminderConfig'](arg1);
 }
 
+export function SetTheme(arg1) {
+  return window['go']['gui']['ScannerService']['SetTheme'](arg1);
+}
+
 export function SetTrashConfig(arg1) {
   return window['go']['gui']['ScannerService']['SetTrashConfig'](arg1);
 }
