@@ -46,8 +46,10 @@ func buildMenu() *menu.Menu {
 	}
 
 	if goruntime.GOOS == "darwin" {
-		// 手动构建 App 菜单，使"首选项…"紧跟在 About 之下（平台惯例，Cmd+,）
-		appMenu.Append(menu.Text("About CLI Analyzer", nil, func(_ *menu.CallbackData) {
+		// 手动构建应用菜单（App Menu）：AppMenuRole 无法在 About 与 Quit 之间
+		// 插入"首选项"，故用子菜单重建，顶层标题即应用名"CLI Analyzer"
+		app := menu.NewMenu()
+		app.Append(menu.Text("About CLI Analyzer", nil, func(_ *menu.CallbackData) {
 			if appCtx != nil {
 				_, _ = runtime.MessageDialog(appCtx, runtime.MessageDialogOptions{
 					Title:   "About CLI Analyzer",
@@ -56,19 +58,20 @@ func buildMenu() *menu.Menu {
 				})
 			}
 		}))
-		appMenu.Append(menu.Separator())
-		appMenu.Append(menu.Text("首选项…", keys.CmdOrCtrl(","), prefsCallback))
-		appMenu.Append(menu.Separator())
-		appMenu.Append(menu.Text("Hide CLI Analyzer", keys.CmdOrCtrl("h"), func(_ *menu.CallbackData) {
+		app.Append(menu.Separator())
+		app.Append(menu.Text("首选项…", keys.CmdOrCtrl(","), prefsCallback))
+		app.Append(menu.Separator())
+		app.Append(menu.Text("Hide CLI Analyzer", keys.CmdOrCtrl("h"), func(_ *menu.CallbackData) {
 			if appCtx != nil {
 				runtime.Hide(appCtx)
 			}
 		}))
-		appMenu.Append(menu.Text("Quit CLI Analyzer", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
+		app.Append(menu.Text("Quit CLI Analyzer", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
 			if appCtx != nil {
 				runtime.Quit(appCtx)
 			}
 		}))
+		appMenu.Append(menu.SubMenu("CLI Analyzer", app))
 		appMenu.Append(menu.WindowMenu()) // standard window menu: Minimize, Zoom, …
 	} else {
 		file := menu.NewMenu()
@@ -114,8 +117,8 @@ func buildMenu() *menu.Menu {
 	return appMenu
 }
 
-// main dispatches on argv: scan/clean/cache/version run as a CLI; gui or no
-// arguments open the Wails desktop window. One binary, both interfaces.
+// main dispatches on argv: scan/clean/cache/trash/trends/version run as a CLI;
+// gui or no arguments open the Wails desktop window. One binary, both interfaces.
 func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
