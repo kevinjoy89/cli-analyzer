@@ -57,12 +57,20 @@ jobs:
       - name: Install create-dmg (macOS)
         if: matrix.platform == 'macos'
         shell: bash
-        run: brew install create-dmg
+        run: |
+          # macOS runner 预装的 aws/tap 在新版 Homebrew tap-trust 机制下未受信任，
+          # 会打印警告；我们用不到它，untap 掉保持日志干净。
+          brew untap aws/tap 2>/dev/null || true
+          brew install create-dmg
 
       - name: Build dmg (macOS)
         if: matrix.platform == 'macos'
         shell: bash
-        run: ./scripts/build-dmg.sh
+        run: |
+          ./scripts/build-dmg.sh
+          # 复制成无空格文件名，避免 release 资产名中的空格被转成点。
+          cp "dist/CLI Analyzer-${VERSION}.dmg" "dist/CLI-Analyzer-${VERSION}-darwin-universal.dmg"
+          rm "dist/CLI Analyzer-${VERSION}.dmg"
 
       # ---- Windows：NSIS 安装器 + 便携 zip（wails -nsis 自动处理 NSIS）----
       - name: Build Windows installer and portable zip
@@ -81,9 +89,13 @@ jobs:
         shell: bash
         run: |
           wails build -platform linux/amd64
-          mkdir -p dist/deb/DEBIAN dist/deb/usr/bin dist/deb/usr/share/applications
-          cp build/bin/cli-analyzer dist/deb/usr/bin/
-          cat > dist/deb/usr/share/applications/cli-analyzer.desktop <<'EOF'
+          mkdir -p dist
+          # deb 中间目录放临时路径，dist/ 只保留最终产物（否则 upload-artifact
+          # 会把 deb 内部的二进制/desktop/control 也带上 release）。
+          DEB_DIR="$(mktemp -d)"
+          mkdir -p "$DEB_DIR/DEBIAN" "$DEB_DIR/usr/bin" "$DEB_DIR/usr/share/applications"
+          cp build/bin/cli-analyzer "$DEB_DIR/usr/bin/"
+          cat > "$DEB_DIR/usr/share/applications/cli-analyzer.desktop" <<'EOF'
           [Desktop Entry]
           Name=CLI Analyzer
           Comment=Scan and clean CLI tool disk usage
@@ -92,14 +104,14 @@ jobs:
           Terminal=false
           Categories=Utility;
           EOF
-          cat > dist/deb/DEBIAN/control <<EOF
+          cat > "$DEB_DIR/DEBIAN/control" <<EOF
           Package: cli-analyzer
           Version: ${VERSION}
           Architecture: amd64
           Maintainer: kevinjoy89
           Description: Scan and clean CLI tool disk usage
           EOF
-          dpkg-deb --build --root-owner-group dist/deb "dist/CLI-Analyzer-${VERSION}-linux-amd64.deb"
+          dpkg-deb --build --root-owner-group "$DEB_DIR" "dist/CLI-Analyzer-${VERSION}-linux-amd64.deb"
           tar -czf "dist/CLI-Analyzer-${VERSION}-linux-amd64.tar.gz" -C build/bin cli-analyzer
 
       - name: Upload artifacts
