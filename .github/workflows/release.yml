@@ -67,10 +67,14 @@ jobs:
         if: matrix.platform == 'macos'
         shell: bash
         run: |
-          ./scripts/build-dmg.sh
+          # 按芯片分开打包：Apple Silicon (arm64) 与 Intel (amd64) 各一个 dmg。
           # 复制成无空格文件名，避免 release 资产名中的空格被转成点。
-          cp "dist/CLI Analyzer-${VERSION}.dmg" "dist/CLI-Analyzer-${VERSION}-darwin-universal.dmg"
-          rm "dist/CLI Analyzer-${VERSION}.dmg"
+          ./scripts/build-dmg.sh arm64
+          cp "dist/CLI Analyzer-${VERSION}-arm64.dmg" "dist/CLI-Analyzer-${VERSION}-darwin-arm64.dmg"
+          rm "dist/CLI Analyzer-${VERSION}-arm64.dmg"
+          ./scripts/build-dmg.sh amd64
+          cp "dist/CLI Analyzer-${VERSION}-amd64.dmg" "dist/CLI-Analyzer-${VERSION}-darwin-amd64.dmg"
+          rm "dist/CLI Analyzer-${VERSION}-amd64.dmg"
 
       # ---- Windows：NSIS 安装器 + 便携 zip（wails -nsis 自动处理 NSIS）----
       - name: Build Windows installer and portable zip

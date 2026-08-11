@@ -1,22 +1,33 @@
 #!/usr/bin/env bash
-# Build the universal macOS app and package it into a dmg installer.
+# Build the macOS app and package it into a dmg installer.
+#
+# Usage: ./scripts/build-dmg.sh [universal|arm64|amd64]
+#   universal (default): universal binary (arm64 + x86_64)
+#   arm64 | amd64      : single-architecture binary
 #
 # Prereqs: Go + Wails CLI + create-dmg (brew install create-dmg).
-# Output: dist/CLI Analyzer-<version>.dmg (universal arm64 + x86_64).
+# Output: dist/CLI Analyzer-<version>[-arch].dmg
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 export PATH="/opt/homebrew/bin:$PATH:$HOME/go/bin"
 
+PLATFORM="${1:-universal}"
+case "$PLATFORM" in
+  universal) WAILS_PLATFORM="darwin/universal"; SUFFIX="" ;;
+  arm64|amd64) WAILS_PLATFORM="darwin/$PLATFORM"; SUFFIX="-$PLATFORM" ;;
+  *) echo "usage: $0 [universal|arm64|amd64]" >&2; exit 2 ;;
+esac
+
 VERSION="$(grep -m1 '"productVersion"' wails.json | sed -E 's/.*: *"([^"]+)".*/\1/')"
 APP="build/bin/CLI Analyzer.app"
-OUT="dist/CLI Analyzer-${VERSION}.dmg"
+OUT="dist/CLI Analyzer-${VERSION}${SUFFIX}.dmg"
 STAGE="$(mktemp -d)"
 
 trap 'rm -rf "$STAGE"' EXIT
 
-echo "==> wails build (darwin/universal)"
-wails build -platform darwin/universal
+echo "==> wails build ($WAILS_PLATFORM)"
+wails build -platform "$WAILS_PLATFORM"
 
 echo "==> packaging $OUT"
 mkdir -p dist

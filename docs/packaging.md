@@ -13,15 +13,17 @@ export PATH="/opt/homebrew/bin:$PATH:$HOME/go/bin"
 
 ## macOS
 
-本机即可产出 **通用二进制**（x86_64 + arm64 合一）的 dmg 安装包：
+本机即可产出 dmg 安装包。默认打 **通用二进制**（arm64 + x86_64 合一），也可按芯片分开打包：
 
 ```bash
-./scripts/build-dmg.sh                  # → dist/CLI Analyzer-<版本>.dmg
+./scripts/build-dmg.sh                          # → dist/CLI Analyzer-<版本>.dmg（universal）
+./scripts/build-dmg.sh arm64                    # → dist/CLI Analyzer-<版本>-arm64.dmg（Apple Silicon）
+./scripts/build-dmg.sh amd64                    # → dist/CLI Analyzer-<版本>-amd64.dmg（Intel）
 ```
 
 脚本步骤（对应 `scripts/build-dmg.sh`）：
 
-1. `wails build -platform darwin/universal` —— 一条命令出双架构通用二进制
+1. `wails build -platform darwin/<universal|arm64|amd64>` —— 按目标架构出包（CI 里分芯片各打一次）
 2. `create-dmg` 打包 —— 卷图标用应用图标，600×400 窗口，app 图标 + Applications 拖放链接
 3. 清理 `build/bin/CLI Analyzer.app` 中间产物（同时避免它被 Spotlight 索引成重复应用）
 
