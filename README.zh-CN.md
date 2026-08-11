@@ -2,7 +2,7 @@
   <a href="README.md">English</a> · <b>简体中文</b>
 </p>
 
-# CLI Analyzer
+<h1 align="center">CLI Analyzer</h1>
 
 <p align="center">
   找出哪些 CLI 工具在悄悄吃掉你的磁盘 —— 并<strong>安全地</strong>收回空间。
@@ -40,7 +40,7 @@ CLI Analyzer 扫描系统上安装的 CLI 工具，归因每个工具的总磁�
 
 ## 安装
 
-> **尚未发布 release**，当前请从源码构建。
+> **发布版**：macOS / Windows / Linux 安装包已发布在 [Releases 页面](https://github.com/kevinjoy89/cli-analyzer/releases)，也可从源码构建。
 
 依赖：**Go ≥ 1.26** 与 **npm**。
 

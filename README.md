@@ -2,7 +2,7 @@
   <b>English</b> · <a href="README.zh-CN.md">简体中文</a>
 </p>
 
-# CLI Analyzer
+<h1 align="center">CLI Analyzer</h1>
 
 <p align="center">
   Find out which CLI tools are eating your disk — and reclaim the space <b>safely</b>.
@@ -40,7 +40,7 @@ CLI Analyzer scans every CLI tool installed on your machine, attributes its **to
 
 ## Installation
 
-> **Not yet published as a release.** Build from source for now.
+> **Releases**: installers for macOS / Windows / Linux are published on the [Releases page](https://github.com/kevinjoy89/cli-analyzer/releases). Building from source also works.
 
 Requirements: **Go ≥ 1.26** and **npm**.
 
