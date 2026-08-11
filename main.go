@@ -37,6 +37,11 @@ var appCtx context.Context
 // File (Quit) menu instead. Every platform shares the Help menu linking to the
 // project's GitHub repo and issue tracker.
 func buildMenu() *menu.Menu {
+	// Windows 使用前端自绘菜单条（原生 Win32 菜单栏无法跟随应用主题），
+	// 返回 nil 以移除原生菜单栏
+	if goruntime.GOOS == "windows" {
+		return nil
+	}
 	appMenu := menu.NewMenu()
 
 	// prefsCallback 通知前端打开首选项面板（前端监听 "open-prefs" 事件）

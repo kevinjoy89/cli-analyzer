@@ -97,6 +97,57 @@ html, body {
 
 #app { height: 100vh; display: flex; flex-direction: column; }
 
+/* ---- in-app menu bar (Windows only; native Win32 menu can't follow the theme) ---- */
+.menu-bar { display: none; }
+body.platform-windows #menuBar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 8px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    user-select: none;
+}
+.menu-item { position: relative; }
+.menu-btn {
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.menu-btn:hover, .menu-btn.open { background: var(--panel-2); }
+.menu-pop {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    min-width: 180px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    padding: 4px;
+    display: none;
+    z-index: 40;
+}
+.menu-pop.open { display: block; }
+.menu-opt {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.menu-opt:hover { background: var(--panel-2); }
+
 /* ---- header ---- */
 #header {
     position: relative;

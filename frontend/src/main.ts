@@ -1,7 +1,7 @@
 import './style.css';
 
 import {Clean, GetLastResult, GetReminderConfig, GetTrashConfig, GetTrends, GetVersion, OpenURL, PurgeNow, Restore, Scan, SetReminderConfig, SetTheme, SetTrashConfig, TrashInfo, TrashList} from '../wailsjs/go/gui/ScannerService';
-import {Environment, EventsOn} from '../wailsjs/runtime/runtime';
+import {Environment, EventsOn, Quit} from '../wailsjs/runtime/runtime';
 
 // ---- types mirroring the Go JSON contract ----
 interface Binary { name: string; path: string; real: string; size: number }
@@ -636,6 +636,43 @@ function openAbout() {
     el('aboutModal').classList.remove('hidden');
 }
 
+// ---- in-app menu bar (Windows) ----
+// 关闭所有打开的下拉菜单
+function closeMenus() {
+    document.querySelectorAll('.menu-btn.open').forEach(b => b.classList.remove('open'));
+    document.querySelectorAll('.menu-pop.open').forEach(p => p.classList.remove('open'));
+}
+
+// 初始化 Windows 自绘菜单条：文件/帮助下拉 + 动作分发
+function initMenuBar() {
+    const bar = el('menuBar');
+    if (!bar) return;
+    bar.querySelectorAll<HTMLButtonElement>('.menu-btn').forEach(btn => {
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            const wasOpen = btn.classList.contains('open');
+            closeMenus();
+            if (!wasOpen) {
+                btn.classList.add('open');
+                const pop = bar.querySelector<HTMLElement>(`.menu-pop[data-pop="${btn.dataset.pop}"]`);
+                if (pop) pop.classList.add('open');
+            }
+        };
+    });
+    bar.querySelectorAll<HTMLButtonElement>('.menu-opt').forEach(opt => {
+        opt.onclick = () => {
+            closeMenus();
+            switch (opt.dataset.act) {
+                case 'quit': Quit(); break;
+                case 'about': openAbout(); break;
+                case 'github': OpenURL('https://github.com/kevinjoy89/cli-analyzer'); break;
+                case 'issue': OpenURL('https://github.com/kevinjoy89/cli-analyzer/issues/new'); break;
+            }
+        };
+    });
+    document.addEventListener('click', closeMenus);
+}
+
 // ---- scan flow ----
 async function rescan() {
     setScanning(true, '扫描中…');
@@ -650,6 +687,8 @@ async function init() {
         const env = await Environment();
         document.body.classList.add('platform-' + env.platform);
     } catch { /* non-Wails context (plain browser preview) */ }
+
+    initMenuBar();
 
     el('rescanBtn').onclick = rescan;
     el('filter').addEventListener('input', (e) => { filterText = (e.target as HTMLInputElement).value; renderToolList(); });

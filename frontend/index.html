@@ -7,6 +7,23 @@
 </head>
 <body>
 <div id="app">
+    <div id="menuBar" class="menu-bar">
+        <div class="menu-item">
+            <button class="menu-btn" data-pop="file">文件</button>
+            <div class="menu-pop" data-pop="file">
+                <button class="menu-opt" data-act="quit">退出</button>
+            </div>
+        </div>
+        <div class="menu-item">
+            <button class="menu-btn" data-pop="help">帮助</button>
+            <div class="menu-pop" data-pop="help">
+                <button class="menu-opt" data-act="about">关于 CLI Analyzer</button>
+                <button class="menu-opt" data-act="github">GitHub 仓库</button>
+                <button class="menu-opt" data-act="issue">反馈问题</button>
+            </div>
+        </div>
+    </div>
+
     <header id="header">
         <div class="brand">
             <span class="logo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#38bdf8"/><stop offset="0.5" stop-color="#a78bfa"/><stop offset="1" stop-color="#f472b6"/></linearGradient></defs><path d="M3 10 C 7 6, 10 14, 14 11 S 19 6, 21 8 L21 18 C 17 16, 13 20, 9 17 S 5 13, 3 15 Z" fill="url(#lg)"/></svg></span>
