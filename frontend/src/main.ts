@@ -30,6 +30,7 @@ interface ReminderConfig { thresholdBytes: number }
 // ---- state ----
 let result: ScanResult | null = null;
 let selected: string | null = null;
+let appVersion = '';
 let filterText = '';
 let selectedCleanIds = new Set<string>();
 let expandedCleanIds = new Set<string>(); // cleanable ids whose sub-breakdown is expanded
@@ -629,6 +630,12 @@ function renderGrowers(container: HTMLElement, growers: Grower[]) {
         `<div class="grower-row"><span class="grower-rank">${i + 1}</span><span class="grower-name">${esc(g.tool)}</span><span class="size clean">+${hb(g.deltaBytes)}</span></div>`).join('');
 }
 
+// ---- about dialog ----
+function openAbout() {
+    el('aboutVersion').textContent = appVersion ? `v${appVersion}` : '';
+    el('aboutModal').classList.remove('hidden');
+}
+
 // ---- scan flow ----
 async function rescan() {
     setScanning(true, '扫描中…');
@@ -681,6 +688,11 @@ async function init() {
         }
     });
 
+    // about dialog (opened from the native Help menu)
+    EventsOn('open-about', openAbout);
+    el('aboutClose').onclick = () => el('aboutModal').classList.add('hidden');
+    el('aboutLink').onclick = (e) => { e.preventDefault(); OpenURL('https://github.com/kevinjoy89/cli-analyzer'); };
+
     // theme toggle: system -> light -> dark -> system
     applyTheme('system');
     el('themeBtn').onclick = () => {
@@ -695,8 +707,8 @@ async function init() {
 
     // app version in footer
     try {
-        const v = await GetVersion();
-        el('appVersion').textContent = `v${v}`;
+        appVersion = await GetVersion();
+        el('appVersion').textContent = `v${appVersion}`;
     } catch (e) { /* ignore */ }
 
     EventsOn('scan:done', (payload: unknown) => {
