@@ -19,7 +19,7 @@ import (
 )
 
 // AppVersion is the app version shown in the UI footer and About dialog.
-const AppVersion = "0.2.0"
+const AppVersion = "0.2.1"
 
 // ScannerService is the Wails binding the frontend calls.
 type ScannerService struct {
