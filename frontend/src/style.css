@@ -435,6 +435,9 @@ body.platform-linux #header { padding-top: 10px; }
 }
 .modal-box h3 { margin: 16px 18px 8px; font-size: 15px; }
 .modal-box.wide { width: 700px; }
+.modal-box.wide-lg { width: 860px; }
+/* 首选项面板略宽，容纳完整的下拉选项与阈值输入 */
+.modal-box.prefs { width: 580px; }
 .modal-body { flex: 1; overflow-y: auto; padding: 0 18px 12px; font-size: 12px; }
 .modal-body .clean-row { padding: 5px 0; border-bottom: 1px solid var(--row-border); }
 .modal-body .warn { color: var(--amber); font-size: 11px; margin-top: 8px; }
@@ -454,8 +457,11 @@ body.platform-linux #header { padding-top: 10px; }
 .pref-row:last-child { border-bottom: none; }
 .pref-row input[type="number"], .pref-row select {
     background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
-    border-radius: 5px; padding: 4px 8px; font-size: 12px; margin-left: auto; width: 90px;
+    border-radius: 5px; padding: 4px 8px; font-size: 12px; margin-left: auto;
 }
+.pref-row input[type="number"] { width: 90px; }
+/* 下拉选项（如"移动到系统回收站"）需要更宽的显示空间 */
+.pref-row select { width: 160px; }
 .pref-row input:focus, .pref-row select:focus { outline: none; border-color: var(--accent); }
 .pref-row.check input { margin-left: 0; accent-color: var(--accent); width: 13px; height: 13px; }
 
@@ -483,7 +489,6 @@ body.platform-linux #header { padding-top: 10px; }
 .reminder-more { color: var(--muted); font-size: 11px; }
 
 /* usage trends panel */
-.modal-box.wide-lg { width: 860px; }
 .trend-chart { padding: 4px 0 8px; }
 .trend-legend { display: flex; gap: 16px; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
 .trend-legend .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
