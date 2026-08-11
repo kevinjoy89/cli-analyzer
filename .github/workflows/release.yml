@@ -103,13 +103,16 @@ jobs:
           # deb 中间目录放临时路径，dist/ 只保留最终产物（否则 upload-artifact
           # 会把 deb 内部的二进制/desktop/control 也带上 release）。
           DEB_DIR="$(mktemp -d)"
-          mkdir -p "$DEB_DIR/DEBIAN" "$DEB_DIR/usr/bin" "$DEB_DIR/usr/share/applications"
+          mkdir -p "$DEB_DIR/DEBIAN" "$DEB_DIR/usr/bin" \
+            "$DEB_DIR/usr/share/applications" "$DEB_DIR/usr/share/pixmaps"
           cp build/bin/cli-analyzer "$DEB_DIR/usr/bin/"
+          cp build/appicon.png "$DEB_DIR/usr/share/pixmaps/cli-analyzer.png"
           cat > "$DEB_DIR/usr/share/applications/cli-analyzer.desktop" <<'EOF'
           [Desktop Entry]
           Name=CLI Analyzer
           Comment=Scan and clean CLI tool disk usage
           Exec=cli-analyzer
+          Icon=cli-analyzer
           Type=Application
           Terminal=false
           Categories=Utility;
