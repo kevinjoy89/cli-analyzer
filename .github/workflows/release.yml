@@ -44,13 +44,14 @@ jobs:
         shell: bash
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
 
-      # ---- Linux 系统依赖（webkit2gtk 4.1）----
+      # ---- Linux 系统依赖：wails 2.13 默认按 webkit2gtk-4.0 编译（除非
+      # -tags webkit2_41 显式切到 4.1），两个 dev 包都装以覆盖两种情况。----
       - name: Install Linux system dependencies
         if: matrix.platform == 'linux'
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev build-essential pkg-config
+          sudo apt-get install -y libwebkit2gtk-4.0-dev libwebkit2gtk-4.1-dev libgtk-3-dev build-essential pkg-config
 
       # ---- macOS：通用二进制 dmg ----
       - name: Install create-dmg (macOS)
