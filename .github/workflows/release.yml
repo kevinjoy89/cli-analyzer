@@ -88,7 +88,10 @@ jobs:
           $env:Path = "$env:Path;C:\Program Files (x86)\NSIS"
           wails build -platform windows/amd64 -nsis
           New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item build/bin/*.exe dist/ -Force
+          # wails 默认输出 cli-analyzer-amd64-installer.exe，重命名为带版本号，
+          # 与其他平台产物命名一致。
+          Copy-Item "build/bin/cli-analyzer-amd64-installer.exe" `
+            "dist/CLI-Analyzer-$env:VERSION-windows-amd64-installer.exe"
           Compress-Archive -Path build/bin/cli-analyzer.exe, build/windows/icon.ico `
             -DestinationPath "dist/CLI-Analyzer-$env:VERSION-windows-amd64-portable.zip" -Force
 
