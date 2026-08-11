@@ -15,13 +15,11 @@ func mkScanResult(cleanables ...scanner.Cleanable) *scanner.ScanResult {
 	}
 }
 
-// useTempTrash 将内置回收站根指向临时目录，避免测试写真实回收站
+// useTempTrash 将内置回收站根指向临时目录；不预创建目录，让测试覆盖
+// 首次清理时回收站根尚不存在的路径，且避免写真实回收站
 func useTempTrash(t *testing.T) {
 	t.Helper()
 	rootDir := filepath.Join(t.TempDir(), "trash")
-	if err := os.MkdirAll(rootDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
 	orig := trash.Root
 	trash.Root = func() string { return rootDir }
 	t.Cleanup(func() { trash.Root = orig })

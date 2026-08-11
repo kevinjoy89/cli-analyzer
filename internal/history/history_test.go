@@ -1,7 +1,9 @@
 package history
 
 import (
+	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -146,5 +148,19 @@ func TestRecordNilIgnored(t *testing.T) {
 	withTempDB(t)
 	if err := Record(nil); err == nil {
 		t.Fatal("Record(nil) 应返回错误")
+	}
+}
+
+// TestTrendsEmptySerializesWithoutNull verifies no-history Trends never emits
+// null for points/topGrowers (nil slices would crash the frontend).
+func TestTrendsEmptySerializesWithoutNull(t *testing.T) {
+	withTempDB(t)
+	tr, err := Trends(30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(tr)
+	if strings.Contains(string(b), "null") {
+		t.Errorf("无历史时序列化不应出现 null: %s", b)
 	}
 }

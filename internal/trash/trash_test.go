@@ -1,6 +1,7 @@
 package trash
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -8,13 +9,11 @@ import (
 	"time"
 )
 
-// withTrashRoot 将回收站根指向临时目录，保证测试隔离真实文件系统
+// withTrashRoot 将回收站根指向临时目录；故意不预创建目录，让所有测试
+// 天然覆盖"首次清理时回收站根尚不存在"的真实路径
 func withTrashRoot(t *testing.T) {
 	t.Helper()
 	rootDir := filepath.Join(t.TempDir(), "trash")
-	if err := os.MkdirAll(rootDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
 	orig := Root
 	Root = func() string { return rootDir }
 	t.Cleanup(func() { Root = orig })
@@ -47,8 +46,28 @@ func itemIDs(t *testing.T) []string {
 	return ids
 }
 
-func TestTrashRestoreRoundTrip(t *testing.T) {
-	withTrashRoot(t)
+// TestTrashCreatesTrashRoot verifies first-time cleanup works even when the
+// trash root directory does not exist yet (regression: sameFS used to fail
+// because os.Stat on the missing root errored, refusing the move).
+func TestTrashCreatesTrashRoot(t *testing.T) {
+	// 不预创建回收站根目录，模拟首次清理
+	rootDir := filepath.Join(t.TempDir(), "trash")
+	orig := Root
+	Root = func() string { return rootDir }
+	t.Cleanup(func() { Root = orig })
+	src := mkSource(t, "first-clean")
+	if err := Trash(src, Item{Tool: "t", Kind: "cache", Bytes: 1}); err != nil {
+		t.Fatalf("Trash: %v", err)
+	}
+	if _, err := os.Stat(rootDir); err != nil {
+		t.Fatalf("回收站根目录未被自动创建: %v", err)
+	}
+	if got := itemIDs(t); len(got) != 1 {
+		t.Fatalf("回收站项目数 = %d, want 1", len(got))
+	}
+}
+
+func TestTrashRestoreRoundTrip(t *testing.T) {	withTrashRoot(t)
 	src := mkSource(t, "npm-cache")
 	if err := Trash(src, Item{Tool: "npm", Kind: "cache", Bytes: 10}); err != nil {
 		t.Fatalf("Trash: %v", err)
@@ -200,5 +219,20 @@ func TestPurgeRejectsBadID(t *testing.T) {
 	deleted, errs := Purge([]string{"../evil"})
 	if len(deleted) != 0 || len(errs) != 1 {
 		t.Fatalf("deleted=%v errs=%v", deleted, errs)
+	}
+}
+
+// TestListEmptySerializesAsArray verifies an empty trash serializes to []
+// rather than null (regression: nil slice marshals to "null" and crashes the
+// frontend's JSON.parse when the trash panel refreshes after emptying).
+func TestListEmptySerializesAsArray(t *testing.T) {
+	withTrashRoot(t)
+	items, err := List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(items)
+	if string(b) != "[]" {
+		t.Errorf("空回收站应序列化为 [], got %s", b)
 	}
 }

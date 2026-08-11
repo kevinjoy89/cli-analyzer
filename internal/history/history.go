@@ -155,7 +155,8 @@ func Trends(days int) (*TrendsResult, error) {
 	rows.Close()
 
 	cutoff := time.Now().AddDate(0, 0, -days)
-	out := &TrendsResult{}
+	// 无历史时返回空数组而非 nil，保证 JSON 序列化为 [] 而不是 null
+	out := &TrendsResult{Points: []Point{}, TopGrowers: []Grower{}}
 	for _, s := range all {
 		t, err := time.Parse(time.RFC3339, s.scannedAt)
 		if err != nil || t.Before(cutoff) {
@@ -170,10 +171,10 @@ func Trends(days int) (*TrendsResult, error) {
 	return out, nil
 }
 
-// topGrowers 用最近两次扫描的 cleanable 差计算增长排行；历史不足两次返回空
+// topGrowers 用最近两次扫描的 cleanable 差计算增长排行；历史不足两次返回空数组
 func topGrowers(db *sql.DB, all []scanRow, n int) []Grower {
 	if len(all) < 2 {
-		return nil
+		return []Grower{}
 	}
 	prev := all[len(all)-2].id
 	last := all[len(all)-1].id
@@ -200,7 +201,7 @@ func topGrowers(db *sql.DB, all []scanRow, n int) []Grower {
 		delta[tool] = clean - prevTools[tool]
 	}
 	// 只统计有增量的工具，按增量降序
-	var growers []Grower
+	growers := []Grower{}
 	for tool, d := range delta {
 		if d > 0 {
 			growers = append(growers, Grower{Tool: tool, DeltaBytes: d})

@@ -45,6 +45,11 @@ func Trash(path string, meta Item) error {
 	if meta.Original == "" {
 		meta.Original = path
 	}
+	// 回收站根可能尚不存在（首次清理），必须先创建，否则对 Root() 的
+	// os.Stat 会失败，导致同文件系统判断误判为跨文件系统而拒绝移入
+	if err := os.MkdirAll(Root(), 0o755); err != nil {
+		return err
+	}
 	if !sameFS(path, Root()) {
 		return ErrCrossFilesystem
 	}
@@ -159,9 +164,9 @@ func Info() *TrashInfo {
 	return info
 }
 
-// List 返回回收站全部项目，按移入时间倒序
+// List 返回回收站全部项目，按移入时间倒序；空回收站返回空数组而非 nil
 func List() ([]Item, error) {
-	var out []Item
+	out := []Item{}
 	dirs, err := os.ReadDir(Root())
 	if err != nil {
 		if os.IsNotExist(err) {
