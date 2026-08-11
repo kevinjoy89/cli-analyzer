@@ -15,6 +15,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
+	"github.com/wailsapp/wails/v2/pkg/options/windows"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -144,6 +145,11 @@ func main() {
 		Menu: buildMenu(),
 		Bind: []interface{}{
 			srv,
+		},
+		Windows: &windows.Options{
+			// 强制 Windows 标题栏与原生菜单栏使用沉浸式暗色模式，
+			// 与应用内的暗色 UI 一致（默认 SystemDefault 会跟随系统浅色主题）
+			Theme: windows.Dark,
 		},
 		Mac: &mac.Options{
 			TitleBar: mac.TitleBarHiddenInset(),
