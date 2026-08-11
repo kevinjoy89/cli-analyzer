@@ -8,10 +8,8 @@ frontend/dist
 # 前端依赖
 node_modules
 
-# wails 生成代码（每次 build 重新生成，无需入库）
-frontend/wailsjs
-frontend/package.json.md5
-
+# wails 生成代码（frontend/wailsjs + package.json.md5）随仓库提交：
+# main.ts 直接 import 它们，CI/新 clone 在无 wails CLI 时也能跑 tsc 类型检查。
 # wails 开发配置（build 时生成）
 build/darwin/Info.dev.plist
 
