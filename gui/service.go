@@ -6,8 +6,8 @@ package gui
 import (
 	"context"
 	"encoding/json"
-	"sync"
 	goruntime "runtime"
+	"sync"
 
 	"cli-analyzer/internal/cleaner"
 	"cli-analyzer/internal/config"
