@@ -67,7 +67,8 @@ func TestTrashCreatesTrashRoot(t *testing.T) {
 	}
 }
 
-func TestTrashRestoreRoundTrip(t *testing.T) {	withTrashRoot(t)
+func TestTrashRestoreRoundTrip(t *testing.T) {
+	withTrashRoot(t)
 	src := mkSource(t, "npm-cache")
 	if err := Trash(src, Item{Tool: "npm", Kind: "cache", Bytes: 10}); err != nil {
 		t.Fatalf("Trash: %v", err)

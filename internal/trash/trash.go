@@ -37,7 +37,7 @@ var Root = func() string { return filepath.Join(platform.DataRoot(), "trash") }
 // devOfFn 可被测试替换，用于模拟跨文件系统场景
 var devOfFn = devOf
 
-func dataDirOf(itemDir string) string { return filepath.Join(itemDir, "_data") }
+func dataDirOf(itemDir string) string  { return filepath.Join(itemDir, "_data") }
 func infoPathOf(itemDir string) string { return filepath.Join(itemDir, "info.json") }
 
 // Trash 将 path 移入内置回收站；meta 需携带原路径、工具、类型与字节数
