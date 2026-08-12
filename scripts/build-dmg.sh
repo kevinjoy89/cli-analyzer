@@ -23,6 +23,9 @@ VERSION="$(grep -m1 '"productVersion"' wails.json | sed -E 's/.*: *"([^"]+)".*/\
 # 版本单一来源 + 安装来源标识（design D1/D2）：macOS 无歧义，注入仅为 version 输出统一
 LDFLAGS="-X cli-analyzer/internal/buildinfo.Version=${VERSION} -X cli-analyzer/internal/buildinfo.InstallSource=dmg"
 APP="build/bin/CLI Analyzer.app"
+# 卷名可覆盖（VOLNAME 环境变量）：本地测试构建时用不同卷名，避免与
+# 已挂载的同名 dmg 冲突（create-dmg 卸载临时卷会因重名失败）。
+VOLNAME="${VOLNAME:-CLI Analyzer}"
 OUT="dist/CLI Analyzer-${VERSION}${SUFFIX}.dmg"
 STAGE="$(mktemp -d)"
 
@@ -36,7 +39,7 @@ mkdir -p dist
 rm -f "$OUT" # create-dmg refuses to overwrite
 cp -R "$APP" "$STAGE/"
 create-dmg \
-  --volname "CLI Analyzer" \
+  --volname "$VOLNAME" \
   --volicon "$APP/Contents/Resources/iconfile.icns" \
   --window-size 600 400 \
   --icon-size 100 \
