@@ -663,6 +663,7 @@ function initMenuBar() {
         opt.onclick = () => {
             closeMenus();
             switch (opt.dataset.act) {
+                case 'prefs': openPrefs(); break;
                 case 'quit': Quit(); break;
                 case 'about': openAbout(); break;
                 case 'github': OpenURL('https://github.com/kevinjoy89/cli-analyzer'); break;
@@ -689,6 +690,14 @@ async function init() {
     } catch { /* non-Wails context (plain browser preview) */ }
 
     initMenuBar();
+
+    // Ctrl+, opens preferences (Windows in-app menu bar; macOS uses the native menu)
+    document.addEventListener('keydown', (e) => {
+        if (document.body.classList.contains('platform-windows') && (e.ctrlKey || e.metaKey) && e.key === ',') {
+            e.preventDefault();
+            openPrefs();
+        }
+    });
 
     el('rescanBtn').onclick = rescan;
     el('filter').addEventListener('input', (e) => { filterText = (e.target as HTMLInputElement).value; renderToolList(); });
