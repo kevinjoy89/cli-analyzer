@@ -8,17 +8,19 @@ func TestParseVersion(t *testing.T) {
 		want    Version
 		wantErr bool
 	}{
-		{"0.2.3", Version{0, 2, 3}, false},
-		{"v0.2.3", Version{0, 2, 3}, false},
-		{"v1.0.0", Version{1, 0, 0}, false},
-		{"10.20.30", Version{10, 20, 30}, false},
+		{"0.2.3", Version{0, 2, 3, 0}, false},
+		{"v0.2.3", Version{0, 2, 3, 0}, false},
+		{"v1.0.0", Version{1, 0, 0, 0}, false},
+		{"10.20.30", Version{10, 20, 30, 0}, false},
+		{"0.3.2.1", Version{0, 3, 2, 1}, false},
+		{"v0.3.2.1", Version{0, 3, 2, 1}, false},
 		{"0.2", Version{}, true},
-		{"0.2.3.4", Version{}, true},
+		{"0.2.3.4.5", Version{}, true},
 		{"abc", Version{}, true},
 		{"0.2.x", Version{}, true},
 		{"v0.3.0-beta.1", Version{}, true},
 		{"", Version{}, true},
-		{" 0.2.3 ", Version{0, 2, 3}, false},
+		{" 0.2.3 ", Version{0, 2, 3, 0}, false},
 	}
 	for _, c := range cases {
 		got, err := ParseVersion(c.in)
@@ -43,12 +45,16 @@ func TestVersionCompare(t *testing.T) {
 		a, b Version
 		want int
 	}{
-		{Version{0, 2, 3}, Version{0, 2, 3}, 0},
-		{Version{1, 0, 0}, Version{0, 9, 9}, 1},
-		{Version{0, 2, 3}, Version{0, 3, 0}, -1},
-		{Version{0, 2, 3}, Version{0, 2, 4}, -1},
-		{Version{0, 2, 4}, Version{0, 2, 3}, 1},
-		{Version{0, 3, 0}, Version{0, 3, 0}, 0},
+		{Version{0, 2, 3, 0}, Version{0, 2, 3, 0}, 0},
+		{Version{1, 0, 0, 0}, Version{0, 9, 9, 0}, 1},
+		{Version{0, 2, 3, 0}, Version{0, 3, 0, 0}, -1},
+		{Version{0, 2, 3, 0}, Version{0, 2, 4, 0}, -1},
+		{Version{0, 2, 4, 0}, Version{0, 2, 3, 0}, 1},
+		{Version{0, 3, 0, 0}, Version{0, 3, 0, 0}, 0},
+		{Version{0, 3, 2, 1}, Version{0, 3, 2, 0}, 1}, // 0.3.2.1 > 0.3.2（第四段缺省为 0）
+		{Version{0, 3, 2, 0}, Version{0, 3, 2, 0}, 0},
+		{Version{0, 3, 2, 1}, Version{0, 3, 2, 2}, -1},
+		{Version{0, 3, 2, 9}, Version{0, 3, 3, 0}, -1}, // 0.3.2.9 < 0.3.3
 	}
 	for _, c := range cases {
 		if got := c.a.Compare(c.b); got != c.want {
@@ -58,7 +64,10 @@ func TestVersionCompare(t *testing.T) {
 }
 
 func TestVersionString(t *testing.T) {
-	if got := (Version{0, 2, 3}).String(); got != "0.2.3" {
+	if got := (Version{0, 2, 3, 0}).String(); got != "0.2.3" {
 		t.Errorf("String() = %q, want 0.2.3", got)
+	}
+	if got := (Version{0, 3, 2, 1}).String(); got != "0.3.2.1" {
+		t.Errorf("String() = %q, want 0.3.2.1", got)
 	}
 }
