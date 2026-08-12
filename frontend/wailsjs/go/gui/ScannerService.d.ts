@@ -10,11 +10,15 @@ export function Clean(arg1:Array<string>,arg2:boolean):Promise<string>;
 
 export function DownloadUpdate():Promise<string>;
 
+export function GetLanguage():Promise<string>;
+
 export function GetLastResult():Promise<string>;
 
 export function GetReminderConfig():Promise<string>;
 
 export function GetTopGrowers():Promise<string>;
+
+export function GetTranslations(arg1:string):Promise<string>;
 
 export function GetTrashConfig():Promise<string>;
 
@@ -35,6 +39,10 @@ export function PurgeNow(arg1:Array<string>):Promise<string>;
 export function Restore(arg1:string):Promise<string>;
 
 export function Scan():Promise<void>;
+
+export function SetLanguage(arg1:string):Promise<string>;
+
+export function SetLanguagePreference(arg1:string):Promise<string>;
 
 export function SetReminderConfig(arg1:string):Promise<string>;
 

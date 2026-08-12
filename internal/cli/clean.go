@@ -10,6 +10,7 @@ import (
 
 	"cli-analyzer/internal/cleaner"
 	"cli-analyzer/internal/config"
+	"cli-analyzer/internal/i18n"
 	"cli-analyzer/internal/scanner"
 )
 
@@ -33,7 +34,7 @@ func runClean(args []string) int {
 
 	res, err := scanner.LoadCache()
 	if err != nil {
-		fmt.Fprintln(stderr(), "没有可用的扫描结果，请先运行 `cli-analyzer scan`")
+		fmt.Fprintln(stderr(), i18n.T("cli.noScanResult"))
 		return 1
 	}
 
@@ -54,7 +55,7 @@ func runClean(args []string) int {
 		return 0
 	}
 	if len(items) == 0 {
-		fmt.Fprintln(stdout(), "没有可安全清理的项目")
+		fmt.Fprintln(stdout(), i18n.T("cli.noCleanable"))
 		return 0
 	}
 
@@ -89,19 +90,19 @@ func runClean(args []string) int {
 		b, _ := json.MarshalIndent(report, "", "  ")
 		fmt.Fprintln(stdout(), string(b))
 	} else {
-		modeWord := "删除"
+		modeWord := i18n.T("cli.delete")
 		if !*permanent && config.Load().Trash.UseTrash {
-			modeWord = "移入回收站"
+			modeWord = i18n.T("cli.moveToTrash")
 		}
-		fmt.Fprintf(stdout(), "%s %d 项，释放 %s\n", modeWord, len(report.Deleted), humanBytes(report.Freed))
+		fmt.Fprint(stdout(), i18n.T("cli.cleanSummary", map[string]any{"action": modeWord, "n": len(report.Deleted), "size": humanBytes(report.Freed)}), "\n")
 		for _, s := range report.Skipped {
-			fmt.Fprintf(stdout(), "跳过: %s\n", s)
+			fmt.Fprintf(stdout(), "%s\n", i18n.T("cli.skipped", map[string]any{"path": s}))
 		}
 		for _, e := range report.Errors {
-			fmt.Fprintf(stdout(), "错误: %s\n", e)
+			fmt.Fprintf(stdout(), "%s\n", i18n.T("cli.errors", map[string]any{"msg": e}))
 		}
 		if *dryRun {
-			fmt.Fprintln(stdout(), "（dry-run：未实际删除）")
+			fmt.Fprintln(stdout(), i18n.T("cli.dryRun"))
 		}
 	}
 	return 0

@@ -126,3 +126,35 @@ func TestExplicitFalseStaysFalseAfterNormalize(t *testing.T) {
 		t.Error("explicit false got normalized back to true")
 	}
 }
+
+// ---- language ----
+
+func TestLanguageDefaultsToAuto(t *testing.T) {
+	withTempRoot(t)
+	cfg := Load()
+	if cfg.Language != LangAuto {
+		t.Errorf("Language = %q, want auto", cfg.Language)
+	}
+}
+
+func TestLanguageInvalidFallsBackToAuto(t *testing.T) {
+	withTempRoot(t)
+	if err := os.WriteFile(Path(), []byte(`{"language":"ja-JP"}`), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if cfg := Load(); cfg.Language != LangAuto {
+		t.Errorf("Language = %q, want auto", cfg.Language)
+	}
+}
+
+func TestLanguageRoundTrip(t *testing.T) {
+	withTempRoot(t)
+	cfg := Default()
+	cfg.Language = LangEn
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if got := Load(); got.Language != LangEn {
+		t.Errorf("Language = %q, want en", got.Language)
+	}
+}

@@ -10,6 +10,7 @@ import (
 
 	"cli-analyzer/internal/buildinfo"
 	"cli-analyzer/internal/config"
+	"cli-analyzer/internal/i18n"
 )
 
 // cacheInterval 是自动检查的限流窗口：距上次成功检查不足该时长时复用缓存结果，
@@ -45,7 +46,7 @@ func CheckForUpdates(ctx context.Context, force bool) CheckResult {
 
 	if buildinfo.Version == "dev" {
 		if force {
-			res.Error = "无法确定当前版本（源码构建），跳过更新检查"
+			res.Error = i18n.T("err.updaterDevVersion")
 		}
 		return res
 	}

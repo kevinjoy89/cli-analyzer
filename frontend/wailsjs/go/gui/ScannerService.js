@@ -18,6 +18,10 @@ export function DownloadUpdate() {
   return window['go']['gui']['ScannerService']['DownloadUpdate']();
 }
 
+export function GetLanguage() {
+  return window['go']['gui']['ScannerService']['GetLanguage']();
+}
+
 export function GetLastResult() {
   return window['go']['gui']['ScannerService']['GetLastResult']();
 }
@@ -28,6 +32,10 @@ export function GetReminderConfig() {
 
 export function GetTopGrowers() {
   return window['go']['gui']['ScannerService']['GetTopGrowers']();
+}
+
+export function GetTranslations(arg1) {
+  return window['go']['gui']['ScannerService']['GetTranslations'](arg1);
 }
 
 export function GetTrashConfig() {
@@ -68,6 +76,14 @@ export function Restore(arg1) {
 
 export function Scan() {
   return window['go']['gui']['ScannerService']['Scan']();
+}
+
+export function SetLanguage(arg1) {
+  return window['go']['gui']['ScannerService']['SetLanguage'](arg1);
+}
+
+export function SetLanguagePreference(arg1) {
+  return window['go']['gui']['ScannerService']['SetLanguagePreference'](arg1);
 }
 
 export function SetReminderConfig(arg1) {

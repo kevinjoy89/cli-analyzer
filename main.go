@@ -8,6 +8,7 @@ import (
 
 	"cli-analyzer/gui"
 	"cli-analyzer/internal/cli"
+	"cli-analyzer/internal/i18n"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/menu"
@@ -55,24 +56,24 @@ func buildMenu() *menu.Menu {
 		// 手动构建应用菜单（App Menu）：AppMenuRole 无法在 About 与 Quit 之间
 		// 插入"首选项"，故用子菜单重建，顶层标题即应用名"CLI Analyzer"
 		app := menu.NewMenu()
-		app.Append(menu.Text("About CLI Analyzer", nil, func(_ *menu.CallbackData) {
+		app.Append(menu.Text(i18n.T("menu.about"), nil, func(_ *menu.CallbackData) {
 			if appCtx != nil {
 				_, _ = runtime.MessageDialog(appCtx, runtime.MessageDialogOptions{
-					Title:   "About CLI Analyzer",
-					Message: "CLI Analyzer " + gui.AppVersion + "\n\n扫描并清理 CLI 工具的磁盘占用。",
+					Title:   i18n.T("menu.about"),
+					Message: "CLI Analyzer " + gui.AppVersion + "\n\n" + i18n.T("menu.aboutBody"),
 					Icon:    appIcon,
 				})
 			}
 		}))
 		app.Append(menu.Separator())
-		app.Append(menu.Text("首选项…", keys.CmdOrCtrl(","), prefsCallback))
+		app.Append(menu.Text(i18n.T("menu.prefs"), keys.CmdOrCtrl(","), prefsCallback))
 		app.Append(menu.Separator())
-		app.Append(menu.Text("Hide CLI Analyzer", keys.CmdOrCtrl("h"), func(_ *menu.CallbackData) {
+		app.Append(menu.Text(i18n.T("menu.hide"), keys.CmdOrCtrl("h"), func(_ *menu.CallbackData) {
 			if appCtx != nil {
 				runtime.Hide(appCtx)
 			}
 		}))
-		app.Append(menu.Text("Quit CLI Analyzer", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
+		app.Append(menu.Text(i18n.T("menu.quitApp"), keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
 			if appCtx != nil {
 				runtime.Quit(appCtx)
 			}
@@ -82,9 +83,9 @@ func buildMenu() *menu.Menu {
 	} else {
 		file := menu.NewMenu()
 		// 首选项位于退出按钮上方（Windows/Linux）
-		file.Append(menu.Text("首选项…", keys.CmdOrCtrl(","), prefsCallback))
+		file.Append(menu.Text(i18n.T("menu.prefs"), keys.CmdOrCtrl(","), prefsCallback))
 		file.Append(menu.Separator())
-		file.Append(menu.Text("Quit", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
+		file.Append(menu.Text(i18n.T("menu.quit"), keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
 			if appCtx != nil {
 				runtime.Quit(appCtx)
 			}
@@ -97,7 +98,7 @@ func buildMenu() *menu.Menu {
 		// macOS 的 About 在 AppMenu role 里；Windows/Linux 没有这样的 role，
 		// 所以 Help 顶部放一个 About 项——弹应用内模态框（居中 + logo），
 		// 而非原生 MessageBox（不支持自定义图标、不居中）。
-		help.Append(menu.Text("About CLI Analyzer", nil, func(_ *menu.CallbackData) {
+		help.Append(menu.Text(i18n.T("menu.about"), nil, func(_ *menu.CallbackData) {
 			if appCtx != nil {
 				runtime.EventsEmit(appCtx, "open-about")
 			}
@@ -105,19 +106,19 @@ func buildMenu() *menu.Menu {
 		help.Append(menu.Separator())
 	}
 	// 手动检查更新：前端监听 "check-updates" 事件，走与自动检查一致的提示流程
-	help.Append(menu.Text("检查更新…", nil, func(_ *menu.CallbackData) {
+	help.Append(menu.Text(i18n.T("menu.checkUpdates"), nil, func(_ *menu.CallbackData) {
 		if appCtx != nil {
 			runtime.EventsEmit(appCtx, "check-updates")
 		}
 	}))
 	help.Append(menu.Separator())
-	help.Append(menu.Text("GitHub Repository", nil, func(_ *menu.CallbackData) {
+	help.Append(menu.Text(i18n.T("menu.github"), nil, func(_ *menu.CallbackData) {
 		if appCtx != nil {
 			runtime.BrowserOpenURL(appCtx, repoURL)
 		}
 	}))
 	help.Append(menu.Separator())
-	help.Append(menu.Text("Report an Issue", nil, func(_ *menu.CallbackData) {
+	help.Append(menu.Text(i18n.T("menu.issue"), nil, func(_ *menu.CallbackData) {
 		if appCtx != nil {
 			runtime.BrowserOpenURL(appCtx, repoURL+"/issues/new")
 		}
@@ -164,7 +165,7 @@ func main() {
 			TitleBar: mac.TitleBarHiddenInset(),
 			About: &mac.AboutInfo{
 				Title:   "CLI Analyzer",
-				Message: "CLI Analyzer " + gui.AppVersion + "\n\n扫描并清理 CLI 工具的磁盘占用。",
+				Message: "CLI Analyzer " + gui.AppVersion + "\n\n" + i18n.T("menu.aboutBody"),
 				Icon:    appIcon,
 			},
 		},

@@ -1,6 +1,9 @@
 package rules
 
-import "cli-analyzer/internal/platform"
+import (
+	"cli-analyzer/internal/i18n"
+	"cli-analyzer/internal/platform"
+)
 
 // curated is the built-in two-tier rule table. Data-dir tiers are set here;
 // any DataDir with Kind "cache" automatically becomes a SAFE cleanable during
@@ -149,7 +152,7 @@ var curated = []Rule{
 		Cleanables: []CleanRule{
 			// Only leftover install-staging dirs are cleanable; the active
 			// codex-primary-runtime MUST be preserved or codex breaks.
-			{Root: platform.XDGCache, Sub: "codex-runtimes/codex-runtime-install-*", Tier: TierSafe, Kind: "cache", Desc: "Codex 残留的运行时安装暂存（保留正在使用的 codex-primary-runtime）"},
+			{Root: platform.XDGCache, Sub: "codex-runtimes/codex-runtime-install-*", Tier: TierSafe, Kind: "cache", Desc: i18n.T("ui.kind.codexStaging")},
 		},
 	},
 	{

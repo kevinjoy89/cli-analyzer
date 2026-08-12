@@ -3,7 +3,6 @@ package trash
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,11 +11,12 @@ import (
 	"time"
 
 	"cli-analyzer/internal/config"
+	"cli-analyzer/internal/i18n"
 	"cli-analyzer/internal/platform"
 )
 
 // ErrCrossFilesystem 表示待清理项与回收站不在同一文件系统，无法秒移
-var ErrCrossFilesystem = errors.New("目标与回收站不在同一文件系统，无法移入")
+var ErrCrossFilesystem error = i18n.NewError("err.trashCrossFS")
 
 // Item 是回收站中的一个项目
 type Item struct {
@@ -73,7 +73,7 @@ func Trash(path string, meta Item) error {
 // Restore 将指定项目还原到原路径；原路径被占用时改名还原并返回实际路径
 func Restore(id string) (string, error) {
 	if id == "" || filepath.Base(id) != id {
-		return "", fmt.Errorf("无效的回收站项目 id %q", id)
+		return "", fmt.Errorf("%s", i18n.T("err.trashInvalidID", map[string]any{"id": id}))
 	}
 	itemDir := filepath.Join(Root(), id)
 	meta, err := readInfo(itemDir)
@@ -113,7 +113,7 @@ func Sweep() (int, []string) {
 		}
 		exp, err := time.Parse(time.RFC3339, meta.ExpiresAt)
 		if err != nil {
-			errs = append(errs, itemDir+": 非法到期时间")
+			errs = append(errs, itemDir+": "+i18n.T("err.trashBadExpiry"))
 			continue
 		}
 		if time.Now().Before(exp) {
@@ -192,7 +192,7 @@ func Purge(ids []string) (deleted []string, errs []string) {
 	action := config.Load().Trash.ExpireAction
 	for _, id := range ids {
 		if id == "" || filepath.Base(id) != id {
-			errs = append(errs, id+": 无效的回收站项目 id")
+			errs = append(errs, id+": "+i18n.T("err.trashInvalidItem"))
 			continue
 		}
 		if err := removeExpired(filepath.Join(Root(), id), action); err != nil {
@@ -305,7 +305,7 @@ func removeExpired(itemDir string, action string) error {
 }
 
 // errNoSystemTrash 表示当前平台没有可用的系统回收站命令
-var errNoSystemTrash = errors.New("当前平台没有可用的系统回收站")
+var errNoSystemTrash error = i18n.NewError("err.trashNoSystem")
 
 // systemTrashFn 可被测试替换，避免测试污染真实系统回收站；
 // 实际实现按平台拆分在 systemtrash_darwin.go / systemtrash_linux.go / systemtrash_windows.go

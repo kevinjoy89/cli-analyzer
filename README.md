@@ -37,6 +37,7 @@ CLI Analyzer scans every CLI tool installed on your machine, attributes its **to
 - **Usage trends** — every scan appends a snapshot; view total/cleanable over time (SVG chart) and the top cleanable growers, with a bell reminder when a tool's cleanable space exceeds a configurable limit (click it to list the tools and jump to one)
 - **Tree drill-down** — expand a cleanable item to its one-level child dirs (`~/.npm` → `_cacache` 10G / `_npx` 764M) and clean only the selected children. Sub-path deletion passes the same SAFE gate + guard (must be a child of an already-scanned, attributed parent)
 - **Built-in updater** — checks GitHub Releases on startup for a new version (toggleable in 首选项, with a 24h rate-limit cache); prompts to download with a progress bar, verifies the SHA256 checksum, then opens the installer for you to complete manually. CLI: `cli-analyzer update check`
+- **Localized UI** — Simplified Chinese / Traditional Chinese / English; follows the system language by default, switchable in 首选项 → 语言 (applies instantly; macOS native menu applies after restart)
 - **Two interfaces** — CLI (`scan` / `clean` / `cache` / `trash` / `trends` / `update` / `version`) + native GUI
 
 ## Installation

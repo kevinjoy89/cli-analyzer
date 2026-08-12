@@ -3,12 +3,13 @@
 package trash
 
 import (
-	"errors"
 	"fmt"
 	"runtime"
 	"syscall"
 	"unicode/utf16"
 	"unsafe"
+
+	"cli-analyzer/internal/i18n"
 )
 
 // 常量来自 shellapi.h
@@ -48,10 +49,10 @@ func systemTrash(p string) error {
 	// 调用期间保持 src16 底层数组存活，防止被 GC 回收
 	runtime.KeepAlive(src16)
 	if r != 0 {
-		return fmt.Errorf("SHFileOperationW 失败: 0x%x (%v)", r, callErr)
+		return fmt.Errorf("%s", i18n.T("err.shFailed", map[string]any{"code": fmt.Sprintf("%x", r), "err": callErr}))
 	}
 	if op.fAborted != 0 {
-		return errors.New("回收站操作被中断")
+		return i18n.NewError("err.trashInterrupted")
 	}
 	return nil
 }

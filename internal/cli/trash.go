@@ -5,6 +5,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"cli-analyzer/internal/i18n"
 	"cli-analyzer/internal/trash"
 )
 
@@ -22,7 +23,7 @@ func runTrash(args []string) int {
 	case "empty":
 		return trashEmpty()
 	}
-	fmt.Fprintf(stderr(), "未知的 trash 子命令 %q\n", args[0])
+	fmt.Fprintf(stderr(), "%s\n", i18n.T("cli.trashUnknown", map[string]any{"cmd": args[0]}))
 	trashUsage()
 	return 1
 }
@@ -49,15 +50,15 @@ func fmtTrashTime(ts string) string {
 func trashList() int {
 	items, err := trash.List()
 	if err != nil {
-		fmt.Fprintf(stderr(), "读取回收站失败: %v\n", err)
+		fmt.Fprintf(stderr(), "%s\n", i18n.T("cli.trashReadFailed", map[string]any{"err": err}))
 		return 1
 	}
 	if len(items) == 0 {
-		fmt.Fprintln(stdout(), "回收站为空")
+		fmt.Fprintln(stdout(), i18n.T("cli.trashEmpty"))
 		return 0
 	}
 	w := tabwriter.NewWriter(stdout(), 2, 4, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\t类型\t大小\t移入时间\t到期时间\t原路径")
+	fmt.Fprintln(w, i18n.T("cli.trashHeader"))
 	for _, it := range items {
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 			it.ID, it.Kind, humanBytes(it.Bytes), fmtTrashTime(it.TrashedAt), fmtTrashTime(it.ExpiresAt), it.Original)
@@ -74,10 +75,10 @@ func trashRestore(args []string) int {
 	}
 	restored, err := trash.Restore(args[0])
 	if err != nil {
-		fmt.Fprintf(stderr(), "恢复失败: %v\n", err)
+		fmt.Fprintf(stderr(), "%s\n", i18n.T("cli.trashRestoreFailed", map[string]any{"err": err}))
 		return 1
 	}
-	fmt.Fprintf(stdout(), "已恢复到 %s\n", restored)
+	fmt.Fprintln(stdout(), i18n.T("cli.trashRestored", map[string]any{"path": restored}))
 	return 0
 }
 
@@ -85,11 +86,11 @@ func trashRestore(args []string) int {
 func trashEmpty() int {
 	items, err := trash.List()
 	if err != nil {
-		fmt.Fprintf(stderr(), "读取回收站失败: %v\n", err)
+		fmt.Fprintf(stderr(), "%s\n", i18n.T("cli.trashReadFailed", map[string]any{"err": err}))
 		return 1
 	}
 	if len(items) == 0 {
-		fmt.Fprintln(stdout(), "回收站为空")
+		fmt.Fprintln(stdout(), i18n.T("cli.trashEmpty"))
 		return 0
 	}
 	ids := make([]string, 0, len(items))
@@ -97,9 +98,9 @@ func trashEmpty() int {
 		ids = append(ids, it.ID)
 	}
 	deleted, errs := trash.Purge(ids)
-	fmt.Fprintf(stdout(), "已清空 %d 项\n", len(deleted))
+	fmt.Fprintln(stdout(), i18n.T("cli.trashEmptied", map[string]any{"n": len(deleted)}))
 	for _, e := range errs {
-		fmt.Fprintf(stderr(), "错误: %s\n", e)
+		fmt.Fprintf(stderr(), "%s\n", i18n.T("cli.errors", map[string]any{"msg": e}))
 	}
 	if len(errs) > 0 {
 		return 1

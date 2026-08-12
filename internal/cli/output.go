@@ -5,6 +5,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"cli-analyzer/internal/i18n"
 	"cli-analyzer/internal/scanner"
 )
 
@@ -25,7 +26,7 @@ func humanBytes(n int64) string {
 // printTable renders the scan result as a terminal table.
 func printTable(res *scanner.ScanResult) {
 	w := tabwriter.NewWriter(stdout(), 2, 4, 2, ' ', 0)
-	fmt.Fprintln(w, "工具\t命令\t总占用\t可清理(SAFE)\t用户数据\t来源")
+	fmt.Fprintln(w, i18n.T("cli.tableHeader"))
 	for _, t := range res.Tools {
 		cmds := fmt.Sprint(len(t.Binaries))
 		if len(t.Binaries) == 0 {
@@ -34,19 +35,19 @@ func printTable(res *scanner.ScanResult) {
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 			t.Name, cmds, humanBytes(t.Footprint), humanBytes(t.Cleanable), humanBytes(t.User), t.Installer)
 	}
-	fmt.Fprintf(w, "合计\t-\t%s\t%s\t%s\t-\n",
+	fmt.Fprintf(w, i18n.T("cli.totalsRow"),
 		humanBytes(res.Totals.Footprint), humanBytes(res.Totals.Cleanable), humanBytes(res.Totals.User))
 	w.Flush()
-	fmt.Fprintf(stdout(), "\n共 %d 个工具 · 扫描用时 %d ms · 遍历错误 %d\n", len(res.Tools), res.ScanTimeMS, res.Errors)
+	fmt.Fprint(stdout(), i18n.T("cli.statsLine", map[string]any{"n": len(res.Tools), "ms": res.ScanTimeMS, "errors": res.Errors}))
 	if len(res.Unattributed) > 0 {
-		fmt.Fprintf(stdout(), "另有 %d 个未归因目录（--full）\n", len(res.Unattributed))
+		fmt.Fprint(stdout(), i18n.T("cli.unattributed", map[string]any{"n": len(res.Unattributed)}))
 	}
 }
 
 // printCleanables lists all SAFE cleanables across tools (for `clean --list`).
 func printCleanables(res *scanner.ScanResult, onlyTools []string) {
 	w := tabwriter.NewWriter(stdout(), 2, 4, 2, ' ', 0)
-	fmt.Fprintln(w, "工具\t占用\t类型\t路径")
+	fmt.Fprintln(w, i18n.T("cli.cleanHeader"))
 	total := int64(0)
 	shown := 0
 	for _, t := range res.Tools {
@@ -63,7 +64,7 @@ func printCleanables(res *scanner.ScanResult, onlyTools []string) {
 		}
 	}
 	w.Flush()
-	fmt.Fprintf(stdout(), "\n共 %d 项可安全清理，合计 %s\n", shown, humanBytes(total))
+	fmt.Fprint(stdout(), i18n.T("cli.cleanTotal", map[string]any{"n": shown, "size": humanBytes(total)}))
 }
 
 func matchAny(name string, aliases []string, filters []string) bool {

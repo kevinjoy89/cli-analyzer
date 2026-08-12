@@ -1,9 +1,10 @@
 import './style.css';
 
-import {CancelDownload, CheckForUpdates, Clean, DownloadUpdate, GetLastResult, GetReminderConfig, GetTrashConfig, GetTrends, GetUpdateConfig, GetVersion, IgnoreVersion, InstallUpdate, OpenURL, PurgeNow, Restore, Scan, SetReminderConfig, SetTheme, SetTrashConfig, SetUpdateConfig, TrashInfo, TrashList} from '../wailsjs/go/gui/ScannerService';
+import {CancelDownload, CheckForUpdates, Clean, DownloadUpdate, GetLanguage, GetLastResult, GetReminderConfig, GetTranslations, GetTrashConfig, GetTrends, GetUpdateConfig, GetVersion, IgnoreVersion, InstallUpdate, OpenURL, PurgeNow, Restore, Scan, SetLanguage, SetLanguagePreference, SetReminderConfig, SetTheme, SetTrashConfig, SetUpdateConfig, TrashInfo, TrashList} from '../wailsjs/go/gui/ScannerService';
 import {Environment, EventsOn, Quit} from '../wailsjs/runtime/runtime';
 import {applyCleanLocally} from './lib/clean';
-import {hb, fmtTime} from './lib/format';
+import {hb} from './lib/format';
+import {activeLocale, fmtTime, normalizeNavigator, setDict, t} from './lib/i18n';
 import {computeTrendPaths} from './lib/trends';
 import {Cleanable, Grower, Point, ReminderConfig, ScanResult, Tool, TrendsResult} from './lib/types';
 
@@ -30,10 +31,10 @@ let sortDir: 1 | -1 = -1;
 // ---- theme ----
 type ThemeMode = 'system' | 'light' | 'dark';
 let themeMode: ThemeMode = 'system';
-const THEME_META: Record<ThemeMode, {icon: string; label: string}> = {
-    system: {icon: '◐', label: '跟随系统'},
-    light: {icon: '☀', label: '明亮'},
-    dark: {icon: '☾', label: '暗黑'},
+const THEME_META: Record<ThemeMode, {icon: string; labelKey: string}> = {
+    system: {icon: '◐', labelKey: 'ui.themeSystem'},
+    light: {icon: '☀', labelKey: 'ui.themeLight'},
+    dark: {icon: '☾', labelKey: 'ui.themeDark'},
 };
 
 function systemDark(): boolean {
@@ -46,9 +47,52 @@ function applyTheme(mode: ThemeMode) {
     document.documentElement.setAttribute('data-theme', resolved);
     const meta = THEME_META[mode];
     el('themeIcon').textContent = meta.icon;
-    el('themeBtn').title = `主题：${meta.label}（点击切换）`;
+    el('themeBtn').title = t('ui.themeBtnTitle', {label: t(meta.labelKey)});
     // 同步 Windows 原生标题栏/菜单栏主题（macOS/Linux 由系统与 CSS 处理）
     SetTheme(mode);
+}
+
+// ---- i18n ----
+let isMac = false;
+// 解析生效语言：显式配置优先，否则 navigator.language → 回退 zh-CN
+async function resolveLocale(): Promise<string> {
+    let cfgLang = '';
+    try { cfgLang = await GetLanguage(); } catch { /* 默认 auto */ }
+    if (cfgLang === 'zh-CN' || cfgLang === 'zh-TW' || cfgLang === 'en') return cfgLang;
+    const nav = (typeof navigator !== 'undefined' && navigator.language) ? navigator.language : '';
+    return normalizeNavigator(nav);
+}
+
+// 从 Go 侧拉取字典并设置为当前语言（GUI/Go 双端同一份语言文件）
+async function initI18n(): Promise<string> {
+    const locale = await resolveLocale();
+    try {
+        const raw = JSON.parse(await GetTranslations(locale));
+        setDict(raw.locale, raw.dict);
+        await SetLanguage(raw.locale); // 握手：同步 Go 侧错误/弹窗语言
+    } catch { /* 字典拉取失败时维持空字典，t() 返回键名 */ }
+    return activeLocale();
+}
+
+// 语言切换后：重扫静态标签 + 重渲染所有依赖文案的界面
+function applyI18n() {
+    document.querySelectorAll<HTMLElement>('[data-i18n]').forEach(n => {
+        n.textContent = t(n.dataset.i18n!);
+    });
+    document.querySelectorAll<HTMLElement>('[data-i18n-title]').forEach(n => {
+        n.title = t(n.dataset.i18nTitle!);
+    });
+    document.querySelectorAll<HTMLInputElement>('[data-i18n-placeholder]').forEach(n => {
+        n.placeholder = t(n.dataset.i18nPlaceholder!);
+    });
+    applyTheme(themeMode);
+    renderSummary(); renderToolList();
+    if (selected) renderDetail();
+    refreshTrashInfo(); refreshReminder();
+    if (!el('prefsModal').classList.contains('hidden')) openPrefs();
+    if (!el('updateModal').classList.contains('hidden') && updateState === 'idle' && lastUpdateResult?.updateAvailable) {
+        showUpdateAvailable(lastUpdateResult);
+    }
 }
 
 // ---- helpers ----
@@ -80,13 +124,13 @@ function renderSummary() {
     el('sumCleanable').textContent = hb(result.totals.cleanableBytes);
     el('sumUser').textContent = hb(result.totals.userBytes);
     el('sumTools').textContent = String(result.tools.length);
-    el('lastScan').textContent = result.scannedAt ? `上次扫描 ${result.scannedAt.slice(0, 16).replace('T', ' ')}` : '';
+    el('lastScan').textContent = result.scannedAt ? t('ui.lastScan', {time: fmtTime(result.scannedAt)}) : '';
     const status = el('statusInfo');
     status.innerHTML = '';
     const parts: Array<[string, string]> = [
-        ['扫描用时', result.scanTimeMs > 0 ? `${(result.scanTimeMs / 1000).toFixed(1)} s` : '缓存'],
-        ['遍历错误', String(result.walkErrors)],
-        ['平台', result.platform],
+        [t('ui.scanTime'), result.scanTimeMs > 0 ? `${(result.scanTimeMs / 1000).toFixed(1)} s` : t('ui.scanCache')],
+        [t('ui.walkErrors'), String(result.walkErrors)],
+        [t('ui.platform'), result.platform],
     ];
     for (const [k, v] of parts) {
         const span = document.createElement('span');
@@ -97,12 +141,12 @@ function renderSummary() {
 
 // ---- tool list ----
 // Only 总占用 / 可清理 are sortable; the rest are plain column labels.
-const COLUMNS: Array<{key: SortKey; label: string; sortable: boolean}> = [
-    {key: 'name', label: '工具', sortable: false},
-    {key: 'version', label: '版本', sortable: false},
-    {key: 'footprint', label: '总占用', sortable: true},
-    {key: 'cleanable', label: '可清理', sortable: true},
-    {key: 'user', label: '用户数据', sortable: true},
+const COLUMNS: Array<{key: SortKey; labelKey: string; sortable: boolean}> = [
+    {key: 'name', labelKey: 'ui.colTool', sortable: false},
+    {key: 'version', labelKey: 'ui.colVersion', sortable: false},
+    {key: 'footprint', labelKey: 'ui.colFootprint', sortable: true},
+    {key: 'cleanable', labelKey: 'ui.colCleanable', sortable: true},
+    {key: 'user', labelKey: 'ui.colUser', sortable: true},
 ];
 
 function sortTools(tools: Tool[]): Tool[] {
@@ -128,17 +172,17 @@ function renderToolList() {
     const list = el('toolList');
     list.innerHTML = '';
     if (!result) {
-        list.innerHTML = '<div class="empty">暂无数据 — 点击"重新扫描"</div>';
+        list.innerHTML = '<div class="empty">' + esc(t('ui.noData')) + '</div>';
         return;
     }
     const q = filterText.toLowerCase();
     const tools = sortTools(result.tools.filter(t => !q || t.name.toLowerCase().includes(q) || t.aliases.some(a => a.toLowerCase().includes(q))));
     const head = document.createElement('div');
     head.className = 'tool-header';
-    head.innerHTML = COLUMNS.map(({key, label, sortable}) => {
-        if (!sortable) return `<span class="h">${label}</span>`;
+    head.innerHTML = COLUMNS.map(({key, labelKey, sortable}) => {
+        if (!sortable) return `<span class="h">${esc(t(labelKey))}</span>`;
         const arrow = key === sortKey ? (sortDir === -1 ? ' ▼' : ' ▲') : '';
-        return `<button class="h" data-key="${key}">${label}${arrow}</button>`;
+        return `<button class="h" data-key="${key}">${esc(t(labelKey))}${arrow}</button>`;
     }).join('');
     list.appendChild(head);
     head.querySelectorAll<HTMLButtonElement>('button.h').forEach(btn => {
@@ -153,17 +197,17 @@ function renderToolList() {
             renderToolList();
         };
     });
-    for (const t of tools) {
+    for (const tool of tools) {
         const row = document.createElement('div');
-        row.className = 'tool-row' + (t.name === selected ? ' selected' : '');
-        const clean = t.cleanableBytes > 0 ? `<span class="cleanable-flag">✓</span>` : '';
+        row.className = 'tool-row' + (tool.name === selected ? ' selected' : '');
+        const clean = tool.cleanableBytes > 0 ? `<span class="cleanable-flag">✓</span>` : '';
         row.innerHTML = `
-            <span class="tool-name" title="${esc(t.name)}">${esc(t.name)}</span>
-            <span class="ver">${esc(t.version || '—')}</span>
-            <span class="num">${hb(t.footprintBytes)}</span>
-            <span class="num clean">${hb(t.cleanableBytes)}${clean}</span>
-            <span class="num user">${hb(t.userBytes)}</span>`;
-        row.onclick = () => { selected = t.name; selectedCleanIds.clear(); expandedCleanIds.clear(); renderToolList(); renderDetail(); };
+            <span class="tool-name" title="${esc(tool.name)}">${esc(tool.name)}</span>
+            <span class="ver">${esc(tool.version || '—')}</span>
+            <span class="num">${hb(tool.footprintBytes)}</span>
+            <span class="num clean">${hb(tool.cleanableBytes)}${clean}</span>
+            <span class="num user">${hb(tool.userBytes)}</span>`;
+        row.onclick = () => { selected = tool.name; selectedCleanIds.clear(); expandedCleanIds.clear(); renderToolList(); renderDetail(); };
         list.appendChild(row);
     }
 }
@@ -172,40 +216,40 @@ function renderToolList() {
 function renderDetail() {
     const body = el('detailBody');
     if (!result || !selected) {
-        body.innerHTML = '<div class="empty">← 选择一个工具查看详情</div>';
+        body.innerHTML = '<div class="empty">' + esc(t('ui.selectTool')) + '</div>';
         return;
     }
-    const t = result.tools.find(x => x.name === selected);
-    if (!t) return;
+    const tool = result.tools.find(x => x.name === selected);
+    if (!tool) return;
 
-    const installer = t.installer ? `<span class="badge installer">${esc(t.installer)}</span>` : '';
+    const installer = tool.installer ? `<span class="badge installer">${esc(tool.installer)}</span>` : '';
     const metaItems: string[] = [];
-    if (t.version) metaItems.push(`<span class="meta-item">版本 <b>${esc(t.version)}</b></span>`);
-    if (t.updatedAt) metaItems.push(`<span class="meta-item">最近更新 <b>${fmtTime(t.updatedAt)}</b></span>`);
-    const metaHtml = (t.description || t.homepage || metaItems.length)
+    if (tool.version) metaItems.push(`<span class="meta-item">${esc(t('ui.version'))} <b>${esc(tool.version)}</b></span>`);
+    if (tool.updatedAt) metaItems.push(`<span class="meta-item">${esc(t('ui.updatedAt'))} <b>${fmtTime(tool.updatedAt)}</b></span>`);
+    const metaHtml = (tool.description || tool.homepage || metaItems.length)
         ? `<div class="detail-meta">
-            ${t.description ? `<div class="meta-desc">${esc(t.description)}</div>` : ''}
-            <div class="meta-row">${metaItems.join('')}${t.homepage ? `<a class="meta-link" id="hpLink" href="#">官网 ↗</a>` : ''}</div>
+            ${tool.description ? `<div class="meta-desc">${esc(tool.description)}</div>` : ''}
+            <div class="meta-row">${metaItems.join('')}${tool.homepage ? `<a class="meta-link" id="hpLink" href="#">${esc(t('ui.homepage'))}</a>` : ''}</div>
           </div>`
         : '';
-    const binaries = t.binaries.length
-        ? `<div class="detail-list">${t.binaries.map(b =>
+    const binaries = tool.binaries.length
+        ? `<div class="detail-list">${tool.binaries.map(b =>
             `<div class="detail-item"><span class="badge safe">bin</span><span class="path" title="${esc(b.real)}">${esc(b.real)}</span><span class="size">${hb(b.size)}</span></div>`).join('')}</div>`
-        : '<div class="detail-list"><div class="detail-item"><span class="muted">无独立二进制（规则表种子）</span></div></div>';
+        : '<div class="detail-list"><div class="detail-item"><span class="muted">' + esc(t('ui.noBinary')) + '</span></div></div>';
 
-    const dataDirs = t.dataDirs.length
-        ? `<div class="detail-list">${t.dataDirs.map(d =>
+    const dataDirs = tool.dataDirs.length
+        ? `<div class="detail-list">${tool.dataDirs.map(d =>
             `<div class="detail-item"><span class="badge ${d.tier}">${d.tier}</span><span class="path" title="${esc(d.path)}">${esc(d.path)}</span><span class="size ${d.tier}">${hb(d.bytes)}</span><span class="keep">${esc(d.kind)}</span></div>`).join('')}</div>`
         : '';
 
-    const cleanables = t.cleanables.filter(c => c.tier === 'safe');
+    const cleanables = tool.cleanables.filter(c => c.tier === 'safe');
     const cleanHtml = cleanables.length
         ? `<div class="detail-list">${cleanables.map(c => {
             const checked = selectedCleanIds.has(c.id) ? 'checked' : '';
             const expanded = expandedCleanIds.has(c.id);
             const hasSub = (c.sub ?? []).length > 0;
             const toggle = hasSub
-                ? `<button class="sub-toggle${expanded ? ' expanded' : ''}" data-id="${esc(c.id)}" title="展开 / 折叠明细"><span class="st-caret"></span></button>`
+                ? `<button class="sub-toggle${expanded ? ' expanded' : ''}" data-id="${esc(c.id)}" title="${esc(t('ui.expandCollapse'))}"><span class="st-caret"></span></button>`
                 : `<span class="sub-toggle spacer"></span>`;
             return `<div class="clean-block">
                 <div class="detail-item clean-row">
@@ -218,21 +262,21 @@ function renderDetail() {
                 </div>${expanded ? subRows(c, selectedCleanIds.has(c.id)) : ''}
             </div>`;
         }).join('')}</div>`
-        : '<div class="detail-list"><div class="detail-item"><span class="muted">没有可安全清理的项目</span></div></div>';
+        : '<div class="detail-list"><div class="detail-item"><span class="muted">' + esc(t('ui.noCleanable')) + '</span></div></div>';
 
     body.innerHTML = `
-        <div class="detail-head"><h2>${esc(t.name)}</h2>${installer}</div>
+        <div class="detail-head"><h2>${esc(tool.name)}</h2>${installer}</div>
         ${metaHtml}
-        <div class="detail-section"><h4>二进制</h4>${binaries}</div>
-        ${dataDirs ? `<div class="detail-section"><h4>数据目录</h4>${dataDirs}</div>` : ''}
-        <div class="detail-section"><h4>可安全清理（SAFE）</h4>${cleanHtml}</div>
+        <div class="detail-section"><h4>${esc(t('ui.sectionBinaries'))}</h4>${binaries}</div>
+        ${dataDirs ? `<div class="detail-section"><h4>${esc(t('ui.sectionDataDirs'))}</h4>${dataDirs}</div>` : ''}
+        <div class="detail-section"><h4>${esc(t('ui.sectionSafe'))}</h4>${cleanHtml}</div>
         <div class="detail-actions">
-            <button id="cleanBtn" class="btn danger">清理选中（SAFE）</button>
-            <span class="sel-info" id="selInfo">已选 ${selectedCleanIds.size} 项</span>
+            <button id="cleanBtn" class="btn danger">${esc(t('ui.cleanSelected'))}</button>
+            <span class="sel-info" id="selInfo">${esc(t('ui.selectedCount', {n: selectedCleanIds.size}))}</span>
         </div>`;
 
     const hp = body.querySelector<HTMLAnchorElement>('#hpLink');
-    if (hp) hp.onclick = (e) => { e.preventDefault(); OpenURL(t.homepage); };
+    if (hp) hp.onclick = (e) => { e.preventDefault(); OpenURL(tool.homepage); };
 
     body.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach(cb => {
         cb.onchange = () => {
@@ -266,7 +310,7 @@ function renderDetail() {
     cleanBtn.disabled = selectedCleanIds.size === 0;
     cleanBtn.onclick = () => {
         if (selectedCleanIds.size === 0) return;
-        showConfirmModal(selectedItems(t));
+        showConfirmModal(selectedItems(tool));
     };
 }
 
@@ -302,7 +346,7 @@ function subRows(c: Cleanable, parentSelected: boolean): string {
             <span class="size clean">${hb(s.bytes)}</span>
         </div>`;
     }).join('');
-    const moreHtml = more > 0 ? `<div class="sub-more">+ ${more} 个更小的子项…</div>` : '';
+    const moreHtml = more > 0 ? `<div class="sub-more">${esc(t('ui.moreSubitems', {n: more}))}</div>` : '';
     return `<div class="sub-list">${rows}${moreHtml}</div>`;
 }
 
@@ -332,14 +376,14 @@ function selectedItems(t: Tool): PickItem[] {
 // ---- confirm modal ----
 function showConfirmModal(items: PickItem[]) {
     const total = items.reduce((a, c) => a + c.bytes, 0);
-    el('modalTitle').textContent = `确认清理 ${items.length} 项（${hb(total)}）`;
+    el('modalTitle').textContent = t('ui.confirmClean', {n: items.length, size: hb(total)});
     el('modalBody').innerHTML = items.map(c =>
         `<div class="clean-row">
             <span class="badge safe">${esc(c.kind)}</span>
             <span class="path" style="flex:1;font-family:var(--mono);font-size:11px;white-space:normal;word-break:break-all">${esc(c.path)}</span>
             <span class="size" style="font-family:var(--mono);color:var(--clean);white-space:nowrap">${hb(c.bytes)}</span>
         </div>`).join('')
-        + '<div class="warn">仅删除 SAFE 级项目（缓存/旧版本/备份）。用户数据永远不会被自动删除。</div>';
+        + '<div class="warn">' + esc(t('ui.safeOnly')) + '</div>';
     el('modal').classList.remove('hidden');
     el('modalConfirm').onclick = async () => {
         el('modal').classList.add('hidden');
@@ -349,7 +393,8 @@ function showConfirmModal(items: PickItem[]) {
             const del = (rep.deleted ?? []).length;
             const skipped = (rep.skipped ?? []).length;
             const hasErr = (rep.errors ?? []).length > 0;
-            showToast(`清理完成：删除 ${del} 项，释放 ${hb(rep.freedBytes)}${skipped ? `，${skipped} 项被跳过` : ''}`, hasErr);
+            const extra = skipped ? t('ui.cleanSkipped', {n: skipped}) : '';
+            showToast(t('ui.cleanDone', {del, size: hb(rep.freedBytes), extra}), hasErr);
             selectedCleanIds.clear();
             if (del > 0 && result) {
                 // 本地立即刷新详情，无需等整体重扫
@@ -358,7 +403,7 @@ function showConfirmModal(items: PickItem[]) {
             }
             rescan();
         } catch (e) {
-            showToast('清理失败: ' + String(e), true);
+            showToast(t('ui.cleanFailed', {err: String(e)}), true);
         }
     };
     el('modalCancel').onclick = () => el('modal').classList.add('hidden');
@@ -372,11 +417,11 @@ async function refreshTrashInfo() {
     try {
         const info: TrashInfoData = JSON.parse(await TrashInfo());
         const total = info.totalBytes || 0;
-        el('trashInfo').textContent = total > 0 ? `${hb(total)} · ${info.items} 项` : '0 B';
+        el('trashInfo').textContent = total > 0 ? t('ui.trashInfo', {size: hb(total), n: info.items}) : t('ui.trashInfoEmpty');
         el('trashBtn').title = info.earliestExpiresAt
-            ? `内置回收站 ${hb(total)} · ${info.items} 项 · 最早 ${fmtTime(info.earliestExpiresAt)} 到期释放`
-            : '内置回收站：清理项在保留期内可恢复';
-    } catch { el('trashInfo').textContent = '0 B'; }
+            ? t('ui.trashBtnFull', {size: hb(total), n: info.items, time: fmtTime(info.earliestExpiresAt)})
+            : t('ui.trashBtnTitle');
+    } catch { el('trashInfo').textContent = t('ui.trashInfoEmpty'); }
 }
 
 function openTrashPanel() {
@@ -391,30 +436,30 @@ async function refreshTrashList() {
         if (parsed.error) { body.innerHTML = `<div class="warn">${esc(parsed.error)}</div>`; return; }
         trashItems = parsed;
     } catch (e) {
-        body.innerHTML = `<div class="warn">回收站读取失败: ${String(e)}</div>`;
+        body.innerHTML = `<div class="warn">${esc(t('ui.trashReadFailed', {err: String(e)}))}</div>`;
         return;
     }
-    if (!trashItems.length) { body.innerHTML = '<div class="empty">回收站为空</div>'; return; }
+    if (!trashItems.length) { body.innerHTML = '<div class="empty">' + esc(t('ui.trashEmpty')) + '</div>'; return; }
     body.innerHTML = trashItems.map(it => `
         <div class="trash-item">
             <div class="trash-head">
                 <span class="badge safe">${esc(it.kind)}</span>
                 <span class="trash-tool">${esc(it.tool)}</span>
                 <span class="size clean">${hb(it.bytes)}</span>
-                <span class="trash-exp">${fmtTime(it.trashedAt)} 移入 · ${fmtTime(it.expiresAt)} 到期</span>
+                <span class="trash-exp">${esc(t('ui.trashExp', {time: fmtTime(it.trashedAt), time2: fmtTime(it.expiresAt)}))}</span>
             </div>
             <div class="trash-path" title="${esc(it.original)}">${esc(it.original)}</div>
             <div class="trash-actions">
-                <button class="btn small" data-restore="${esc(it.id)}">恢复</button>
-                <button class="btn small danger" data-purge="${esc(it.id)}">彻底删除</button>
+                <button class="btn small" data-restore="${esc(it.id)}">${esc(t('ui.restore'))}</button>
+                <button class="btn small danger" data-purge="${esc(it.id)}">${esc(t('ui.purge'))}</button>
             </div>
         </div>`).join('');
     body.querySelectorAll<HTMLButtonElement>('[data-restore]').forEach(btn => {
         btn.onclick = async () => {
             const r = JSON.parse(await Restore(btn.dataset.restore!));
-            if (r.error) showToast('恢复失败: ' + r.error, true);
+            if (r.error) showToast(t('ui.restoreFailed', {err: r.error}), true);
             else {
-                showToast('已恢复到 ' + r.restored);
+                showToast(t('ui.restored', {path: r.restored}));
                 rescan(); // 后台重扫，让主界面详情反映恢复的文件
             }
             refreshTrashList(); refreshTrashInfo();
@@ -423,8 +468,8 @@ async function refreshTrashList() {
     body.querySelectorAll<HTMLButtonElement>('[data-purge]').forEach(btn => {
         btn.onclick = async () => {
             const r = JSON.parse(await PurgeNow([btn.dataset.purge!]));
-            if ((r.errors ?? []).length) showToast('清除失败: ' + r.errors.join('; '), true);
-            else { showToast('已清除'); rescan(); }
+            if ((r.errors ?? []).length) showToast(t('ui.purgeFailed', {err: r.errors.join('; ')}), true);
+            else { showToast(t('ui.purged')); rescan(); }
             refreshTrashList(); refreshTrashInfo();
         };
     });
@@ -442,19 +487,19 @@ function showUpdateAvailable(res: UpdateResult) {
     updateState = 'idle';
     const body = el('updateBody');
     body.innerHTML = `
-        <p class="update-versions">当前 <b>v${esc(res.current)}</b> → 最新 <b>v${esc(res.latest)}</b></p>
-        <p class="muted">下载安装包后由你手动完成安装。</p>
+        <p class="update-versions">${t('upd.versions', {current: res.current, latest: res.latest})}</p>
+        <p class="muted">${esc(t('upd.manualInstall'))}</p>
         <div class="update-actions">
-            <button class="btn" id="updLater">稍后</button>
-            <button class="btn" id="updIgnore">忽略该版本</button>
-            <button class="btn primary" id="updDownload">下载</button>
+            <button class="btn" id="updLater">${esc(t('upd.later'))}</button>
+            <button class="btn" id="updIgnore">${esc(t('upd.ignore'))}</button>
+            <button class="btn primary" id="updDownload">${esc(t('upd.download'))}</button>
         </div>`;
     el('updateModal').classList.remove('hidden');
     el('updLater').onclick = () => el('updateModal').classList.add('hidden');
     el('updIgnore').onclick = async () => {
         await IgnoreVersion(res.latest);
         el('updateModal').classList.add('hidden');
-        showToast(`已忽略 v${res.latest}`);
+        showToast(t('upd.ignored', {version: res.latest}));
     };
     el('updDownload').onclick = () => startDownload();
 }
@@ -464,13 +509,13 @@ function startDownload() {
     updateState = 'downloading';
     const body = el('updateBody');
     body.innerHTML = `
-        <p class="update-versions">正在下载 <b>${esc(lastUpdateResult?.assetName ?? '')}</b></p>
+        <p class="update-versions">${t('upd.downloading', {name: esc(lastUpdateResult?.assetName ?? '')})}</p>
         <div class="progress"><div id="updBar" class="progress-bar" style="width:0%"></div></div>
         <p id="updPct" class="muted">0%</p>
-        <div class="update-actions"><button class="btn" id="updCancel">取消</button></div>`;
+        <div class="update-actions"><button class="btn" id="updCancel">${esc(t('upd.cancel'))}</button></div>`;
     el('updCancel').onclick = () => { CancelDownload(); };
     DownloadUpdate().then(err => {
-        if (err) { showToast('下载启动失败: ' + err, true); el('updateModal').classList.add('hidden'); }
+        if (err) { showToast(t('upd.startFailed', {err}), true); el('updateModal').classList.add('hidden'); }
     });
 }
 
@@ -480,12 +525,12 @@ function showUpdateDownloaded(d: UpdateDownloaded) {
     const isArchive = d.installSource === 'tarball' || d.installSource === 'portable';
     const body = el('updateBody');
     body.innerHTML = `
-        <p class="update-versions">下载完成 ✓</p>
-        <p class="muted">${isArchive ? '压缩包已保存（非安装器）：' : '安装包已保存：'}<code>${esc(d.path)}</code></p>
-        ${isArchive ? `<p class="muted">当前二进制位置：<code>${esc(d.executablePath)}</code></p>` : ''}
+        <p class="update-versions">${esc(t('upd.downloaded'))}</p>
+        <p class="muted">${isArchive ? esc(t('upd.archiveSaved')) : esc(t('upd.installerSaved'))}<code>${esc(d.path)}</code></p>
+        ${isArchive ? `<p class="muted">${esc(t('upd.binaryPath'))}<code>${esc(d.executablePath)}</code></p>` : ''}
         <div class="update-actions">
-            <button class="btn" id="updLater">稍后</button>
-            <button class="btn primary" id="updInstall">立即安装</button>
+            <button class="btn" id="updLater">${esc(t('upd.later'))}</button>
+            <button class="btn primary" id="updInstall">${esc(t('upd.installNow'))}</button>
         </div>`;
     el('updLater').onclick = () => el('updateModal').classList.add('hidden');
     // 点击后 Go 侧先打开安装包再退出应用（design D7）
@@ -497,11 +542,11 @@ function showUpdateVerifyFailed(err: string, releaseURL: string) {
     updateState = 'idle';
     const body = el('updateBody');
     body.innerHTML = `
-        <p class="warn">下载校验失败，未提供安装入口</p>
+        <p class="warn">${esc(t('upd.verifyFailed'))}</p>
         <p class="muted">${esc(err)}</p>
         <div class="update-actions">
-            <button class="btn" id="updClose">关闭</button>
-            <button class="btn" id="updRelease">打开 Release 页面</button>
+            <button class="btn" id="updClose">${esc(t('upd.close'))}</button>
+            <button class="btn" id="updRelease">${esc(t('upd.releasePage'))}</button>
         </div>`;
     el('updClose').onclick = () => el('updateModal').classList.add('hidden');
     el('updRelease').onclick = () => OpenURL(releaseURL || 'https://github.com/kevinjoy89/cli-analyzer/releases');
@@ -511,10 +556,10 @@ function showUpdateVerifyFailed(err: string, releaseURL: string) {
 async function manualCheck() {
     let res: UpdateResult;
     try { res = JSON.parse(await CheckForUpdates()); }
-    catch (e) { showToast('检查更新失败: ' + String(e), true); return; }
+    catch (e) { showToast(t('upd.checkFailed', {err: String(e)}), true); return; }
     if (res.error) { showToast(res.error, true); return; }
     if (res.updateAvailable) showUpdateAvailable(res);
-    else showToast(`已是最新版本 v${res.latest}`);
+    else showToast(t('upd.upToDate', {version: res.latest}));
 }
 
 // ---- preferences ----
@@ -525,34 +570,49 @@ async function openPrefs() {
     try { cfg = JSON.parse(await GetTrashConfig()); } catch { cfg = {retentionDays: 7, expireAction: 'system-trash', useTrash: true}; }
     try { rem = JSON.parse(await GetReminderConfig()); } catch { rem = {thresholdBytes: 5 * 1024 * 1024 * 1024}; }
     try { upd = JSON.parse(await GetUpdateConfig()); } catch { upd = {}; }
+    let cfgLang = '';
+    try { cfgLang = await GetLanguage(); } catch { /* auto */ }
     const threshGB = (rem.thresholdBytes || 5 * 1024 * 1024 * 1024) / (1024 * 1024 * 1024);
+    const langOpts: Array<[string, string]> = [
+        ['auto', t('ui.langAuto')],
+        ['zh-CN', t('ui.langZhCN')],
+        ['zh-TW', t('ui.langZhTW')],
+        ['en', t('ui.langEn')],
+    ];
     el('prefsBody').innerHTML = `
-        <div class="pref-head">♻️ 内置回收站</div>
-        <label class="pref-row">保留天数
+        <div class="pref-head">${esc(t('ui.prefsLanguage'))}</div>
+        <label class="pref-row">${esc(t('ui.prefsLanguage'))}
+            <select id="prefLanguage">
+                ${langOpts.map(([v, label]) => `<option value="${v}" ${cfgLang === v ? 'selected' : ''}>${esc(label)}</option>`).join('')}
+            </select>
+        </label>
+        <div class="pref-head">${esc(t('ui.prefsTrashHead'))}</div>
+        <label class="pref-row">${esc(t('ui.prefsRetention'))}
             <input id="prefRetention" type="number" min="1" max="365" value="${cfg.retentionDays}"/>
         </label>
-        <label class="pref-row">到期后
+        <label class="pref-row">${esc(t('ui.prefsExpire'))}
             <select id="prefExpire">
-                <option value="system-trash" ${cfg.expireAction === 'system-trash' ? 'selected' : ''}>移动到系统回收站</option>
-                <option value="permanent" ${cfg.expireAction === 'permanent' ? 'selected' : ''}>彻底删除</option>
+                <option value="system-trash" ${cfg.expireAction === 'system-trash' ? 'selected' : ''}>${esc(t('ui.prefsExpireSystem'))}</option>
+                <option value="permanent" ${cfg.expireAction === 'permanent' ? 'selected' : ''}>${esc(t('ui.prefsExpirePermanent'))}</option>
             </select>
         </label>
         <label class="pref-row check">
             <input id="prefUseTrash" type="checkbox" ${cfg.useTrash ? 'checked' : ''}/>
-            <span>清理默认移入内置回收站（取消则直接删除）</span>
+            <span>${esc(t('ui.prefsUseTrash'))}</span>
         </label>
-        <div class="pref-head">趋势</div>
-        <label class="pref-row">清理提醒阈值
+        <div class="pref-head">${esc(t('ui.prefsTrendsHead'))}</div>
+        <label class="pref-row">${esc(t('ui.prefsThreshold'))}
             <input id="prefThreshold" type="number" min="0" step="0.5" value="${threshGB.toFixed(1)}"/>
             <span>GB</span>
         </label>
-        <div class="pref-head">更新</div>
+        <div class="pref-head">${esc(t('ui.prefsUpdateHead'))}</div>
         <label class="pref-row check">
             <input id="prefCheckUpdates" type="checkbox" ${upd.checkUpdates !== false ? 'checked' : ''}/>
-            <span>启动时自动检查更新（Help 菜单可随时手动检查）</span>
+            <span>${esc(t('ui.prefsAutoCheck'))}</span>
         </label>`;
     el('prefsModal').classList.remove('hidden');
     el('prefsSave').onclick = async () => {
+        const lang = (el('prefLanguage') as HTMLSelectElement).value;
         const next: TrashConfig = {
             retentionDays: Math.max(1, parseInt((el('prefRetention') as HTMLInputElement).value) || 7),
             expireAction: (el('prefExpire') as HTMLSelectElement).value,
@@ -570,9 +630,25 @@ async function openPrefs() {
         const err = await SetTrashConfig(JSON.stringify(next));
         const rerr = await SetReminderConfig(JSON.stringify(rem2));
         const uerr = await SetUpdateConfig(JSON.stringify(upd2));
+        const lerr = await SetLanguagePreference(lang);
+        // 语言切换：拉取新字典 → 即时重渲染 + 同步 Go 侧
+        if (!lerr && lang !== activeLocale()) {
+            const resolved = lang === 'auto' ? normalizeNavigator(navigator.language || '') : lang;
+            try {
+                const raw = JSON.parse(await GetTranslations(resolved));
+                setDict(raw.locale, raw.dict);
+                await SetLanguage(raw.locale);
+            } catch { /* 保持当前字典 */ }
+        }
         el('prefsModal').classList.add('hidden');
-        if (err || rerr || uerr) showToast('保存失败: ' + (err || rerr || uerr), true);
-        else { showToast('配置已保存'); refreshTrashInfo(); refreshReminder(); }
+        if (err || rerr || uerr || lerr) showToast(t('ui.saveFailed', {err: (err || rerr || uerr || lerr)}), true);
+        else {
+            showToast(t('ui.saved'));
+            refreshTrashInfo(); refreshReminder();
+            applyI18n();
+            // 原生菜单下次启动生效（仅 macOS 原生菜单；Windows/Linux 为 HTML 菜单即时切换）
+            if (lang !== cfgLang && isMac) showToast(t('ui.menuRestartNote'));
+        }
     };
     el('prefsCancel').onclick = () => el('prefsModal').classList.add('hidden');
 }
@@ -601,7 +677,7 @@ async function refreshReminder() {
 function renderBellPanel() {
     const panel = el('bellPanel');
     if (!reminderTools.length) {
-        panel.innerHTML = '<div class="empty">暂无提醒</div>';
+        panel.innerHTML = '<div class="empty">' + esc(t('ui.noReminders')) + '</div>';
         return;
     }
     const shown = reminderTools.slice(0, 8);
@@ -610,7 +686,7 @@ function renderBellPanel() {
             <span class="bell-name">${esc(t.name)}</span>
             <span class="size clean">${hb(t.cleanableBytes)}</span>
         </button>`).join('')
-        + (reminderTools.length > 8 ? `<div class="bell-more">+ ${reminderTools.length - 8} 个工具…</div>` : '');
+        + (reminderTools.length > 8 ? `<div class="bell-more">${esc(t('ui.bellMore', {n: reminderTools.length - 8}))}</div>` : '');
     panel.querySelectorAll<HTMLButtonElement>('.bell-item').forEach(btn => {
         btn.onclick = () => {
             const name = btn.dataset.tool!;
@@ -633,7 +709,7 @@ async function refreshTrends() {
         if (parsed.error) { el('trendChart').innerHTML = `<div class="warn">${esc(parsed.error)}</div>`; return; }
         tr = parsed;
     } catch (e) {
-        el('trendChart').innerHTML = `<div class="warn">趋势读取失败: ${String(e)}</div>`;
+        el('trendChart').innerHTML = `<div class="warn">${esc(t('ui.trendsReadFailed', {err: String(e)}))}</div>`;
         return;
     }
     renderTrendChart(el('trendChart'), tr.points);
@@ -645,13 +721,13 @@ const CHART_W = 760, CHART_H = 240, CHART_PAD = 34;
 function renderTrendChart(container: HTMLElement, points: Point[]) {
     const { footprint, cleanable, labels, max } = computeTrendPaths(points, CHART_W, CHART_H, CHART_PAD);
     if (!footprint) {
-        container.innerHTML = '<div class="empty">数据积累中 — 完成两次扫描后即可查看趋势</div>';
+        container.innerHTML = '<div class="empty">' + esc(t('ui.trendsPending')) + '</div>';
         return;
     }
     container.innerHTML = `
         <div class="trend-legend">
-            <span><i class="dot user"></i>总占用</span>
-            <span><i class="dot clean"></i>可清理</span>
+            <span><i class="dot user"></i>${esc(t('ui.legendFootprint'))}</span>
+            <span><i class="dot clean"></i>${esc(t('ui.legendCleanable'))}</span>
         </div>
         <svg viewBox="0 0 ${CHART_W} ${CHART_H}" preserveAspectRatio="xMidYMid meet" width="100%">
             <path d="${footprint}" fill="none" stroke="var(--user)" stroke-width="2" opacity="0.9"/>
@@ -663,7 +739,7 @@ function renderTrendChart(container: HTMLElement, points: Point[]) {
 
 function renderGrowers(container: HTMLElement, growers: Grower[]) {
     if (!growers.length) {
-        container.innerHTML = '<div class="muted">暂无数据 — 完成两次扫描后可查看增量排行</div>';
+        container.innerHTML = '<div class="muted">' + esc(t('ui.growersEmpty')) + '</div>';
         return;
     }
     container.innerHTML = growers.map((g, i) =>
@@ -717,8 +793,8 @@ function initMenuBar() {
 
 // ---- scan flow ----
 async function rescan() {
-    setScanning(true, '扫描中…');
-    try { await Scan(); } catch (e) { setScanning(false); showToast('扫描启动失败: ' + String(e), true); }
+    setScanning(true, t('ui.scanning'));
+    try { await Scan(); } catch (e) { setScanning(false); showToast(t('ui.scanStartFailed', {err: String(e)}), true); }
 }
 
 async function init() {
@@ -728,7 +804,12 @@ async function init() {
     try {
         const env = await Environment();
         document.body.classList.add('platform-' + env.platform);
+        if (env.platform === 'darwin') isMac = true;
     } catch { /* non-Wails context (plain browser preview) */ }
+
+    // 初始化 i18n（拉取字典 + SetLanguage 握手），再渲染界面
+    await initI18n();
+    applyI18n();
 
     initMenuBar();
 
@@ -750,7 +831,7 @@ async function init() {
         const ids = trashItems.map(it => it.id);
         if (!ids.length) return;
         const r = JSON.parse(await PurgeNow(ids));
-        showToast((r.errors ?? []).length ? '清空失败: ' + r.errors.join('; ') : `已清空 ${r.deleted.length} 项`, (r.errors ?? []).length > 0);
+        showToast((r.errors ?? []).length ? t('ui.emptyTrashFailed', {err: r.errors.join('; ')}) : t('ui.emptyTrashDone', {n: r.deleted.length}), (r.errors ?? []).length > 0);
         if (r.deleted?.length) rescan();
         refreshTrashList(); refreshTrashInfo();
     };
@@ -792,7 +873,7 @@ async function init() {
         if (updateState !== 'downloading') return;
         const bar = el('updBar') as HTMLElement;
         const pct = el('updPct');
-        if (!p.total) { bar.style.width = '100%'; pct.textContent = `${p.downloaded} 字节`; return; }
+        if (!p.total) { bar.style.width = '100%'; pct.textContent = t('ui.bytes', {n: p.downloaded}); return; }
         const n = Math.min(100, Math.round((p.downloaded / p.total) * 100));
         bar.style.width = n + '%';
         pct.textContent = `${n}%（${hb(p.downloaded)} / ${hb(p.total)}）`;
@@ -802,12 +883,12 @@ async function init() {
     EventsOn('update:cancelled', () => {
         updateState = 'idle';
         el('updateModal').classList.add('hidden');
-        showToast('已取消下载');
+        showToast(t('ui.downloadCancelled'));
     });
     EventsOn('update:error', (p: {error: string}) => {
         updateState = 'idle';
         el('updateModal').classList.add('hidden');
-        showToast('更新失败: ' + p.error, true);
+        showToast(t('ui.updateFailed', {err: p.error}), true);
     });
 
     // theme toggle: system -> light -> dark -> system
@@ -832,7 +913,7 @@ async function init() {
         setScanning(false);
         try {
             if (payload && typeof payload === 'object' && 'error' in (payload as object)) {
-                showToast('扫描失败: ' + JSON.stringify(payload), true);
+                showToast(t('ui.scanFailed', {err: JSON.stringify(payload)}), true);
                 return;
             }
             const parsed = typeof payload === 'string' ? JSON.parse(payload) as ScanResult : null;
@@ -842,7 +923,7 @@ async function init() {
             }
             renderSummary(); renderToolList(); renderDetail(); refreshTrashInfo(); refreshReminder();
         } catch (err) {
-            showToast('扫描结果解析失败', true);
+            showToast(t('ui.scanParseFailed'), true);
         }
     });
 

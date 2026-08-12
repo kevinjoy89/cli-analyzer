@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"cli-analyzer/internal/disk"
+	"cli-analyzer/internal/i18n"
 	"cli-analyzer/internal/platform"
 	"cli-analyzer/internal/rules"
 )
@@ -86,7 +87,7 @@ func attribute(tools map[string]*toolBuilder, order []string, ruleTable *rules.T
 			if dd.Kind == "cache" && dd.Tier == TierSafe {
 				tb.cleanables = append(tb.cleanables, Cleanable{
 					ID: id + "|cache|" + dd.Path, Tool: id, Path: dd.Path,
-					Tier: TierSafe, Kind: "cache", Desc: "缓存目录（可安全清空）",
+					Tier: TierSafe, Kind: "cache", Desc: i18n.T("ui.kind.cache"),
 				})
 			}
 		}
@@ -118,7 +119,7 @@ func attribute(tools map[string]*toolBuilder, order []string, ruleTable *rules.T
 		id := tb.name
 		tb.cleanables = append(tb.cleanables, Cleanable{
 			ID: id + "|backup|" + path, Tool: id, Path: path,
-			Tier: TierSafe, Kind: "backup", Desc: "备份文件",
+			Tier: TierSafe, Kind: "backup", Desc: i18n.T("ui.kind.backup"),
 		})
 		tb.addMeasure(path)
 	}
@@ -129,7 +130,8 @@ func attribute(tools map[string]*toolBuilder, order []string, ruleTable *rules.T
 		tb.version = tb.currentVersion()
 		tb.updatedAt = tb.updatedAtTime()
 		if m := ruleTable.Meta(id); m.Homepage != "" || m.Description != "" {
-			tb.homepage, tb.description = m.Homepage, m.Description
+			tb.homepage = m.Homepage
+			tb.description = i18n.T(m.Description)
 		}
 	}
 
@@ -371,7 +373,7 @@ func (b *toolBuilder) deriveOldVersions(id string) {
 		return
 	}
 	keep := "current symlink target: " + b.currentVer
-	desc := "旧版本"
+	desc := i18n.T("ui.kind.oldVersion")
 	tier := TierSafe
 	if kind == "toolchain" {
 		keep = "default toolchain: " + b.currentVer
@@ -381,7 +383,7 @@ func (b *toolBuilder) deriveOldVersions(id string) {
 		// reference-check at scan time, so toolchains are display-only — removing
 		// them is always manual (pyenv uninstall / rustup toolchain uninstall).
 		tier = TierUser
-		desc = "旧工具链（仅展示；依赖它的 pip 脚本 / 项目可能引用此解释器，请用 pyenv uninstall / rustup toolchain uninstall 手动移除）"
+		desc = i18n.T("ui.kind.oldToolchain")
 	}
 	currentPath := filepath.Join(root, b.currentVer)
 	for _, v := range listNames(root) {

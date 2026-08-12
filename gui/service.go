@@ -15,6 +15,7 @@ import (
 	"cli-analyzer/internal/cleaner"
 	"cli-analyzer/internal/config"
 	"cli-analyzer/internal/history"
+	"cli-analyzer/internal/i18n"
 	"cli-analyzer/internal/scanner"
 	"cli-analyzer/internal/trash"
 	"cli-analyzer/internal/updater"
@@ -39,9 +40,13 @@ type ScannerService struct {
 func NewScannerService() *ScannerService { return &ScannerService{} }
 
 // Startup loads the last scan from cache so the window renders instantly,
+// resolves the UI language from config (before the frontend handshake refines it),
 // then kicks off a background (silent) update check when enabled.
 func (s *ScannerService) Startup(ctx context.Context) {
 	s.ctx = ctx
+	// 启动语言解析：配置显式语言或 auto→系统探测（供原生菜单/后端错误使用）；
+	// 前端 init() 会以 navigator.language 细化并经 SetLanguage 握手。
+	i18n.SetLocale(i18n.Resolve(config.Load().Language))
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if res, err := scanner.LoadCache(); err == nil {
@@ -263,10 +268,10 @@ func (s *ScannerService) DownloadUpdate() string {
 	inFlight := s.downloadCancel != nil
 	s.mu.Unlock()
 	if inFlight {
-		return "下载已在进行中"
+		return i18n.T("upd.downloadInProgress")
 	}
 	if res == nil || !res.UpdateAvailable || res.DownloadURL == "" {
-		return "没有可下载的更新"
+		return i18n.T("upd.nothingToDownload")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
@@ -329,7 +334,7 @@ func (s *ScannerService) CancelDownload() string {
 	cancel := s.downloadCancel
 	s.mu.Unlock()
 	if cancel == nil {
-		return "没有进行中的下载"
+		return i18n.T("upd.noDownloadInProgress")
 	}
 	cancel()
 	return ""
@@ -342,7 +347,7 @@ func (s *ScannerService) InstallUpdate() string {
 	path := s.downloadedPath
 	s.mu.Unlock()
 	if path == "" {
-		return "没有已下载的安装包"
+		return i18n.T("upd.noInstallerDownloaded")
 	}
 	if err := updater.OpenInstaller(path); err != nil {
 		return err.Error()
@@ -379,4 +384,52 @@ func (s *ScannerService) IgnoreVersion(version string) string {
 		return err.Error()
 	}
 	return ""
+}
+
+// ---- i18n ----
+
+// GetLanguage 返回配置中显式设置的语言（"auto" 表示跟随系统）。
+func (s *ScannerService) GetLanguage() string {
+	return config.Load().Language
+}
+
+// SetLanguage 同步运行时的生效语言（前端以 navigator.language 细化后调用）。
+// 只改内存中的 i18n 状态，不持久化（持久化由首选项保存负责）。
+func (s *ScannerService) SetLanguage(locale string) string {
+	if i18n.IsSupported(locale) {
+		i18n.SetLocale(locale)
+		return ""
+	}
+	return "unsupported locale: " + locale
+}
+
+// SetLanguagePreference 持久化语言偏好（auto | zh-CN | zh-TW | en）；
+// 成功返回 ""，失败返回错误信息。
+func (s *ScannerService) SetLanguagePreference(locale string) string {
+	c := config.Load()
+	c.Language = locale
+	if err := config.Save(c); err != nil {
+		return err.Error()
+	}
+	// 同步运行时语言：显式语言直接生效，auto 按系统探测
+	i18n.SetLocale(i18n.Resolve(locale))
+	return ""
+}
+
+// GetTranslations 返回指定语言的完整翻译字典 JSON（前端 t() 的数据来源）；
+// 非法语言回退 zh-CN。
+func (s *ScannerService) GetTranslations(locale string) string {
+	if !i18n.IsSupported(locale) {
+		locale = "zh-CN"
+	}
+	b, _ := json.Marshal(map[string]any{
+		"locale": locale,
+		"dict":   translationsFor(locale),
+	})
+	return string(b)
+}
+
+// translationsFor 是 i18n.Dict 的薄封装（命名对齐 GetTranslations 语义）。
+func translationsFor(locale string) map[string]string {
+	return i18n.Dict(locale)
 }

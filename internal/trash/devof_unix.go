@@ -3,9 +3,10 @@
 package trash
 
 import (
-	"errors"
 	"os"
 	"syscall"
+
+	"cli-analyzer/internal/i18n"
 )
 
 // devOf 通过文件系统设备号标识一个路径所在的文件系统
@@ -17,5 +18,5 @@ func devOf(p string) (uint64, error) {
 	if sys, ok := st.Sys().(*syscall.Stat_t); ok {
 		return uint64(sys.Dev), nil
 	}
-	return 0, errors.New("无法获取设备号")
+	return 0, i18n.NewError("err.deviceID")
 }

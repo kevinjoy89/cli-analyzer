@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"cli-analyzer/internal/buildinfo"
+	"cli-analyzer/internal/config"
+	"cli-analyzer/internal/i18n"
 )
 
 var out io.Writer = os.Stdout
@@ -22,6 +24,8 @@ var Version = buildinfo.Version
 // Run dispatches CLI subcommands. args excludes argv[0]; the root main.go
 // routes scan/clean/cache/version here and everything else to the Wails GUI.
 func Run(args []string) int {
+	// CLI 无 WebView：语言由显式配置 + 系统探测解析（设计 D2）
+	i18n.SetLocale(i18n.Resolve(config.Load().Language))
 	if len(args) == 0 {
 		usage()
 		return 0
@@ -46,26 +50,13 @@ func Run(args []string) int {
 		usage()
 		return 0
 	}
-	fmt.Fprintf(stderr(), "unknown command %q\n", args[0])
+	fmt.Fprintf(stderr(), "%s %q\n", i18n.T("cli.unknownCommand"), args[0])
 	usage()
 	return 1
 }
 
 func usage() {
-	fmt.Fprintln(stdout(), `cli-analyzer — 扫描 CLI 工具的磁盘占用并安全清理
-
-用法:
-  cli-analyzer scan [-j|--json] [--full] [--refresh] [--order=size|name] [工具...]
-  cli-analyzer clean [-a|--all] [-n|--dry-run] [-y|--yes] [-j|--json] [--list] [--permanent] [工具...]
-  cli-analyzer cache [--clear]
-  cli-analyzer trash [list|restore <id>|empty]
-  cli-analyzer trends [天数]   # 查看占用趋势与可清理增量 Top 5（默认最近 30 天）
-  cli-analyzer update check [--json]   # 检查新版本（退出码: 0 最新 / 2 有更新 / 1 错误）
-  cli-analyzer version
-  cli-analyzer gui        # 打开图形界面（无参数时默认）
-
-安全模型: 只有 SAFE 级（缓存/旧版本/包管理器缓存）可被清理；
-USER 级（配置/历史/venv）仅展示，任何情况下都不会被自动删除。`)
+	fmt.Fprintln(stdout(), i18n.T("cli.usage"))
 }
 
 // reorderFlags moves "-" prefixed arguments before positional ones so that

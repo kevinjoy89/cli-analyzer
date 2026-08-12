@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 
+	"cli-analyzer/internal/i18n"
 	"cli-analyzer/internal/updater"
 )
 
@@ -20,7 +21,7 @@ func runUpdate(args []string) int {
 		return 1
 	}
 	if fs.NArg() == 0 || fs.Arg(0) != "check" {
-		fmt.Fprintln(stderr(), "用法: cli-analyzer update check [--json]")
+		fmt.Fprintln(stderr(), i18n.T("cli.updateUsage"))
 		return 1
 	}
 
@@ -30,7 +31,7 @@ func runUpdate(args []string) int {
 			b, _ := json.Marshal(res)
 			fmt.Fprintln(stdout(), string(b))
 		} else {
-			fmt.Fprintf(stderr(), "检查更新失败: %s\n", res.Error)
+			fmt.Fprintf(stderr(), "%s\n", i18n.T("cli.updateCheckFailed", map[string]any{"err": res.Error}))
 		}
 		return 1
 	}
@@ -42,15 +43,15 @@ func runUpdate(args []string) int {
 	}
 
 	if res.UpdateAvailable {
-		fmt.Fprintf(stdout(), "发现新版本: v%s（当前 v%s）\n", res.Latest, res.Current)
+		fmt.Fprintln(stdout(), i18n.T("cli.updateFound", map[string]any{"latest": res.Latest, "current": res.Current}))
 		if res.DownloadURL != "" {
-			fmt.Fprintf(stdout(), "下载: %s\n", res.DownloadURL)
+			fmt.Fprintln(stdout(), i18n.T("cli.updateDownload", map[string]any{"url": res.DownloadURL}))
 		} else {
-			fmt.Fprintf(stdout(), "请访问 Release 页面获取安装包: %s\n", res.ReleaseURL)
+			fmt.Fprintln(stdout(), i18n.T("cli.updateReleasePage", map[string]any{"url": res.ReleaseURL}))
 		}
 		return updateExitCode(true)
 	}
-	fmt.Fprintf(stdout(), "已是最新版本 v%s\n", res.Latest)
+	fmt.Fprintln(stdout(), i18n.T("cli.updateUpToDate", map[string]any{"version": res.Latest}))
 	return 0
 }
 

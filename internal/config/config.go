@@ -47,11 +47,25 @@ type UpdateConfig struct {
 	IgnoredVersion string `json:"ignoredVersion,omitempty"`
 }
 
+// Language 可选值：auto（跟随系统）| zh-CN | zh-TW | en
+const (
+	// LangAuto 表示跟随系统语言
+	LangAuto = "auto"
+	// LangZhCN 简体中文
+	LangZhCN = "zh-CN"
+	// LangZhTW 繁體中文
+	LangZhTW = "zh-TW"
+	// LangEn English
+	LangEn = "en"
+)
+
 // Config 是应用的本地配置
 type Config struct {
 	Trash    TrashConfig    `json:"trash"`
 	Reminder ReminderConfig `json:"reminder"`
 	Update   UpdateConfig   `json:"update"`
+	// Language 界面语言，默认 auto（跟随系统）
+	Language string `json:"language,omitempty"`
 }
 
 // defaultThresholdBytes 是阈值提醒的默认值（5 GB）
@@ -84,6 +98,7 @@ func Default() *Config {
 		Reminder: ReminderConfig{
 			ThresholdBytes: defaultThresholdBytes,
 		},
+		Language: LangAuto,
 	}
 }
 
@@ -138,6 +153,12 @@ func (c *Config) normalize() {
 	if c.Update.CheckUpdates == nil {
 		d := defaultCheckUpdates()
 		c.Update.CheckUpdates = &d
+	}
+	// Language 非法值回退 auto（旧配置无此字段 → auto 跟随系统）
+	switch c.Language {
+	case LangAuto, LangZhCN, LangZhTW, LangEn:
+	default:
+		c.Language = LangAuto
 	}
 }
 

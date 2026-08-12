@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 
+	"cli-analyzer/internal/i18n"
 	"cli-analyzer/internal/platform"
 	"cli-analyzer/internal/scanner"
 )
@@ -17,16 +18,16 @@ func runCache(args []string) int {
 	}
 	if *clear {
 		if err := scanner.ClearCache(); err != nil {
-			fmt.Fprintf(stderr(), "清除失败: %v\n", err)
+			fmt.Fprintf(stderr(), "%s\n", i18n.T("cli.cacheClearFailed", map[string]any{"err": err}))
 			return 1
 		}
-		fmt.Fprintln(stdout(), "缓存已清除")
+		fmt.Fprintln(stdout(), i18n.T("cli.cacheCleared"))
 		return 0
 	}
 	if ts, ok := scanner.CacheInfo(); ok {
-		fmt.Fprintf(stdout(), "缓存存在，写入时间 %s\n位置: %s\n", ts, platform.CacheRoot())
+		fmt.Fprint(stdout(), i18n.T("cli.cacheExists", map[string]any{"time": ts, "path": platform.CacheRoot()}), "\n")
 	} else {
-		fmt.Fprintf(stdout(), "无缓存（位置: %s）\n", platform.CacheRoot())
+		fmt.Fprint(stdout(), i18n.T("cli.cacheNone", map[string]any{"path": platform.CacheRoot()}), "\n")
 	}
 	return 0
 }
