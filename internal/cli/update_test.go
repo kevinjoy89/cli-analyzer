@@ -45,6 +45,11 @@ func setupUpdateTest(t *testing.T, version string, releases []mockRelease) {
 
 	restore := config.SetDataRoot(t.TempDir())
 	t.Cleanup(restore)
+	c := config.Default()
+	c.Language = config.LangZhCN
+	if err := config.Save(c); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestRunUpdateCheckUpToDate(t *testing.T) {

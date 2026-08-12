@@ -11,6 +11,7 @@ import (
 
 	"cli-analyzer/internal/buildinfo"
 	"cli-analyzer/internal/config"
+	"cli-analyzer/internal/i18n"
 )
 
 // checkEnv 将 buildinfo.Version、API 地址与配置目录隔离到可控状态。
@@ -32,6 +33,9 @@ func checkEnv(t *testing.T, version string, releases []Release) func() {
 
 	restore := config.SetDataRoot(t.TempDir())
 	t.Cleanup(restore)
+	origLoc := i18n.ActiveLocale()
+	i18n.SetLocale("zh-CN")
+	t.Cleanup(func() { i18n.SetLocale(origLoc) })
 	return srv.Close
 }
 

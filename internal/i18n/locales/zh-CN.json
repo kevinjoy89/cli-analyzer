@@ -235,5 +235,6 @@
   "err.updateDownload": "下载失败",
   "err.updateFetchChecksums": "获取校验和失败: {err}",
   "err.updateChecksumMismatch": "校验和不匹配（{name}）：期望 {want}，实际 {got}",
-  "err.updateChecksumMissing": "校验和文件缺少 {name} 的条目"
+  "err.updateChecksumMissing": "校验和文件缺少 {name} 的条目",
+  "err.updateRateLimited": "GitHub API 限流（403），请稍后再试"
 }

@@ -332,12 +332,12 @@ func TestLatestReleaseErrorLocalized(t *testing.T) {
 
 	i18n.SetLocale("zh-CN")
 	_, err := LatestRelease(context.Background(), nil)
-	if err == nil || !strings.Contains(err.Error(), "查询更新失败") {
-		t.Errorf("zh-CN 403 error = %v, want localized", err)
+	if err == nil || !strings.Contains(err.Error(), "限流") {
+		t.Errorf("zh-CN 403 error = %v, want friendly rate-limit message", err)
 	}
 	i18n.SetLocale("en")
 	_, err = LatestRelease(context.Background(), nil)
-	if err == nil || !strings.Contains(err.Error(), "Update check failed") {
-		t.Errorf("en 403 error = %v, want localized", err)
+	if err == nil || !strings.Contains(err.Error(), "rate limited") {
+		t.Errorf("en 403 error = %v, want friendly rate-limit message", err)
 	}
 }

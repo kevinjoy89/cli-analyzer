@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"cli-analyzer/internal/config"
 	"cli-analyzer/internal/scanner"
 )
 
@@ -26,6 +27,19 @@ func captureStderr(t *testing.T) *bytes.Buffer {
 	errOut = buf
 	t.Cleanup(func() { errOut = old })
 	return buf
+}
+
+// pinZhCN 让 CLI 输出断言与宿主系统语言无关：CLI 的 Run() 每次按配置+系统探测
+// 重新解析语言（CI 英文宿主会得到 en），这里显式写入 language=zh-CN 配置。
+func pinZhCN(t *testing.T) {
+	t.Helper()
+	restore := config.SetDataRoot(t.TempDir())
+	t.Cleanup(restore)
+	c := config.Default()
+	c.Language = config.LangZhCN
+	if err := config.Save(c); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestHumanBytes(t *testing.T) {
@@ -74,6 +88,7 @@ func TestReorderFlags(t *testing.T) {
 }
 
 func TestRunVersion(t *testing.T) {
+	pinZhCN(t)
 	buf := captureStdout(t)
 	if code := Run([]string{"version"}); code != 0 {
 		t.Fatalf("version exit = %d, want 0", code)
@@ -84,6 +99,7 @@ func TestRunVersion(t *testing.T) {
 }
 
 func TestRunVersionShortFlags(t *testing.T) {
+	pinZhCN(t)
 	buf := captureStdout(t)
 	for _, a := range []string{"--version", "-v"} {
 		buf.Reset()
@@ -97,6 +113,7 @@ func TestRunVersionShortFlags(t *testing.T) {
 }
 
 func TestRunHelp(t *testing.T) {
+	pinZhCN(t)
 	buf := captureStdout(t)
 	if code := Run([]string{"help"}); code != 0 {
 		t.Fatalf("help exit = %d, want 0", code)
@@ -107,6 +124,7 @@ func TestRunHelp(t *testing.T) {
 }
 
 func TestRunNoArgsPrintsUsage(t *testing.T) {
+	pinZhCN(t)
 	buf := captureStdout(t)
 	if code := Run(nil); code != 0 {
 		t.Fatalf("no-arg exit = %d, want 0", code)
@@ -117,6 +135,7 @@ func TestRunNoArgsPrintsUsage(t *testing.T) {
 }
 
 func TestRunUnknownCommand(t *testing.T) {
+	pinZhCN(t)
 	captureStdout(t)
 	errBuf := captureStderr(t)
 	if code := Run([]string{"bogus"}); code != 1 {
@@ -128,6 +147,7 @@ func TestRunUnknownCommand(t *testing.T) {
 }
 
 func TestRunFlagErrors(t *testing.T) {
+	pinZhCN(t)
 	captureStdout(t)
 	captureStderr(t)
 	for _, args := range [][]string{
@@ -170,6 +190,7 @@ func TestFilterResultNoMatch(t *testing.T) {
 }
 
 func TestPrintTable(t *testing.T) {
+	pinZhCN(t)
 	res := &scanner.ScanResult{
 		Tools: []scanner.Tool{
 			{Name: "npm", Binaries: []scanner.Binary{{Name: "npm", Path: "/x/npm"}}, Footprint: 100, Cleanable: 60, User: 40, Installer: "npm"},
@@ -189,6 +210,7 @@ func TestPrintTable(t *testing.T) {
 }
 
 func TestPrintCleanables(t *testing.T) {
+	pinZhCN(t)
 	res := &scanner.ScanResult{
 		Tools: []scanner.Tool{
 			{Name: "npm", Cleanables: []scanner.Cleanable{

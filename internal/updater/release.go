@@ -64,6 +64,10 @@ func LatestRelease(ctx context.Context, client *http.Client) (*Release, error) {
 		return nil, fmt.Errorf("%s", i18n.T("err.updateQuery", map[string]any{"err": err}))
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusForbidden {
+		// 403 通常是未认证接口限流（60 次/时/IP），给用户更友好的提示而非裸状态码
+		return nil, fmt.Errorf("%s", i18n.T("err.updateRateLimited"))
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("%s", i18n.T("err.updateApiStatus", map[string]any{"status": resp.Status}))
 	}

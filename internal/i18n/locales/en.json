@@ -235,5 +235,6 @@
   "err.updateDownload": "Download failed",
   "err.updateFetchChecksums": "Fetching checksums failed: {err}",
   "err.updateChecksumMismatch": "Checksum mismatch for {name}: got {got}, want {want}",
-  "err.updateChecksumMissing": "checksums.txt has no entry for {name}"
+  "err.updateChecksumMissing": "checksums.txt has no entry for {name}",
+  "err.updateRateLimited": "GitHub API rate limited (403), please retry later"
 }
