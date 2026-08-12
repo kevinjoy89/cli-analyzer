@@ -225,5 +225,15 @@
   "upd.noInstallerDownloaded": "沒有已下載的安裝包",
   "menu.hide": "隱藏 CLI Analyzer",
   "menu.quitApp": "結束 CLI Analyzer",
-  "cli.unknownCommand": "unknown command"
+  "cli.unknownCommand": "unknown command",
+  "err.updateQuery": "查詢更新失敗: {err}",
+  "err.updateApiStatus": "查詢更新失敗：GitHub API 回傳 {status}",
+  "err.updateDecode": "查詢更新失敗：回應解析失敗: {err}",
+  "err.updateNoStable": "查詢更新失敗：沒有可用的正式版本",
+  "err.updateNoAssetRule": "平台 {goos}/{goarch}、安裝來源 {source} 沒有對應的產物命名規則",
+  "err.updateAssetMissing": "版本 {version} 缺少產物 {name}（安裝來源 {source}）",
+  "err.updateDownload": "下載失敗: {err}",
+  "err.updateFetchChecksums": "取得校驗和失敗: {err}",
+  "err.updateChecksumMismatch": "校驗和不匹配（{name}）：期望 {want}，實際 {got}",
+  "err.updateChecksumMissing": "校驗和檔案缺少 {name} 的條目"
 }

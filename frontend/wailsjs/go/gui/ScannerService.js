@@ -18,6 +18,10 @@ export function DownloadUpdate() {
   return window['go']['gui']['ScannerService']['DownloadUpdate']();
 }
 
+export function GetDownloadProgress() {
+  return window['go']['gui']['ScannerService']['GetDownloadProgress']();
+}
+
 export function GetLanguage() {
   return window['go']['gui']['ScannerService']['GetLanguage']();
 }
@@ -48,6 +52,10 @@ export function GetTrends(arg1) {
 
 export function GetUpdateConfig() {
   return window['go']['gui']['ScannerService']['GetUpdateConfig']();
+}
+
+export function GetUpdateStatus() {
+  return window['go']['gui']['ScannerService']['GetUpdateStatus']();
 }
 
 export function GetVersion() {

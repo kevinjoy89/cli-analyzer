@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"cli-analyzer/internal/i18n"
 )
 
 // repoOwner / repoName 是发布所在的 GitHub 仓库。
@@ -58,16 +60,16 @@ func LatestRelease(ctx context.Context, client *http.Client) (*Release, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("query releases: %w", err)
+		return nil, fmt.Errorf("%s", i18n.T("err.updateQuery", map[string]any{"err": err}))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("query releases: GitHub API returned %s", resp.Status)
+		return nil, fmt.Errorf("%s", i18n.T("err.updateApiStatus", map[string]any{"status": resp.Status}))
 	}
 
 	var releases []Release
 	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
-		return nil, fmt.Errorf("query releases: decode: %w", err)
+		return nil, fmt.Errorf("%s", i18n.T("err.updateDecode", map[string]any{"err": err}))
 	}
 	for i := range releases {
 		if releases[i].Draft || releases[i].Prerelease {
@@ -75,7 +77,7 @@ func LatestRelease(ctx context.Context, client *http.Client) (*Release, error) {
 		}
 		return &releases[i], nil
 	}
-	return nil, fmt.Errorf("query releases: no stable release found")
+	return nil, fmt.Errorf("%s", i18n.T("err.updateNoStable"))
 }
 
 // ReleaseURL 返回仓库 Releases 页面地址（兜底入口，供"打开 Release 页面"使用）。

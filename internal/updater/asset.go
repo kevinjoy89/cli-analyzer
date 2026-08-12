@@ -3,6 +3,8 @@ package updater
 import (
 	"fmt"
 	"strings"
+
+	"cli-analyzer/internal/i18n"
 )
 
 // AssetName 按发布流程的命名约定（见 design D4 / release.yml）构造产物名：
@@ -44,12 +46,12 @@ func AssetName(version, goos, goarch, installSource string) string {
 func SelectAsset(r *Release, goos, goarch, installSource string) (*ReleaseAsset, error) {
 	want := AssetName(r.TagName, goos, goarch, installSource)
 	if want == "" {
-		return nil, fmt.Errorf("no asset naming rule for %s/%s install-source %q", goos, goarch, installSource)
+		return nil, fmt.Errorf("%s", i18n.T("err.updateNoAssetRule", map[string]any{"goos": goos, "goarch": goarch, "source": installSource}))
 	}
 	for i := range r.Assets {
 		if r.Assets[i].Name == want {
 			return &r.Assets[i], nil
 		}
 	}
-	return nil, fmt.Errorf("release %s has no asset %q (install source %q)", r.TagName, want, installSource)
+	return nil, fmt.Errorf("%s", i18n.T("err.updateAssetMissing", map[string]any{"version": r.TagName, "name": want, "source": installSource}))
 }

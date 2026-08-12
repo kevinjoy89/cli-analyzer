@@ -1,6 +1,6 @@
 import './style.css';
 
-import {CancelDownload, CheckForUpdates, Clean, DownloadUpdate, GetLanguage, GetLastResult, GetReminderConfig, GetTranslations, GetTrashConfig, GetUpdateStatus, GetTrends, GetUpdateConfig, GetVersion, IgnoreVersion, InstallUpdate, OpenURL, PurgeNow, Restore, Scan, SetLanguage, SetLanguagePreference, SetReminderConfig, SetTheme, SetTrashConfig, SetUpdateConfig, TrashInfo, TrashList} from '../wailsjs/go/gui/ScannerService';
+import {CancelDownload, CheckForUpdates, Clean, DownloadUpdate, GetDownloadProgress, GetLanguage, GetLastResult, GetReminderConfig, GetTranslations, GetTrashConfig, GetUpdateStatus, GetTrends, GetUpdateConfig, GetVersion, IgnoreVersion, InstallUpdate, OpenURL, PurgeNow, Restore, Scan, SetLanguage, SetLanguagePreference, SetReminderConfig, SetTheme, SetTrashConfig, SetUpdateConfig, TrashInfo, TrashList} from '../wailsjs/go/gui/ScannerService';
 import {Environment, EventsOn, Quit} from '../wailsjs/runtime/runtime';
 import {applyCleanLocally} from './lib/clean';
 import {hb} from './lib/format';
@@ -485,6 +485,30 @@ type UpdateProgress = { downloaded: number; total: number };
 let updateState: 'idle' | 'downloading' | 'downloaded' = 'idle';
 let lastUpdateResult: UpdateResult | null = null;
 
+// 下载进度改用轮询（GetDownloadProgress）：macOS WKWebView 对跨桥事件不可靠，
+// 事件推进度在 Mac 上完全不显示，轮询与 GetUpdateStatus 同一套路（已验证有效）。
+let downloadPoll: number | null = null;
+function stopDownloadPoll() {
+    if (downloadPoll !== null) { window.clearInterval(downloadPoll); downloadPoll = null; }
+}
+function startDownloadPoll() {
+    stopDownloadPoll();
+    downloadPoll = window.setInterval(async () => {
+        try {
+            const raw = await GetDownloadProgress();
+            if (!raw) return; // 已结束或未开始，由完成事件兜底
+            const p = JSON.parse(raw) as UpdateProgress;
+            if (updateState !== 'downloading') return;
+            const bar = el('updBar') as HTMLElement;
+            const pct = el('updPct');
+            if (!p.total) { bar.style.width = '100%'; pct.textContent = t('ui.bytes', {n: p.downloaded}); return; }
+            const n = Math.min(100, Math.round((p.downloaded / p.total) * 100));
+            bar.style.width = n + '%';
+            pct.textContent = `${n}%（${hb(p.downloaded)} / ${hb(p.total)}）`;
+        } catch { /* 单次轮询失败忽略 */ }
+    }, 200);
+}
+
 // 发现新版本：展示 当前/最新 版本与 [下载] [忽略该版本] [稍后]
 function showUpdateAvailable(res: UpdateResult) {
     if (!res.updateAvailable) return;
@@ -520,13 +544,15 @@ function startDownload() {
         <div class="update-actions"><button class="btn" id="updCancel">${esc(t('upd.cancel'))}</button></div>`;
     el('updCancel').onclick = () => { CancelDownload(); };
     DownloadUpdate().then(err => {
-        if (err) { showToast(t('upd.startFailed', {err}), true); el('updateModal').classList.add('hidden'); }
+        if (err) { showToast(t('upd.startFailed', {err}), true); el('updateModal').classList.add('hidden'); return; }
+        startDownloadPoll(); // 进度轮询（事件在 macOS 不可靠）
     });
 }
 
 // 下载完成（已通过校验）：[立即安装] [稍后]；压缩包产物额外展示当前二进制路径
 function showUpdateDownloaded(d: UpdateDownloaded) {
     updateState = 'downloaded';
+    stopDownloadPoll();
     const isArchive = d.installSource === 'tarball' || d.installSource === 'portable';
     const body = el('updateBody');
     body.innerHTML = `
@@ -817,23 +843,17 @@ async function init() {
     EventsOn('update:available', (payload: unknown) => {
         try { showUpdateAvailable(JSON.parse(String(payload)) as UpdateResult); } catch { /* 忽略异常负载 */ }
     });
-    EventsOn('update:progress', (p: UpdateProgress) => {
-        if (updateState !== 'downloading') return;
-        const bar = el('updBar') as HTMLElement;
-        const pct = el('updPct');
-        if (!p.total) { bar.style.width = '100%'; pct.textContent = t('ui.bytes', {n: p.downloaded}); return; }
-        const n = Math.min(100, Math.round((p.downloaded / p.total) * 100));
-        bar.style.width = n + '%';
-        pct.textContent = `${n}%（${hb(p.downloaded)} / ${hb(p.total)}）`;
-    });
+    // 进度不走事件（macOS WKWebView 不可靠），由 startDownloadPoll 轮询 GetDownloadProgress
     EventsOn('update:downloaded', (p: UpdateDownloaded) => showUpdateDownloaded(p));
     EventsOn('update:verify-failed', (p: {error: string; releaseURL: string}) => showUpdateVerifyFailed(p.error, p.releaseURL));
     EventsOn('update:cancelled', () => {
+        stopDownloadPoll();
         updateState = 'idle';
         el('updateModal').classList.add('hidden');
         showToast(t('ui.downloadCancelled'));
     });
     EventsOn('update:error', (p: {error: string}) => {
+        stopDownloadPoll();
         updateState = 'idle';
         el('updateModal').classList.add('hidden');
         showToast(t('ui.updateFailed', {err: p.error}), true);

@@ -10,7 +10,6 @@ import (
 	"os"
 	goruntime "runtime"
 	"sync"
-	"time"
 
 	"cli-analyzer/internal/buildinfo"
 	"cli-analyzer/internal/cleaner"
@@ -36,6 +35,8 @@ type ScannerService struct {
 	check          *updater.CheckResult // 最近一次更新检查结果
 	downloadedPath string               // 已下载并通过校验的安装包路径
 	downloadCancel context.CancelFunc   // 进行中的下载取消句柄
+	dlDownloaded   int64                // 下载进度（字节），前端轮询读取
+	dlTotal         int64               // 下载总量（字节）
 }
 
 func NewScannerService() *ScannerService { return &ScannerService{} }
@@ -296,20 +297,28 @@ func (s *ScannerService) DownloadUpdate() string {
 	return ""
 }
 
-// progressFn 返回限流后的进度回调：每 64KB 块触发一次原始回调会以每秒上百次的
-// 频率跨 Wails 桥发事件，在 macOS WKWebView 上会被合并或淹没主线程（表现为
-// 完全看不到进度条移动，而 Windows WebView2 能处理）。限流到约 6-7 次/秒，
-// 且完成（w >= t）时必发，保证 100% 一定到达。
+// progressFn 更新下载进度状态（前端轮询 GetDownloadProgress 读取）。
+// 原先用 EventsEmit 推进度：macOS WKWebView 连低频事件都不可靠（问题复测
+// 未修复），改为与 GetUpdateStatus 相同的轮询模式。
 func (s *ScannerService) progressFn() updater.ProgressFunc {
-	var lastEmit time.Time
 	return func(w, t int64) {
-		now := time.Now()
-		if now.Sub(lastEmit) < 150*time.Millisecond && w < t {
-			return
-		}
-		lastEmit = now
-		runtime.EventsEmit(s.ctx, "update:progress", map[string]any{"downloaded": w, "total": t})
+		s.mu.Lock()
+		s.dlDownloaded = w
+		s.dlTotal = t
+		s.mu.Unlock()
 	}
+}
+
+// GetDownloadProgress 返回进行中下载的进度 JSON {downloaded, total}；
+// 无进行中下载时返回 ""。前端在下载期间每 ~200ms 轮询一次。
+func (s *ScannerService) GetDownloadProgress() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.downloadCancel == nil {
+		return ""
+	}
+	b, _ := json.Marshal(map[string]any{"downloaded": s.dlDownloaded, "total": s.dlTotal})
+	return string(b)
 }
 
 // runDownload 执行下载 + 校验，并通过事件汇报各阶段结果。

@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"cli-analyzer/internal/i18n"
 )
 
 // checksumAssetName 是发布流程生成的校验和文件名（见 design D10 / release.yml）。
@@ -30,11 +32,11 @@ func FetchChecksums(ctx context.Context, client *http.Client, r *Release) ([]byt
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch checksums: %w", err)
+		return nil, fmt.Errorf("%s", i18n.T("err.updateFetchChecksums", map[string]any{"err": err}))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fetch checksums: server returned %s", resp.Status)
+		return nil, fmt.Errorf("%s", i18n.T("err.updateFetchChecksums", map[string]any{"err": "HTTP " + resp.Status}))
 	}
 	return io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1 MiB 上限，防御异常文件
 }
@@ -64,7 +66,7 @@ func ParseChecksums(content []byte) map[string]string {
 func VerifyChecksum(filePath, assetName string, checksums map[string]string) error {
 	want, ok := checksums[assetName]
 	if !ok {
-		return fmt.Errorf("%w: checksums.txt has no entry for %q", os.ErrNotExist, assetName)
+		return fmt.Errorf("%s: %w", i18n.T("err.updateChecksumMissing", map[string]any{"name": assetName}), os.ErrNotExist)
 	}
 	f, err := os.Open(filePath)
 	if err != nil {
@@ -77,7 +79,7 @@ func VerifyChecksum(filePath, assetName string, checksums map[string]string) err
 	}
 	got := hex.EncodeToString(h.Sum(nil))
 	if !strings.EqualFold(got, want) {
-		return fmt.Errorf("checksum mismatch for %q: got %s, want %s", assetName, got, want)
+		return fmt.Errorf("%s", i18n.T("err.updateChecksumMismatch", map[string]any{"name": assetName, "got": got, "want": want}))
 	}
 	return nil
 }

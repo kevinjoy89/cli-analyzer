@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+
+	"cli-analyzer/internal/i18n"
 )
 
 // ProgressFunc 报告下载进度（downloaded 为已下载字节，total 为总字节）。
@@ -36,11 +38,11 @@ func Download(ctx context.Context, client *http.Client, url, name string, sizeHi
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("download: %w", err)
+		return "", fmt.Errorf("%s", i18n.T("err.updateDownload", map[string]any{"err": err}))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("download: server returned %s", resp.Status)
+		return "", fmt.Errorf("%s", i18n.T("err.updateDownload", map[string]any{"err": "HTTP " + resp.Status}))
 	}
 
 	total := resp.ContentLength
@@ -55,7 +57,7 @@ func Download(ctx context.Context, client *http.Client, url, name string, sizeHi
 
 	f, err := os.Create(part)
 	if err != nil {
-		return "", fmt.Errorf("download: create temp file: %w", err)
+		return "", fmt.Errorf("%s", i18n.T("err.updateDownload", map[string]any{"err": err}))
 	}
 	cleanup := func() {
 		f.Close()
@@ -69,7 +71,7 @@ func Download(ctx context.Context, client *http.Client, url, name string, sizeHi
 		if n > 0 {
 			if _, werr := f.Write(buf[:n]); werr != nil {
 				cleanup()
-				return "", fmt.Errorf("download: write: %w", werr)
+				return "", fmt.Errorf("%s", i18n.T("err.updateDownload", map[string]any{"err": werr}))
 			}
 			written += int64(n)
 			if progress != nil {
@@ -81,20 +83,20 @@ func Download(ctx context.Context, client *http.Client, url, name string, sizeHi
 		}
 		if rerr != nil {
 			cleanup()
-			return "", fmt.Errorf("download: read: %w", rerr)
+			return "", fmt.Errorf("%s", i18n.T("err.updateDownload", map[string]any{"err": rerr}))
 		}
 	}
 	if err := f.Sync(); err != nil {
 		cleanup()
-		return "", fmt.Errorf("download: sync: %w", err)
+		return "", fmt.Errorf("%s", i18n.T("err.updateDownload", map[string]any{"err": err}))
 	}
 	if err := f.Close(); err != nil {
 		os.Remove(part)
-		return "", fmt.Errorf("download: close: %w", err)
+		return "", fmt.Errorf("%s", i18n.T("err.updateDownload", map[string]any{"err": err}))
 	}
 	if err := os.Rename(part, final); err != nil {
 		os.Remove(part)
-		return "", fmt.Errorf("download: finalize: %w", err)
+		return "", fmt.Errorf("%s", i18n.T("err.updateDownload", map[string]any{"err": err}))
 	}
 	return final, nil
 }

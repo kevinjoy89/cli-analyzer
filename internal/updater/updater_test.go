@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"cli-analyzer/internal/i18n"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -312,4 +313,27 @@ func TestProbeDPKGMissingCommand(t *testing.T) {
 func sha256Hex(b []byte) string {
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
+}
+
+func TestLatestReleaseErrorLocalized(t *testing.T) {
+	orig := i18n.ActiveLocale()
+	defer i18n.SetLocale(orig)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "rate limited", http.StatusForbidden)
+	}))
+	t.Cleanup(srv.Close)
+	origAPI := APIBaseURL
+	APIBaseURL = srv.URL
+	t.Cleanup(func() { APIBaseURL = origAPI })
+
+	i18n.SetLocale("zh-CN")
+	_, err := LatestRelease(context.Background(), nil)
+	if err == nil || !strings.Contains(err.Error(), "查询更新失败") {
+		t.Errorf("zh-CN 403 error = %v, want localized", err)
+	}
+	i18n.SetLocale("en")
+	_, err = LatestRelease(context.Background(), nil)
+	if err == nil || !strings.Contains(err.Error(), "Update check failed") {
+		t.Errorf("en 403 error = %v, want localized", err)
+	}
 }

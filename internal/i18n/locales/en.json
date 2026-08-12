@@ -225,5 +225,15 @@
   "upd.noInstallerDownloaded": "No installer downloaded",
   "menu.hide": "Hide CLI Analyzer",
   "menu.quitApp": "Quit CLI Analyzer",
-  "cli.unknownCommand": "unknown command"
+  "cli.unknownCommand": "unknown command",
+  "err.updateQuery": "Update check failed: {err}",
+  "err.updateApiStatus": "Update check failed: GitHub API returned {status}",
+  "err.updateDecode": "Update check failed: response decode failed: {err}",
+  "err.updateNoStable": "Update check failed: no stable release found",
+  "err.updateNoAssetRule": "No asset naming rule for {goos}/{goarch} install-source {source}",
+  "err.updateAssetMissing": "Release {version} has no asset {name} (install source {source})",
+  "err.updateDownload": "Download failed: {err}",
+  "err.updateFetchChecksums": "Fetching checksums failed: {err}",
+  "err.updateChecksumMismatch": "Checksum mismatch for {name}: got {got}, want {want}",
+  "err.updateChecksumMissing": "checksums.txt has no entry for {name}"
 }

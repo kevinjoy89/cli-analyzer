@@ -10,6 +10,8 @@ export function Clean(arg1:Array<string>,arg2:boolean):Promise<string>;
 
 export function DownloadUpdate():Promise<string>;
 
+export function GetDownloadProgress():Promise<string>;
+
 export function GetLanguage():Promise<string>;
 
 export function GetLastResult():Promise<string>;
@@ -25,6 +27,8 @@ export function GetTrashConfig():Promise<string>;
 export function GetTrends(arg1:number):Promise<string>;
 
 export function GetUpdateConfig():Promise<string>;
+
+export function GetUpdateStatus():Promise<string>;
 
 export function GetVersion():Promise<string>;
 
