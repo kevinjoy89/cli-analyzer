@@ -235,6 +235,5 @@
   "err.updateDownload": "下載失敗",
   "err.updateFetchChecksums": "取得校驗和失敗: {err}",
   "err.updateChecksumMismatch": "校驗和不匹配（{name}）：期望 {want}，實際 {got}",
-  "err.updateChecksumMissing": "校驗和檔案缺少 {name} 的條目",
-  "upd.preparing": "準備中…"
+  "err.updateChecksumMissing": "校驗和檔案缺少 {name} 的條目"
 }
