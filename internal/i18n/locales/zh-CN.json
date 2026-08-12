@@ -283,5 +283,6 @@
   "un.guiRunSub": "卸载后自动检测残留",
   "un.guiSkipMain": "残留检测",
   "un.guiSkipSub": "跳过卸载流程",
-  "un.copied": "已复制"
+  "un.copied": "已复制",
+  "un.toolGone": "该工具可能已卸载，正在重新扫描…"
 }

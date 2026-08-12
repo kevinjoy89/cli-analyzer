@@ -283,5 +283,6 @@
   "un.guiRunSub": "auto-detects residue after",
   "un.guiSkipMain": "Detect residue",
   "un.guiSkipSub": "skips the uninstall",
-  "un.copied": "Copied"
+  "un.copied": "Copied",
+  "un.toolGone": "the tool appears to be uninstalled — rescanning…"
 }

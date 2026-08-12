@@ -517,6 +517,21 @@ func (s *ScannerService) UninstallStart(tool string) string {
 	if len(t.Binaries) > 0 {
 		bin = t.Binaries[0].Name
 	}
+	// 缓存陈旧：工具曾有过二进制但现在都不在了（已卸载）→ 提示并触发重扫，
+	// 避免对已消失的工具跑注定失败的卸载命令。
+	if len(t.Binaries) > 0 {
+		gone := true
+		for _, b := range t.Binaries {
+			if _, err := os.Stat(b.Real); err == nil {
+				gone = false
+				break
+			}
+		}
+		if gone {
+			b, _ := json.Marshal(map[string]any{"tool": t.Name, "stale": true, "error": i18n.T("un.toolGone")})
+			return string(b)
+		}
+	}
 	off := uninstall.OfficialCommand(scanner.Installer(t.Installer), t.Name, bin)
 	s.unTool = t.Name
 	s.unOfficial = off
@@ -577,6 +592,7 @@ func (s *ScannerService) runUninstallOfficial(off uninstall.Official) {
 	err := cmd.Run()
 	s.mu.Lock()
 	s.unOutput = buf.String()
+	uninstalled := err == nil
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			s.unErr = i18n.T("un.runTimeout")
@@ -585,6 +601,10 @@ func (s *ScannerService) runUninstallOfficial(off uninstall.Official) {
 		}
 	}
 	s.mu.Unlock()
+	// 卸载成功后立即重扫：让列表/缓存反映工具已消失，无需手动刷新
+	if uninstalled {
+		s.Scan()
+	}
 }
 
 // GetUninstallStatus 返回代跑状态 JSON：{running, done, output, error}。

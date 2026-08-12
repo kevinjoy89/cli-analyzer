@@ -249,6 +249,7 @@ body.platform-linux #header { padding-top: 10px; }
     display: flex;
     flex-direction: column;
     min-height: 0;
+    min-width: 0; /* grid 项默认 min-width:auto，长内容会撑开列；允许收缩后行内截断才生效 */
     border-right: 1px solid var(--border);
 }
 .panel:last-child { border-right: none; }

@@ -617,7 +617,7 @@ async function manualCheck() {
 }
 
 // ---- uninstall ----
-interface UninstallStartInfo { tool: string; installer?: string; blocked?: boolean; blockedReason?: string; officialCommand?: string; runnable?: boolean; footprint?: number; userBytes?: number; error?: string }
+interface UninstallStartInfo { tool: string; installer?: string; blocked?: boolean; stale?: boolean; blockedReason?: string; officialCommand?: string; runnable?: boolean; footprint?: number; userBytes?: number; error?: string }
 interface UninstallResidueItem { path: string; bytes: number; tier: string; kind: string }
 interface UninstallStatus { running: boolean; done: boolean; output: string; error?: string }
 
@@ -630,6 +630,7 @@ function stopUninstallPoll() {
 function startUninstall(toolName: string) {
     UninstallStart(toolName).then(raw => {
         const info = JSON.parse(raw) as UninstallStartInfo;
+        if (info.stale) { showToast(info.error || '', true); rescan(); return; }
         if (info.error) { showToast(info.error, true); return; }
         if (info.blocked) { showToast(info.blockedReason || '', true); return; }
         showUninstallConfirm(info);
@@ -681,11 +682,17 @@ function showUninstallConfirm(info: UninstallStartInfo) {
 
 function startUninstallPoll() {
     stopUninstallPoll();
+    const t0 = Date.now();
     uninstallPoll = window.setInterval(async () => {
         try {
             const st = JSON.parse(await GetUninstallStatus()) as UninstallStatus;
             const out = el('unOut');
-            if (out) out.textContent = st.output || '';
+            if (out) {
+                // 有输出展示输出；无输出时显示进行中 + 已耗时（标准卸载可能需数十秒）
+                out.textContent = st.output
+                    ? st.output
+                    : (st.running ? `${t('un.guiRunning')}（${Math.round((Date.now() - t0) / 1000)}s）` : '');
+            }
             if (st.done) {
                 stopUninstallPoll();
                 if (st.error) showToast(t('un.runFailed') + ': ' + st.error, true);
