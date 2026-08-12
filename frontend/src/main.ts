@@ -503,8 +503,8 @@ function startDownloadPoll() {
             if (updateState !== 'downloading') return;
             const bar = el('updBar') as HTMLElement;
             const pct = el('updPct');
-            // 总量未知（下载未真正开始，如重取 release 阶段）：不跳 100%，保持 0%
-            if (!p.total) { pct.textContent = t('ui.bytes', {n: p.downloaded}); return; }
+            // 总量未知（下载未真正开始，如重取 release 阶段）：显示“准备中”，不显示 0 字节
+            if (!p.total) { pct.textContent = t('upd.preparing'); return; }
             const n = Math.min(100, Math.round((p.downloaded / p.total) * 100));
             // 单调防线：进度只进不退（双保险，Go 侧已有同样守卫）
             if (n < lastShownPct) return;
