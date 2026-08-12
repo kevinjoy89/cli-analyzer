@@ -259,6 +259,20 @@ func (s *ScannerService) CheckForUpdates() string {
 	return string(b)
 }
 
+// GetUpdateStatus 返回最近一次（自动/手动）检查的结果 JSON；未检查过返回 ""。
+// 前端 init 完成后主动拉取：启动自动检查可能命中缓存而瞬时完成，事件早于
+// 前端监听器注册而丢失（"打开软件不弹更新提示"的根因之一）。
+func (s *ScannerService) GetUpdateStatus() string {
+	s.mu.Lock()
+	res := s.check
+	s.mu.Unlock()
+	if res == nil {
+		return ""
+	}
+	b, _ := json.Marshal(res)
+	return string(b)
+}
+
 // DownloadUpdate 开始下载最新版安装包（异步）。下载进度经 "update:progress"
 // 推送；完成后自动校验 SHA256，成功推 "update:downloaded"，校验失败推
 // "update:verify-failed"，取消推 "update:cancelled"，其他错误推 "update:error"。

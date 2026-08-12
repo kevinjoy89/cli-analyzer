@@ -27,7 +27,8 @@ var downloadsDir = func() string {
 // 保证目标目录不残留半截文件。返回最终文件路径。
 func Download(ctx context.Context, client *http.Client, url, name string, sizeHint int64, progress ProgressFunc) (string, error) {
 	if client == nil {
-		client = defaultClient
+		// 下载不设总超时（见 release.go 的 downloadClient 注释）；取消由 context 驱动
+		client = downloadClient
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

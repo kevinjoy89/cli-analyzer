@@ -1,6 +1,6 @@
 import './style.css';
 
-import {CancelDownload, CheckForUpdates, Clean, DownloadUpdate, GetLanguage, GetLastResult, GetReminderConfig, GetTranslations, GetTrashConfig, GetTrends, GetUpdateConfig, GetVersion, IgnoreVersion, InstallUpdate, OpenURL, PurgeNow, Restore, Scan, SetLanguage, SetLanguagePreference, SetReminderConfig, SetTheme, SetTrashConfig, SetUpdateConfig, TrashInfo, TrashList} from '../wailsjs/go/gui/ScannerService';
+import {CancelDownload, CheckForUpdates, Clean, DownloadUpdate, GetLanguage, GetLastResult, GetReminderConfig, GetTranslations, GetTrashConfig, GetUpdateStatus, GetTrends, GetUpdateConfig, GetVersion, IgnoreVersion, InstallUpdate, OpenURL, PurgeNow, Restore, Scan, SetLanguage, SetLanguagePreference, SetReminderConfig, SetTheme, SetTrashConfig, SetUpdateConfig, TrashInfo, TrashList} from '../wailsjs/go/gui/ScannerService';
 import {Environment, EventsOn, Quit} from '../wailsjs/runtime/runtime';
 import {applyCleanLocally} from './lib/clean';
 import {hb} from './lib/format';
@@ -812,6 +812,33 @@ async function init() {
         if (env.platform === 'darwin') isMac = true;
     } catch { /* non-Wails context (plain browser preview) */ }
 
+    // 尽早注册更新相关事件：启动自动检查可能命中缓存而瞬时完成（见 GetUpdateStatus
+    // 注释），事件必须赶在检查结果之前就位，否则更新提示会丢失。
+    EventsOn('update:available', (payload: unknown) => {
+        try { showUpdateAvailable(JSON.parse(String(payload)) as UpdateResult); } catch { /* 忽略异常负载 */ }
+    });
+    EventsOn('update:progress', (p: UpdateProgress) => {
+        if (updateState !== 'downloading') return;
+        const bar = el('updBar') as HTMLElement;
+        const pct = el('updPct');
+        if (!p.total) { bar.style.width = '100%'; pct.textContent = t('ui.bytes', {n: p.downloaded}); return; }
+        const n = Math.min(100, Math.round((p.downloaded / p.total) * 100));
+        bar.style.width = n + '%';
+        pct.textContent = `${n}%（${hb(p.downloaded)} / ${hb(p.total)}）`;
+    });
+    EventsOn('update:downloaded', (p: UpdateDownloaded) => showUpdateDownloaded(p));
+    EventsOn('update:verify-failed', (p: {error: string; releaseURL: string}) => showUpdateVerifyFailed(p.error, p.releaseURL));
+    EventsOn('update:cancelled', () => {
+        updateState = 'idle';
+        el('updateModal').classList.add('hidden');
+        showToast(t('ui.downloadCancelled'));
+    });
+    EventsOn('update:error', (p: {error: string}) => {
+        updateState = 'idle';
+        el('updateModal').classList.add('hidden');
+        showToast(t('ui.updateFailed', {err: p.error}), true);
+    });
+
     // 初始化 i18n（拉取字典 + SetLanguage 握手），再渲染界面
     await initI18n();
     applyI18n();
@@ -870,31 +897,16 @@ async function init() {
 
     // update flow: native Help 菜单「检查更新…」触发手动检查
     EventsOn('check-updates', manualCheck);
-    // 启动时自动检查发现新版（Go 侧推送）
-    EventsOn('update:available', (payload: unknown) => {
-        try { showUpdateAvailable(JSON.parse(String(payload)) as UpdateResult); } catch { /* 忽略异常负载 */ }
-    });
-    EventsOn('update:progress', (p: UpdateProgress) => {
-        if (updateState !== 'downloading') return;
-        const bar = el('updBar') as HTMLElement;
-        const pct = el('updPct');
-        if (!p.total) { bar.style.width = '100%'; pct.textContent = t('ui.bytes', {n: p.downloaded}); return; }
-        const n = Math.min(100, Math.round((p.downloaded / p.total) * 100));
-        bar.style.width = n + '%';
-        pct.textContent = `${n}%（${hb(p.downloaded)} / ${hb(p.total)}）`;
-    });
-    EventsOn('update:downloaded', (p: UpdateDownloaded) => showUpdateDownloaded(p));
-    EventsOn('update:verify-failed', (p: {error: string; releaseURL: string}) => showUpdateVerifyFailed(p.error, p.releaseURL));
-    EventsOn('update:cancelled', () => {
-        updateState = 'idle';
-        el('updateModal').classList.add('hidden');
-        showToast(t('ui.downloadCancelled'));
-    });
-    EventsOn('update:error', (p: {error: string}) => {
-        updateState = 'idle';
-        el('updateModal').classList.add('hidden');
-        showToast(t('ui.updateFailed', {err: p.error}), true);
-    });
+
+    // 启动自动检查可能已完成（含缓存命中，瞬时返回）：事件已提前注册（见 init 顶部），
+    // 这里再主动拉取一次结果，兜住事件与监听注册之间的竞态（问题：打开软件不弹更新提示）。
+    try {
+        const raw = await GetUpdateStatus();
+        if (raw) {
+            const res = JSON.parse(raw) as UpdateResult;
+            if (res.updateAvailable && !res.error) showUpdateAvailable(res);
+        }
+    } catch { /* 检查未完成或解析失败，稍后事件兜底 */ }
 
     // theme toggle: system -> light -> dark -> system
     applyTheme('system');

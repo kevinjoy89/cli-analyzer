@@ -20,6 +20,10 @@ var APIBaseURL = "https://api.github.com"
 // defaultClient 供所有网络请求使用；测试可整体替换。
 var defaultClient = &http.Client{Timeout: 15 * time.Second}
 
+// downloadClient 专供大文件下载：不做总超时限制——慢网络下 dmg 可能远超 15s，
+// 过早超时会让安装包永远下载不完。取消依赖调用方 context。
+var downloadClient = &http.Client{}
+
 // ReleaseAsset 是 GitHub Release 的一个附件。
 type ReleaseAsset struct {
 	Name               string `json:"name"`
