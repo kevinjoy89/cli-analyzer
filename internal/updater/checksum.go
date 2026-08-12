@@ -24,7 +24,10 @@ func FetchChecksums(ctx context.Context, client *http.Client, r *Release) ([]byt
 		return nil, os.ErrNotExist
 	}
 	if client == nil {
-		client = defaultClient
+		// 校验和抓取位于“下载成功之后”的关键路径：慢网络下 15s 超时会把
+		// 已完成的下载整个浪费掉（等待响应头超时）。与下载一致：不设总超时，
+		// 取消由调用方 context 驱动。
+		client = downloadClient
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, asset.BrowserDownloadURL, nil)
 	if err != nil {

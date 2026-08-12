@@ -19,11 +19,12 @@ const (
 // APIBaseURL 可被测试替换为 httptest 服务器地址；生产保持 GitHub 官方地址。
 var APIBaseURL = "https://api.github.com"
 
-// defaultClient 供所有网络请求使用；测试可整体替换。
-var defaultClient = &http.Client{Timeout: 15 * time.Second}
+// defaultClient 供 API 类请求使用（查询版本）；测试可整体替换。
+// 慢网络（如国内 → GitHub）下 15s 连响应头都可能等不到，放宽到 60s。
+var defaultClient = &http.Client{Timeout: 60 * time.Second}
 
-// downloadClient 专供大文件下载：不做总超时限制——慢网络下 dmg 可能远超 15s，
-// 过早超时会让安装包永远下载不完。取消依赖调用方 context。
+// downloadClient 专供大文件/校验和下载：不做总超时限制——慢网络下 dmg 可能远超
+// 15s，过早超时会让安装包永远下载不完。取消依赖调用方 context。
 var downloadClient = &http.Client{}
 
 // ReleaseAsset 是 GitHub Release 的一个附件。

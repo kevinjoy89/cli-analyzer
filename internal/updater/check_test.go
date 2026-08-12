@@ -158,3 +158,28 @@ func TestCheckNetworkFailureDoesNotCache(t *testing.T) {
 	}
 	_ = time.Now()
 }
+
+// 回归：升级到最新版后，24h 缓存命中时“是否有更新”必须按新当前版本重算——
+// 否则升级后重新打开会继续提示 “v0.3.2 → v0.3.2”。
+func TestCacheRecomputesUpdateAfterUpgrade(t *testing.T) {
+	restore := checkEnv(t, "0.2.3", []Release{
+		{TagName: "v0.3.0", HTMLURL: "https://github.com/x/releases/tag/v0.3.0", Assets: sampleAssets("0.3.0")},
+	})
+	defer restore()
+	first := CheckForUpdates(context.Background(), false)
+	if !first.UpdateAvailable {
+		t.Fatal("0.2.3 应发现有更新")
+	}
+	// 模拟升级到 0.3.0（构建期注入的新版本）
+	buildinfo.Version = "0.3.0"
+	second := CheckForUpdates(context.Background(), false)
+	if !second.Cached {
+		t.Fatal("应命中缓存")
+	}
+	if second.UpdateAvailable {
+		t.Errorf("升级后缓存命中不应再提示更新: %+v", second)
+	}
+	if second.Latest != "0.3.0" {
+		t.Errorf("Latest = %q, want 0.3.0", second.Latest)
+	}
+}

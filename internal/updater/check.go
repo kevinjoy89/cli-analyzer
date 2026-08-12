@@ -117,10 +117,17 @@ func cachedResult(cfg *config.Config, fresh CheckResult) (CheckResult, bool) {
 		return CheckResult{}, false
 	}
 	fresh.Latest = cached.Latest
-	fresh.UpdateAvailable = cached.UpdateAvailable
-	fresh.AssetName = cached.AssetName
-	fresh.DownloadURL = cached.DownloadURL
 	fresh.ReleaseURL = cached.ReleaseURL
+	// 更新可用性必须按“当前版本 vs 缓存的最新版”重算：缓存只存网络结论
+	// （最新版是哪个），不存“对我是否可更新”——否则升级后 24h 内旧缓存
+	// 仍会提示“vX → vX”（升级后重新打开继续提示更新的 bug）。
+	if lv, err := ParseVersion(cached.Latest); err == nil {
+		if cv, err2 := ParseVersion(fresh.Current); err2 == nil && lv.Compare(cv) > 0 {
+			fresh.UpdateAvailable = true
+			fresh.AssetName = cached.AssetName
+			fresh.DownloadURL = cached.DownloadURL
+		}
+	}
 	fresh.Cached = true
 	return fresh, true
 }
