@@ -108,10 +108,13 @@ jobs:
           wails build -platform windows/amd64 -ldflags "-X cli-analyzer/internal/buildinfo.Version=$env:VERSION -X cli-analyzer/internal/buildinfo.InstallSource=portable"
           Compress-Archive -Path build/bin/cli-analyzer.exe, build/windows/icon.ico `
             -DestinationPath "dist/CLI-Analyzer-$env:VERSION-windows-amd64-portable.zip" -Force
-          # 校验和：输出与 sha256sum 兼容的 "<hex>  <name>" 格式
-          Get-ChildItem dist -File | ForEach-Object {
+          # 校验和：输出与 sha256sum 兼容的 "<hex>  <name>" 格式。
+          # 先收集到变量再写文件：流式管道会先锁定目标文件，而 Get-ChildItem
+          # 枚举 dist/ 时会把刚创建的 checksums.txt 也列进去导致 Get-FileHash 撞锁。
+          $sums = Get-ChildItem dist -File | Where-Object { $_.Name -ne 'checksums.txt' } | ForEach-Object {
             "$((Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower())  $($_.Name)"
-          } | Out-File -Encoding ascii dist/checksums.txt
+          }
+          $sums | Out-File -Encoding ascii dist/checksums.txt
 
       # ---- Linux：deb + 便携 tar.gz ----
       # 构建两次注入不同 InstallSource：deb 与 tarball（同一源码，仅标识不同）。
