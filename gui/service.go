@@ -10,6 +10,7 @@ import (
 	"os"
 	goruntime "runtime"
 	"sync"
+	"time"
 
 	"cli-analyzer/internal/buildinfo"
 	"cli-analyzer/internal/cleaner"
@@ -295,6 +296,22 @@ func (s *ScannerService) DownloadUpdate() string {
 	return ""
 }
 
+// progressFn 返回限流后的进度回调：每 64KB 块触发一次原始回调会以每秒上百次的
+// 频率跨 Wails 桥发事件，在 macOS WKWebView 上会被合并或淹没主线程（表现为
+// 完全看不到进度条移动，而 Windows WebView2 能处理）。限流到约 6-7 次/秒，
+// 且完成（w >= t）时必发，保证 100% 一定到达。
+func (s *ScannerService) progressFn() updater.ProgressFunc {
+	var lastEmit time.Time
+	return func(w, t int64) {
+		now := time.Now()
+		if now.Sub(lastEmit) < 150*time.Millisecond && w < t {
+			return
+		}
+		lastEmit = now
+		runtime.EventsEmit(s.ctx, "update:progress", map[string]any{"downloaded": w, "total": t})
+	}
+}
+
 // runDownload 执行下载 + 校验，并通过事件汇报各阶段结果。
 func (s *ScannerService) runDownload(ctx context.Context, res updater.CheckResult, cancel context.CancelFunc) {
 	defer func() {
@@ -314,9 +331,7 @@ func (s *ScannerService) runDownload(ctx context.Context, res updater.CheckResul
 		runtime.EventsEmit(s.ctx, "update:error", map[string]any{"error": err.Error(), "releaseURL": res.ReleaseURL})
 		return
 	}
-	path, err := updater.DownloadInstaller(ctx, nil, release, asset, func(w, t int64) {
-		runtime.EventsEmit(s.ctx, "update:progress", map[string]any{"downloaded": w, "total": t})
-	})
+	path, err := updater.DownloadInstaller(ctx, nil, release, asset, s.progressFn())
 	if err != nil {
 		if path != "" {
 			// 下载成功但校验失败（checksums 缺失或哈希不匹配）：安全优先，不给安装入口
