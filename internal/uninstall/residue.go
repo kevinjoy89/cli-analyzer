@@ -26,7 +26,7 @@ type Residue struct {
 // 仅返回仍存在的路径；去重按绝对路径。
 func Residues(name string, snapshot *scanner.ScanResult) []Residue {
 	seen := map[string]bool{}
-	var out []Residue
+	out := make([]Residue, 0) // 非 nil：空结果 JSON 序列化为 [] 而非 null
 	sizer := &disk.Sizer{}
 	add := func(path, tier, kind string) {
 		path = filepath.Clean(path)

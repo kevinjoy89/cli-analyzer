@@ -691,3 +691,6 @@ body.platform-linux #header { padding-top: 10px; }
 /* uninstall: credential residue warning */
 .un-credential { color: var(--danger, #f87171); }
 .un-output { white-space: pre-wrap; word-break: break-all; max-height: 160px; overflow-y: auto; font-family: var(--mono); font-size: 11px; }
+
+/* uninstall button: neutral secondary action; disabled state clearly grayed */
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }

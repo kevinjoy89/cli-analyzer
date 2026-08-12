@@ -229,6 +229,13 @@ function renderDetail() {
 
     const installer = tool.installer ? `<span class="badge installer">${esc(tool.installer)}</span>` : '';
     const metaItems: string[] = [];
+    // 安装来源：本地化名称（未知来源回退原始值）
+    let sourceName = '';
+    if (tool.installer) {
+        const localized = t('ui.installer.' + tool.installer);
+        sourceName = localized !== 'ui.installer.' + tool.installer ? localized : tool.installer;
+    }
+    if (sourceName) metaItems.push(`<span class="meta-item">${esc(t('ui.installerSource'))} <b>${esc(sourceName)}</b></span>`);
     if (tool.version) metaItems.push(`<span class="meta-item">${esc(t('ui.version'))} <b>${esc(tool.version)}</b></span>`);
     if (tool.updatedAt) metaItems.push(`<span class="meta-item">${esc(t('ui.updatedAt'))} <b>${fmtTime(tool.updatedAt)}</b></span>`);
     const metaHtml = (tool.description || tool.homepage || metaItems.length)
@@ -277,7 +284,7 @@ function renderDetail() {
         <div class="detail-section"><h4>${esc(t('ui.sectionSafe'))}</h4>${cleanHtml}</div>
         <div class="detail-actions">
             <button id="cleanBtn" class="btn danger">${esc(t('ui.cleanSelected'))}</button>
-            <button id="uninstallBtn" class="btn danger" title="${esc(t('un.guiUninstall'))}">${esc(t('un.guiUninstall'))}</button>
+            <button id="uninstallBtn" class="btn" title="${esc(t('un.guiUninstall'))}">${esc(t('un.guiUninstall'))}</button>
             <span class="sel-info" id="selInfo">${esc(t('ui.selectedCount', {n: selectedCleanIds.size}))}</span>
         </div>`;
 
@@ -689,7 +696,10 @@ function startUninstallPoll() {
 // 残留检测 → 列表（全选默认、凭证标红）→ 移入回收站
 async function showUninstallResidue() {
     let rr: UninstallResidueItem[] = [];
-    try { rr = JSON.parse(await UninstallResidue()) as UninstallResidueItem[]; } catch { showToast(t('un.residueNone'), true); return; }
+    try {
+        const parsed = JSON.parse(await UninstallResidue());
+        rr = Array.isArray(parsed) ? parsed : [];
+    } catch { showToast(t('un.residueNone'), true); return; }
     if (!rr.length) { showToast(t('un.guiResidueNone')); return; }
     const body = el('uninstallBody');
     body.innerHTML = `

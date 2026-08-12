@@ -269,5 +269,15 @@
   "un.notRunnable": "该来源不支持代跑",
   "un.alreadyRunning": "卸载已在执行中",
   "un.runTimeout": "卸载命令超时，请复制命令自行执行",
-  "un.noTool": "未选择工具"
+  "un.noTool": "未选择工具",
+  "ui.installerSource": "来源",
+  "ui.installer.brew": "Homebrew",
+  "ui.installer.npm": "npm（全局）",
+  "ui.installer.pipx": "pipx",
+  "ui.installer.cargo": "cargo",
+  "ui.installer.go": "go install",
+  "ui.installer.pyenv": "pyenv",
+  "ui.installer.rustup": "rustup",
+  "ui.installer.versioned": "版本化安装器",
+  "ui.installer.other": "其他"
 }

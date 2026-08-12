@@ -269,5 +269,15 @@
   "un.notRunnable": "this source cannot be run by the app",
   "un.alreadyRunning": "uninstall already running",
   "un.runTimeout": "uninstall timed out — copy the command and run it yourself",
-  "un.noTool": "no tool selected"
+  "un.noTool": "no tool selected",
+  "ui.installerSource": "Source",
+  "ui.installer.brew": "Homebrew",
+  "ui.installer.npm": "npm (global)",
+  "ui.installer.pipx": "pipx",
+  "ui.installer.cargo": "cargo",
+  "ui.installer.go": "go install",
+  "ui.installer.pyenv": "pyenv",
+  "ui.installer.rustup": "rustup",
+  "ui.installer.versioned": "Versioned installer",
+  "ui.installer.other": "Other"
 }

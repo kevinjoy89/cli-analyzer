@@ -162,3 +162,12 @@ func TestTrashResiduesMovesToTrash(t *testing.T) {
 		t.Error("trash is empty after TrashResidues")
 	}
 }
+
+// 空结果必须是非 nil 切片：JSON 序列化为 [] 而非 null（前端 null.length 会崩）。
+func TestResiduesEmptyIsNotNil(t *testing.T) {
+	fakeRoots(t)
+	res := Residues("no-such-tool-xyz", nil)
+	if res == nil {
+		t.Fatal("Residues() returned nil slice for empty result")
+	}
+}
