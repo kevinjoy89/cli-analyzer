@@ -104,7 +104,8 @@ body.platform-windows #menuBar {
     align-items: center;
     gap: 2px;
     padding: 2px 8px;
-    background: var(--panel);
+    /* 与 header/logo 区同底色（var(--bg)），浅色/暗色主题下保持一致 */
+    background: var(--bg);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
     user-select: none;
