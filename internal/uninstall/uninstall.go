@@ -1,7 +1,7 @@
-// Package uninstall 提供 CLI 工具的官方卸载与残留清理能力。
+// Package uninstall 提供 CLI 工具的标准卸载与残留清理能力。
 //
 // 设计要点（见 change add-tool-uninstall design.md）：
-//   - 官方命令按安装来源映射，仅 brew/npm/pipx/cargo 可代跑；
+//   - 标准卸载命令按安装来源映射，仅 brew/npm/pipx/cargo 可代跑；
 //     go/pyenv/versioned/other 只给提示，不做整包强卸。
 //   - 残留 = 规则表数据目录 ∪ 扫描快照归因目录，卸载后仍存在者。
 //   - 残留清理是唯一允许触碰 USER 级数据的路径，硬约束为必须经内置
@@ -15,7 +15,7 @@ import (
 	"cli-analyzer/internal/scanner"
 )
 
-// Official 是某个工具的官方卸载建议。
+// Official 是某个工具的标准卸载建议。
 type Official struct {
 	// Command 是展示给用户的完整命令（go/pyenv 等为提示命令）。
 	Command string `json:"command"`
@@ -43,7 +43,7 @@ func IsBlocked(name string) bool {
 	return blocklist[strings.ToLower(strings.TrimSpace(name))]
 }
 
-// OfficialCommand 返回按安装来源映射的官方卸载建议。
+// OfficialCommand 返回按安装来源映射的标准卸载建议。
 // binName 是 PATH 上的命令名（go 来源的提示需要它）。
 func OfficialCommand(installer scanner.Installer, name, binName string) Official {
 	name = strings.TrimSpace(name)
@@ -62,7 +62,7 @@ func OfficialCommand(installer scanner.Installer, name, binName string) Official
 	case scanner.InstPyenv:
 		// pyenv 托管的解释器：在对应版本内卸载包（仅提示）
 		return Official{Command: "pyenv 版本内执行 pip uninstall / pipx uninstall（提示，不代跑）"}
-	default: // versioned / other / rustup 等：无统一官方命令
+	default: // versioned / other / rustup 等：无统一标准卸载命令
 		return Official{}
 	}
 }

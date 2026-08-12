@@ -19,7 +19,7 @@ import (
 
 // runUninstall 处理 `uninstall <tool> [--residue] [--yes] [--json]`。
 // 退出码：0 成功 / 1 错误 / 2 黑名单或无该工具。
-// 流程：展示官方命令（可代跑）→ 残留检测 → 残留移入内置回收站。
+// 流程：展示标准卸载命令（可代跑）→ 残留检测 → 残留移入内置回收站。
 // 残留清理是唯一触碰 USER 级数据的路径，硬约束为必须经回收站（--yes 不豁免）。
 func runUninstall(args []string) int {
 	fs := flag.NewFlagSet("uninstall", flag.ContinueOnError)
@@ -75,7 +75,7 @@ func runUninstall(args []string) int {
 		return 0
 	}
 
-	// 交互流程：官方命令（可代跑）→ 残留 → 回收站
+	// 交互流程：标准卸载命令（可代跑）→ 残留 → 回收站
 	fmt.Fprintf(stdout(), "%s: %s\n", i18n.T("un.toolInstaller"), tool.Installer)
 	if off.Command != "" {
 		fmt.Fprintf(stdout(), "%s\n  %s\n", i18n.T("un.officialCmd"), off.Command)
@@ -96,7 +96,7 @@ func runUninstall(args []string) int {
 		fmt.Fprintln(stdout(), i18n.T("un.hintManual"))
 	}
 
-	// 残留检测（无论官方卸载成功与否）
+	// 残留检测（无论标准卸载成功与否）
 	rr := uninstall.Residues(tool.Name, res)
 	if len(rr) == 0 {
 		fmt.Fprintln(stdout(), i18n.T("un.residueNone"))
@@ -167,7 +167,7 @@ func confirmPrompt(prompt string) bool {
 	return ans == "y" || ans == "yes"
 }
 
-// runOfficial 代跑官方卸载命令（5 分钟超时，输出流式透传）。
+// runOfficial 代跑标准卸载命令（5 分钟超时，输出流式透传）。
 func runOfficial(off uninstall.Official) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()

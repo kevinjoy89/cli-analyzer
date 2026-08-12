@@ -37,7 +37,7 @@ CLI Analyzer scans every CLI tool installed on your machine, attributes its **to
 - **Usage trends** — every scan appends a snapshot; view total/cleanable over time (SVG chart) and the top cleanable growers, with a bell reminder when a tool's cleanable space exceeds a configurable limit (click it to list the tools and jump to one)
 - **Tree drill-down** — expand a cleanable item to its one-level child dirs (`~/.npm` → `_cacache` 10G / `_npx` 764M) and clean only the selected children. Sub-path deletion passes the same SAFE gate + guard (must be a child of an already-scanned, attributed parent)
 - **Built-in updater** — checks GitHub Releases on startup for a new version (toggleable in Preferences, with a 24h rate-limit cache); prompts to download with a progress bar, verifies the SHA256 checksum, then opens the installer for you to complete manually. CLI: `cli-analyzer update check`. Note: within 24h of a release, a cached check may not yet report it — the prompt appears once the cache refreshes
-- **Official uninstall** — don't know the uninstall command? The tool detects the install source (brew / npm / pipx / cargo…), shows the official command and can run it for you, then detects leftover config/cache dirs and moves them into the built-in trash (recoverable) — the only operation allowed to touch USER data, never deleting it permanently. System-critical tools are blocked. CLI: `cli-analyzer uninstall <tool>`
+- **Official uninstall** — don't know the uninstall command? The tool detects the install source (brew / npm / pipx / cargo…), shows the standard command and can run it for you, then detects leftover config/cache dirs and moves them into the built-in trash (recoverable) — the only operation allowed to touch USER data, never deleting it permanently. System-critical tools are blocked. CLI: `cli-analyzer uninstall <tool>`
 - **Localized UI** — Simplified Chinese / Traditional Chinese / English; follows the system language by default, switchable in Preferences → Language (applies instantly; macOS native menu applies after restart)
 - **Two interfaces** — CLI (`scan` / `clean` / `cache` / `trash` / `trends` / `update` / `version`) + native GUI
 
@@ -81,7 +81,7 @@ cli-analyzer trash restore <id>      # restore an item to its original path
 cli-analyzer trash empty             # empty the built-in trash (permanent)
 cli-analyzer trends [days]           # usage trends over the last N days (default 30)
 cli-analyzer update check           # check for a new version (exit: 0 up-to-date / 2 update / 1 error)
-cli-analyzer uninstall <tool>       # official uninstall + residue cleanup (via built-in trash)
+cli-analyzer uninstall <tool>       # standard uninstall + residue cleanup (via built-in trash)
 cli-analyzer version                # show version and install source (e.g. 0.3.3 (darwin, dmg))
 cli-analyzer cache --clear           # clear the scan cache
 cli-analyzer                         # open the GUI

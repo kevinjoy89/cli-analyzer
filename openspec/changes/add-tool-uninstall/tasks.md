@@ -1,6 +1,6 @@
-## 1. 官方卸载命令表
+## 1. 标准卸载命令表
 
-- [x] 1.1 新建 `internal/uninstall/` 包；实现来源 → 官方命令映射（brew/npm/pipx/cargo 可代跑；go/pyenv/versioned/other 仅提示），命令参数（formula/pkg/crate）从扫描归类信息解析
+- [x] 1.1 新建 `internal/uninstall/` 包；实现来源 → 标准卸载命令映射（brew/npm/pipx/cargo 可代跑；go/pyenv/versioned/other 仅提示），命令参数（formula/pkg/crate）从扫描归类信息解析
 - [x] 1.2 系统关键工具黑名单（python/node/git/docker/go/brew/cli-analyzer 自身等）+ 单测（命中拒绝、未命中放行）
 - [x] 1.3 命令表单元测试：各来源映射正确、参数解析、解析不到时的模板回退
 
@@ -24,7 +24,7 @@
 
 ## 5. GUI 集成
 
-- [x] 5.1 `gui/service.go` 绑定：`UninstallStart(tool)`（返回官方命令与占用摘要）、`UninstallRunOfficial()`（代跑，输出事件/轮询）、`UninstallResidue()`、`UninstallTrash(ids)`；黑名单拦截在服务层
+- [x] 5.1 `gui/service.go` 绑定：`UninstallStart(tool)`（返回标准卸载命令与占用摘要）、`UninstallRunOfficial()`（代跑，输出事件/轮询）、`UninstallResidue()`、`UninstallTrash(ids)`；黑名单拦截在服务层
 - [x] 5.2 详情页「卸载」按钮（danger 样式）；确认弹窗（命令 + 复制 + 代跑/自行执行）
 - [x] 5.3 残留列表弹窗：全选默认、凭证标红、一次确认；完成后 rescan + 回收站状态更新
 - [x] 5.4 输出展示：代跑输出经事件或轮询（参考 update 进度经验：macOS 事件不可靠则轮询）；失败明确回退"复制命令自行执行"

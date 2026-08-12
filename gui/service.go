@@ -489,7 +489,7 @@ func translationsFor(locale string) map[string]string {
 
 // ---- uninstall ----
 
-// UninstallStart 返回卸载起始信息（官方命令、黑名单拦截、占用摘要），
+// UninstallStart 返回卸载起始信息（标准卸载命令、黑名单拦截、占用摘要），
 // 并记录当前卸载流程的工具。返回 JSON：{tool, installer, blocked,
 // blockedReason, officialCommand, runnable, footprint, userBytes} 或 {error}。
 func (s *ScannerService) UninstallStart(tool string) string {
@@ -528,7 +528,7 @@ func (s *ScannerService) UninstallStart(tool string) string {
 	return string(b)
 }
 
-// UninstallRunOfficial 异步代跑官方卸载命令；状态经 GetUninstallStatus 轮询读取。
+// UninstallRunOfficial 异步代跑标准卸载命令；状态经 GetUninstallStatus 轮询读取。
 func (s *ScannerService) UninstallRunOfficial() string {
 	s.mu.Lock()
 	off := s.unOfficial

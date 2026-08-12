@@ -1,23 +1,23 @@
 ## Purpose
 
-为工具提供完整的卸载能力：按安装来源给出官方卸载命令（可代跑）、卸载后检测残留数据目录、并将残留安全移入内置回收站（可恢复）。这是唯一允许触碰 USER 级配置/凭证数据的操作，硬约束为必须经回收站，延续工具"可反悔的安全"承诺。
+为工具提供完整的卸载能力：按安装来源给出标准卸载命令（可代跑）、卸载后检测残留数据目录、并将残留安全移入内置回收站（可恢复）。这是唯一允许触碰 USER 级配置/凭证数据的操作，硬约束为必须经回收站，延续工具"可反悔的安全"承诺。
 
 ## ADDED Requirements
 
-### Requirement: 官方卸载命令
+### Requirement: 标准卸载命令
 
-系统 SHALL 按工具的安装来源（brew/npm/pipx/cargo/go/pyenv/versioned/other）提供对应的官方卸载命令。GUI 卸载流程与 CLI `uninstall` 子命令 SHALL 展示该命令；GUI SHALL 提供「执行官方卸载」选项，代跑前 SHALL 再次确认并流式展示输出。
+系统 SHALL 按工具的安装来源（brew/npm/pipx/cargo/go/pyenv/versioned/other）提供对应的标准卸载命令。GUI 卸载流程与 CLI `uninstall` 子命令 SHALL 展示该命令；GUI SHALL 提供「执行标准卸载」选项，代跑前 SHALL 再次确认并流式展示输出。
 
 #### Scenario: 按来源给出命令
 - **WHEN** 用户对 brew 安装的工具执行卸载
 - **THEN** 展示 `brew uninstall <formula>`，且命令随安装来源正确映射
 
-#### Scenario: 代跑官方卸载
-- **WHEN** 用户在 GUI 确认「执行官方卸载」
+#### Scenario: 代跑标准卸载
+- **WHEN** 用户在 GUI 确认「执行标准卸载」
 - **THEN** 系统执行对应命令并流式展示输出，成功与失败均明确反馈
 
 #### Scenario: 卸载失败仍继续
-- **WHEN** 官方卸载命令执行失败（权限、环境等）
+- **WHEN** 标准卸载命令执行失败（权限、环境等）
 - **THEN** 系统展示失败输出，并仍继续残留检测（残留列表不受影响）
 
 ### Requirement: 系统关键工具保护
@@ -33,7 +33,7 @@
 系统 SHALL 在卸载后检测该工具的残留数据目录，输入为双源：规则表中的数据目录规则（按平台 roots 解析）与卸载前扫描快照中归因到该工具的目录。残留 SHALL 标注安全级别，其中配置/凭证类（USER 级）SHALL 明确标注"含登录凭证"。
 
 #### Scenario: 检测到配置残留
-- **WHEN** 官方卸载完成后 `~/.config/<tool>` 仍存在
+- **WHEN** 标准卸载完成后 `~/.config/<tool>` 仍存在
 - **THEN** 系统将其列为残留并标注 USER 级/含凭证
 
 #### Scenario: 无残留
@@ -66,11 +66,11 @@
 
 ### Requirement: 卸载流程自动串联
 
-系统 SHALL 将官方卸载、残留检测、残留清理串联为一个流程：卸载动作触发后依次执行，用户无需分别调用。GUI 详情页 SHALL 提供「卸载」入口；CLI 提供 `uninstall` 子命令（`--residue` 仅检测不清理，`--yes` 跳过交互）。
+系统 SHALL 将标准卸载、残留检测、残留清理串联为一个流程：卸载动作触发后依次执行，用户无需分别调用。GUI 详情页 SHALL 提供「卸载」入口；CLI 提供 `uninstall` 子命令（`--residue` 仅检测不清理，`--yes` 跳过交互）。
 
 #### Scenario: GUI 一键卸载
 - **WHEN** 用户在详情页点击「卸载」并确认
-- **THEN** 依次展示官方命令 → 残留检测 → 残留清理，一次完成
+- **THEN** 依次展示标准卸载命令 → 残留检测 → 残留清理，一次完成
 
 #### Scenario: CLI 仅检测残留
 - **WHEN** 用户执行 `cli-analyzer uninstall <tool> --residue`
