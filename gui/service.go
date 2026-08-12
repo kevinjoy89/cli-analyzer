@@ -36,7 +36,7 @@ type ScannerService struct {
 	downloadedPath string               // 已下载并通过校验的安装包路径
 	downloadCancel context.CancelFunc   // 进行中的下载取消句柄
 	dlDownloaded   int64                // 下载进度（字节），前端轮询读取
-	dlTotal         int64               // 下载总量（字节）
+	dlTotal        int64                // 下载总量（字节）
 }
 
 func NewScannerService() *ScannerService { return &ScannerService{} }
