@@ -50,6 +50,10 @@ export function GetTrends(arg1) {
   return window['go']['gui']['ScannerService']['GetTrends'](arg1);
 }
 
+export function GetUninstallStatus() {
+  return window['go']['gui']['ScannerService']['GetUninstallStatus']();
+}
+
 export function GetUpdateConfig() {
   return window['go']['gui']['ScannerService']['GetUpdateConfig']();
 }
@@ -120,4 +124,20 @@ export function TrashInfo() {
 
 export function TrashList() {
   return window['go']['gui']['ScannerService']['TrashList']();
+}
+
+export function UninstallResidue() {
+  return window['go']['gui']['ScannerService']['UninstallResidue']();
+}
+
+export function UninstallRunOfficial() {
+  return window['go']['gui']['ScannerService']['UninstallRunOfficial']();
+}
+
+export function UninstallStart(arg1) {
+  return window['go']['gui']['ScannerService']['UninstallStart'](arg1);
+}
+
+export function UninstallTrashResidues(arg1) {
+  return window['go']['gui']['ScannerService']['UninstallTrashResidues'](arg1);
 }

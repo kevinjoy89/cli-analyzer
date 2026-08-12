@@ -43,6 +43,8 @@ func Run(args []string) int {
 		return runTrends(args[1:])
 	case "update":
 		return runUpdate(args[1:])
+	case "uninstall":
+		return runUninstall(args[1:])
 	case "version", "--version", "-v":
 		fmt.Fprintf(stdout(), "cli-analyzer %s (%s, %s)\n", Version, goruntime.GOOS, buildinfo.InstallSource)
 		return 0

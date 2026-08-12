@@ -4,12 +4,15 @@
 package gui
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	goruntime "runtime"
 	"sync"
+	"time"
 
 	"cli-analyzer/internal/buildinfo"
 	"cli-analyzer/internal/cleaner"
@@ -18,6 +21,7 @@ import (
 	"cli-analyzer/internal/i18n"
 	"cli-analyzer/internal/scanner"
 	"cli-analyzer/internal/trash"
+	"cli-analyzer/internal/uninstall"
 	"cli-analyzer/internal/updater"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -37,6 +41,13 @@ type ScannerService struct {
 	downloadCancel context.CancelFunc   // 进行中的下载取消句柄
 	dlDownloaded   int64                // 下载进度（字节），前端轮询读取
 	dlTotal        int64                // 下载总量（字节）
+	// ---- uninstall 状态（前端轮询，参考 update 进度经验） ----
+	unTool     string // 当前卸载流程的工具名
+	unOfficial uninstall.Official
+	unRunning  bool
+	unDone     bool
+	unErr      string
+	unOutput   string
 }
 
 func NewScannerService() *ScannerService { return &ScannerService{} }
@@ -474,4 +485,140 @@ func (s *ScannerService) GetTranslations(locale string) string {
 // translationsFor 是 i18n.Dict 的薄封装（命名对齐 GetTranslations 语义）。
 func translationsFor(locale string) map[string]string {
 	return i18n.Dict(locale)
+}
+
+// ---- uninstall ----
+
+// UninstallStart 返回卸载起始信息（官方命令、黑名单拦截、占用摘要），
+// 并记录当前卸载流程的工具。返回 JSON：{tool, installer, blocked,
+// blockedReason, officialCommand, runnable, footprint, userBytes} 或 {error}。
+func (s *ScannerService) UninstallStart(tool string) string {
+	if uninstall.IsBlocked(tool) {
+		b, _ := json.Marshal(map[string]any{"tool": tool, "blocked": true, "blockedReason": i18n.T("un.guiBlocked")})
+		return string(b)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var t *scanner.Tool
+	if s.last != nil {
+		for i := range s.last.Tools {
+			if s.last.Tools[i].Name == tool {
+				t = &s.last.Tools[i]
+				break
+			}
+		}
+	}
+	if t == nil {
+		b, _ := json.Marshal(map[string]any{"tool": tool, "error": i18n.T("un.toolNotFound")})
+		return string(b)
+	}
+	bin := ""
+	if len(t.Binaries) > 0 {
+		bin = t.Binaries[0].Name
+	}
+	off := uninstall.OfficialCommand(scanner.Installer(t.Installer), t.Name, bin)
+	s.unTool = t.Name
+	s.unOfficial = off
+	s.unRunning, s.unDone, s.unErr, s.unOutput = false, false, "", ""
+	b, _ := json.Marshal(map[string]any{
+		"tool": t.Name, "installer": t.Installer, "blocked": false,
+		"officialCommand": off.Command, "runnable": off.Runnable,
+		"footprint": t.Footprint, "userBytes": t.User,
+	})
+	return string(b)
+}
+
+// UninstallRunOfficial 异步代跑官方卸载命令；状态经 GetUninstallStatus 轮询读取。
+func (s *ScannerService) UninstallRunOfficial() string {
+	s.mu.Lock()
+	off := s.unOfficial
+	if !off.Runnable {
+		s.mu.Unlock()
+		return i18n.T("un.notRunnable")
+	}
+	if s.unRunning {
+		s.mu.Unlock()
+		return i18n.T("un.alreadyRunning")
+	}
+	s.unRunning, s.unDone, s.unErr, s.unOutput = true, false, "", ""
+	s.mu.Unlock()
+	go s.runUninstallOfficial(off)
+	return ""
+}
+
+func (s *ScannerService) runUninstallOfficial(off uninstall.Official) {
+	defer func() {
+		s.mu.Lock()
+		s.unRunning = false
+		s.unDone = true
+		s.mu.Unlock()
+		runtime.EventsEmit(s.ctx, "uninstall:done", map[string]any{"done": true})
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, off.Bin, off.Args...)
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	err := cmd.Run()
+	s.mu.Lock()
+	s.unOutput = buf.String()
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			s.unErr = i18n.T("un.runTimeout")
+		} else {
+			s.unErr = err.Error()
+		}
+	}
+	s.mu.Unlock()
+}
+
+// GetUninstallStatus 返回代跑状态 JSON：{running, done, output, error}。
+// 前端轮询（macOS WKWebView 对高频事件不可靠，沿用 update 进度方案）。
+func (s *ScannerService) GetUninstallStatus() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	b, _ := json.Marshal(map[string]any{
+		"running": s.unRunning, "done": s.unDone, "output": s.unOutput, "error": s.unErr,
+	})
+	return string(b)
+}
+
+// UninstallResidue 返回当前工具的残留列表 JSON（双源检测：规则表 + 扫描快照）。
+func (s *ScannerService) UninstallResidue() string {
+	s.mu.Lock()
+	tool, last := s.unTool, s.last
+	s.mu.Unlock()
+	if tool == "" {
+		return `{"error":"` + i18n.T("un.noTool") + `"}`
+	}
+	rr := uninstall.Residues(tool, last)
+	b, _ := json.Marshal(rr)
+	return string(b)
+}
+
+// UninstallTrashResidues 将选中的残留路径移入内置回收站（可恢复），随后后台重扫。
+func (s *ScannerService) UninstallTrashResidues(paths []string) string {
+	s.mu.Lock()
+	tool, last := s.unTool, s.last
+	s.mu.Unlock()
+	if tool == "" {
+		b, _ := json.Marshal(map[string]any{"error": i18n.T("un.noTool")})
+		return string(b)
+	}
+	all := uninstall.Residues(tool, last)
+	want := map[string]bool{}
+	for _, p := range paths {
+		want[p] = true
+	}
+	var sel []uninstall.Residue
+	for _, r := range all {
+		if want[r.Path] {
+			sel = append(sel, r)
+		}
+	}
+	deleted, errs := uninstall.TrashResidues(sel, tool)
+	s.Scan() // 后台重扫，让主界面刷新
+	b, _ := json.Marshal(map[string]any{"deleted": deleted, "errors": errs})
+	return string(b)
 }

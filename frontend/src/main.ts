@@ -1,6 +1,6 @@
 import './style.css';
 
-import {CancelDownload, CheckForUpdates, Clean, DownloadUpdate, GetDownloadProgress, GetLanguage, GetLastResult, GetReminderConfig, GetTranslations, GetTrashConfig, GetUpdateStatus, GetTrends, GetUpdateConfig, GetVersion, IgnoreVersion, InstallUpdate, OpenURL, PurgeNow, Restore, Scan, SetLanguage, SetLanguagePreference, SetReminderConfig, SetTheme, SetTrashConfig, SetUpdateConfig, TrashInfo, TrashList} from '../wailsjs/go/gui/ScannerService';
+import {CancelDownload, CheckForUpdates, Clean, DownloadUpdate, GetDownloadProgress, GetLanguage, GetLastResult, GetReminderConfig, GetTranslations, GetTrashConfig, GetUninstallStatus, GetUpdateStatus, GetTrends, GetUpdateConfig, GetVersion, IgnoreVersion, InstallUpdate, OpenURL, PurgeNow, Restore, Scan, SetLanguage, SetLanguagePreference, SetReminderConfig, SetTheme, SetTrashConfig, SetUpdateConfig, TrashInfo, TrashList, UninstallResidue, UninstallRunOfficial, UninstallStart, UninstallTrashResidues} from '../wailsjs/go/gui/ScannerService';
 import {Environment, EventsOn, Quit} from '../wailsjs/runtime/runtime';
 import {applyCleanLocally} from './lib/clean';
 import {hb} from './lib/format';
@@ -277,6 +277,7 @@ function renderDetail() {
         <div class="detail-section"><h4>${esc(t('ui.sectionSafe'))}</h4>${cleanHtml}</div>
         <div class="detail-actions">
             <button id="cleanBtn" class="btn danger">${esc(t('ui.cleanSelected'))}</button>
+            <button id="uninstallBtn" class="btn small danger" title="${esc(t('un.guiUninstall'))}">${esc(t('un.guiUninstall'))}</button>
             <span class="sel-info" id="selInfo">${esc(t('ui.selectedCount', {n: selectedCleanIds.size}))}</span>
         </div>`;
 
@@ -317,6 +318,7 @@ function renderDetail() {
         if (selectedCleanIds.size === 0) return;
         showConfirmModal(selectedItems(tool));
     };
+    el<HTMLButtonElement>('uninstallBtn').onclick = () => startUninstall(tool.name);
 }
 
 function esc(s: string): string {
@@ -598,6 +600,111 @@ async function manualCheck() {
     if (res.error) { showToast(res.error, true); return; }
     if (res.updateAvailable) showUpdateAvailable(res);
     else showToast(t('upd.upToDate', {version: res.latest}));
+}
+
+// ---- uninstall ----
+interface UninstallStartInfo { tool: string; installer?: string; blocked?: boolean; blockedReason?: string; officialCommand?: string; runnable?: boolean; footprint?: number; userBytes?: number; error?: string }
+interface UninstallResidueItem { path: string; bytes: number; tier: string; kind: string }
+interface UninstallStatus { running: boolean; done: boolean; output: string; error?: string }
+
+let uninstallPoll: number | null = null;
+function stopUninstallPoll() {
+    if (uninstallPoll !== null) { window.clearInterval(uninstallPoll); uninstallPoll = null; }
+}
+
+// 详情页「卸载」→ 起始信息（官方命令/黑名单/占用）→ 确认弹窗
+function startUninstall(toolName: string) {
+    UninstallStart(toolName).then(raw => {
+        const info = JSON.parse(raw) as UninstallStartInfo;
+        if (info.error) { showToast(info.error, true); return; }
+        if (info.blocked) { showToast(info.blockedReason || '', true); return; }
+        showUninstallConfirm(info);
+    }).catch(e => showToast(String(e), true));
+}
+
+function showUninstallConfirm(info: UninstallStartInfo) {
+    const body = el('uninstallBody');
+    const cmdHtml = info.officialCommand
+        ? `<p class="muted">${esc(t('un.guiOfficialCmd'))}<br><code>${esc(info.officialCommand)}</code></p>`
+        : `<p class="muted">${esc(t('un.noOfficialCmd'))}</p>`;
+    body.innerHTML = `
+        <p class="update-versions">${esc(t('un.guiUninstall'))} <b>${esc(info.tool)}</b>（${esc(info.installer ?? '')}）</p>
+        <p class="muted">占用 ${hb(info.footprint || 0)} · 用户数据 ${hb(info.userBytes || 0)}</p>
+        ${cmdHtml}
+        <p id="unOut" class="muted un-output"></p>
+        <div class="update-actions">
+            <button class="btn" id="unCancel">${esc(t('ui.cancel'))}</button>
+            ${info.officialCommand ? `<button class="btn" id="unCopy">${esc(t('un.guiCopyCmd'))}</button>` : ''}
+            ${info.runnable
+                ? `<button class="btn primary" id="unRun">${esc(t('un.guiRunOfficial'))}</button>`
+                : `<button class="btn primary" id="unSkip">${esc(t('un.guiSkipRun'))}</button>`}
+            <button class="btn primary" id="unResidue">${esc(t('un.guiResidueTitle'))} →</button>
+        </div>`;
+    el('uninstallModal').classList.remove('hidden');
+    el('unCancel').onclick = () => { stopUninstallPoll(); el('uninstallModal').classList.add('hidden'); };
+    if (info.officialCommand) el('unCopy').onclick = () => {
+        navigator.clipboard?.writeText(info.officialCommand!).catch(() => {});
+        showToast(info.officialCommand!);
+    };
+    // 代跑：轮询输出（macOS 事件不可靠，沿用 update 进度方案）
+    const runBtn = el<HTMLButtonElement>('unRun');
+    if (runBtn) runBtn.onclick = async () => {
+        runBtn.disabled = true;
+        const err = await UninstallRunOfficial();
+        if (err) { showToast(err, true); runBtn.disabled = false; return; }
+        startUninstallPoll();
+    };
+    // 自行执行：直接进入残留检测
+    const skipBtn = el('unSkip');
+    if (skipBtn) skipBtn.onclick = () => showUninstallResidue();
+    el('unResidue').onclick = () => showUninstallResidue();
+}
+
+function startUninstallPoll() {
+    stopUninstallPoll();
+    uninstallPoll = window.setInterval(async () => {
+        try {
+            const st = JSON.parse(await GetUninstallStatus()) as UninstallStatus;
+            const out = el('unOut');
+            if (out) out.textContent = st.output || '';
+            if (st.done) {
+                stopUninstallPoll();
+                if (st.error) showToast(t('un.runFailed') + ': ' + st.error, true);
+                // 进入残留检测
+                showUninstallResidue();
+            }
+        } catch { /* 单次轮询失败忽略 */ }
+    }, 300);
+}
+
+// 残留检测 → 列表（全选默认、凭证标红）→ 移入回收站
+async function showUninstallResidue() {
+    let rr: UninstallResidueItem[] = [];
+    try { rr = JSON.parse(await UninstallResidue()) as UninstallResidueItem[]; } catch { showToast(t('un.residueNone'), true); return; }
+    if (!rr.length) { showToast(t('un.guiResidueNone')); return; }
+    const body = el('uninstallBody');
+    body.innerHTML = `
+        <p class="update-versions">${esc(t('un.guiResidueTitle'))}</p>
+        ${rr.map((r, i) => `
+            <label class="pref-row check">
+                <input type="checkbox" data-idx="${i}" checked/>
+                <span class="${r.tier === 'user' ? 'un-credential' : ''}">${esc(r.path)} · ${hb(r.bytes)}${r.tier === 'user' ? ' · ' + esc(t('un.guiResidueCredential')) : ''}</span>
+            </label>`).join('')}
+        <div class="update-actions">
+            <button class="btn" id="unCancel2">${esc(t('ui.cancel'))}</button>
+            <button class="btn danger" id="unTrash">${esc(t('un.guiTrashConfirm'))}</button>
+        </div>`;
+    el('uninstallModal').classList.remove('hidden');
+    el('unCancel2').onclick = () => el('uninstallModal').classList.add('hidden');
+    el('unTrash').onclick = async () => {
+        const boxes = body.querySelectorAll<HTMLInputElement>('input[type=checkbox]');
+        const paths = rr.filter((_, i) => boxes[i].checked).map(r => r.path);
+        if (!paths.length) { showToast(t('un.residueNone')); return; }
+        const rep = JSON.parse(await UninstallTrashResidues(paths));
+        el('uninstallModal').classList.add('hidden');
+        const hasErr = (rep.errors ?? []).length > 0;
+        showToast(t('un.guiResidueDone') + (hasErr ? '（' + t('un.runFailed') + '）' : ''), hasErr);
+    };
 }
 
 // ---- preferences ----

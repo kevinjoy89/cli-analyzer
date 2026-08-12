@@ -26,6 +26,8 @@ export function GetTrashConfig():Promise<string>;
 
 export function GetTrends(arg1:number):Promise<string>;
 
+export function GetUninstallStatus():Promise<string>;
+
 export function GetUpdateConfig():Promise<string>;
 
 export function GetUpdateStatus():Promise<string>;
@@ -61,3 +63,11 @@ export function Startup(arg1:context.Context):Promise<void>;
 export function TrashInfo():Promise<string>;
 
 export function TrashList():Promise<string>;
+
+export function UninstallResidue():Promise<string>;
+
+export function UninstallRunOfficial():Promise<string>;
+
+export function UninstallStart(arg1:string):Promise<string>;
+
+export function UninstallTrashResidues(arg1:Array<string>):Promise<string>;
