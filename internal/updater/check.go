@@ -80,16 +80,14 @@ func CheckForUpdates(ctx context.Context, force bool) CheckResult {
 		}
 	}
 
-	if lv, err := ParseVersion(latest); err == nil {
-		if cv, err := ParseVersion(buildinfo.Version); err == nil && lv.Compare(cv) > 0 {
-			res.UpdateAvailable = true
-			if asset, aerr := SelectAsset(release, goruntime.GOOS, goruntime.GOARCH, res.InstallSource); aerr == nil {
-				res.AssetName = asset.Name
-				res.DownloadURL = asset.BrowserDownloadURL
-			}
-			// asset 匹配不到（如安装来源 unknown）：仍提示有更新，但无下载入口，
-			// 前端展示 Release 页链接（design D6 兜底）。
+	if compareVersions(latest, buildinfo.Version) > 0 {
+		res.UpdateAvailable = true
+		if asset, aerr := SelectAsset(release, goruntime.GOOS, goruntime.GOARCH, res.InstallSource); aerr == nil {
+			res.AssetName = asset.Name
+			res.DownloadURL = asset.BrowserDownloadURL
 		}
+		// asset 匹配不到（如安装来源 unknown）：仍提示有更新，但无下载入口，
+		// 前端展示 Release 页链接（design D6 兜底）。
 	}
 
 	saveCache(cfg, res)
@@ -121,12 +119,10 @@ func cachedResult(cfg *config.Config, fresh CheckResult) (CheckResult, bool) {
 	// 更新可用性必须按“当前版本 vs 缓存的最新版”重算：缓存只存网络结论
 	// （最新版是哪个），不存“对我是否可更新”——否则升级后 24h 内旧缓存
 	// 仍会提示“vX → vX”（升级后重新打开继续提示更新的 bug）。
-	if lv, err := ParseVersion(cached.Latest); err == nil {
-		if cv, err2 := ParseVersion(fresh.Current); err2 == nil && lv.Compare(cv) > 0 {
-			fresh.UpdateAvailable = true
-			fresh.AssetName = cached.AssetName
-			fresh.DownloadURL = cached.DownloadURL
-		}
+	if compareVersions(cached.Latest, fresh.Current) > 0 {
+		fresh.UpdateAvailable = true
+		fresh.AssetName = cached.AssetName
+		fresh.DownloadURL = cached.DownloadURL
 	}
 	fresh.Cached = true
 	return fresh, true
@@ -146,6 +142,22 @@ func saveCache(cfg *config.Config, res CheckResult) {
 		cfg.Update.LastResult = string(b)
 	}
 	_ = config.Save(cfg)
+}
+
+// compareVersions 比较两个版本字符串，返回 -1/0/1。
+// 优先数值比较；任一无法解析（如旧二进制不认识四段版本号 0.3.2.1，或最新版
+// 带未知后缀）时退化为字符串比较，避免把“解析不了”当成“没有更新”——否则
+// 用户会卡在“已是最新版本”永远收不到提示（本次线上事故的根因）。
+// 字符串退化对本项目版本号（顺序数字、无前导零）足够可靠。
+func compareVersions(latest, current string) int {
+	if lv, err := ParseVersion(latest); err == nil {
+		if cv, err := ParseVersion(current); err == nil {
+			return lv.Compare(cv)
+		}
+		return 0 // current 无法解析（如 dev 构建）：不判定有更新
+	}
+	// latest 无法解析：词法退化比较（"0.3.2.1" > "0.3.2"）
+	return strings.Compare(latest, current)
 }
 
 // executablePath 返回当前可执行文件路径；失败时返回空串。

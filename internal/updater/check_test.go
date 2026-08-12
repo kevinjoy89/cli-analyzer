@@ -183,3 +183,24 @@ func TestCacheRecomputesUpdateAfterUpgrade(t *testing.T) {
 		t.Errorf("Latest = %q, want 0.3.0", second.Latest)
 	}
 }
+
+// 回归：最新版为四段版本号（0.3.2.1）时，即使当前二进制无法数值解析最新版，
+// 也应判定有更新（词法退化），而不是卡在“已是最新版本”。
+func TestCompareVersionsLexicalFallback(t *testing.T) {
+	// 数值可解析：0.3.2.1 > 0.3.2
+	if got := compareVersions("0.3.2.1", "0.3.2"); got <= 0 {
+		t.Errorf("compareVersions(0.3.2.1, 0.3.2) = %d, want > 0", got)
+	}
+	// 最新版带未知后缀（数值解析失败）→ 词法退化仍判定有更新
+	if got := compareVersions("0.3.2.1-beta", "0.3.2"); got <= 0 {
+		t.Errorf("lexical fallback: compareVersions(0.3.2.1-beta, 0.3.2) = %d, want > 0", got)
+	}
+	// 相等
+	if got := compareVersions("0.3.2.1", "0.3.2.1"); got != 0 {
+		t.Errorf("equal = %d, want 0", got)
+	}
+	// current 无法解析 → 不判定有更新
+	if got := compareVersions("0.3.2.1", "dev"); got != 0 {
+		t.Errorf("unparseable current = %d, want 0", got)
+	}
+}
