@@ -77,6 +77,11 @@ async function initI18n(): Promise<string> {
 // 语言切换后：重扫静态标签 + 重渲染所有依赖文案的界面
 function applyI18n() {
     document.querySelectorAll<HTMLElement>('[data-i18n]').forEach(n => {
+        // 防御：data-i18n 只应出现在叶子节点；带子元素的节点需用内层 span 包裹
+        if (n.querySelector(':scope > *')) {
+            console.warn('data-i18n on non-leaf node, skipping', n.dataset.i18n);
+            return;
+        }
         n.textContent = t(n.dataset.i18n!);
     });
     document.querySelectorAll<HTMLElement>('[data-i18n-title]').forEach(n => {
@@ -87,7 +92,7 @@ function applyI18n() {
     });
     applyTheme(themeMode);
     renderSummary(); renderToolList();
-    if (selected) renderDetail();
+    renderDetail(); // 无条件重渲染：无选中时的空态也是 JS 生成的，必须覆盖
     refreshTrashInfo(); refreshReminder();
     if (!el('prefsModal').classList.contains('hidden')) openPrefs();
     if (!el('updateModal').classList.contains('hidden') && updateState === 'idle' && lastUpdateResult?.updateAvailable) {

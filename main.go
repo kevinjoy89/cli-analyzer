@@ -8,6 +8,7 @@ import (
 
 	"cli-analyzer/gui"
 	"cli-analyzer/internal/cli"
+	"cli-analyzer/internal/config"
 	"cli-analyzer/internal/i18n"
 
 	"github.com/wailsapp/wails/v2"
@@ -138,6 +139,10 @@ func main() {
 		}
 		// "gui" and anything else fall through to the window.
 	}
+
+	// 原生菜单在 wails.Run 前构建（Menu 是启动选项的一部分），语言必须提前解析：
+	// OnStartup 里的 SetLocale 晚于菜单构建，会导致菜单永远停留在默认 zh-CN。
+	i18n.SetLocale(i18n.Resolve(config.Load().Language))
 
 	srv := gui.NewScannerService()
 	err := wails.Run(&options.App{
