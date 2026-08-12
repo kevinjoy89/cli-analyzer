@@ -258,7 +258,7 @@
   "un.guiResidueTitle": "Residue detection",
   "un.guiTrashConfirm": "Move the selected residue into the built-in trash? (recoverable)",
   "un.guiBlocked": "system-critical tool, cannot uninstall",
-  "un.guiRunOfficial": "Run standard uninstall",
+  "un.guiRunOfficial": "Run standard uninstall & detect residue",
   "un.guiCopyCmd": "Copy command",
   "un.guiSkipRun": "Run it myself",
   "un.guiUninstall": "Uninstall",
@@ -279,5 +279,6 @@
   "ui.installer.pyenv": "pyenv",
   "ui.installer.rustup": "rustup",
   "ui.installer.versioned": "Versioned installer",
-  "ui.installer.other": "Other"
+  "ui.installer.other": "Other",
+  "un.guiSkipToResidue": "Skip — detect residue only"
 }

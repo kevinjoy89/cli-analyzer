@@ -650,9 +650,8 @@ function showUninstallConfirm(info: UninstallStartInfo) {
             <button class="btn" id="unCancel">${esc(t('ui.cancel'))}</button>
             ${info.officialCommand ? `<button class="btn" id="unCopy">${esc(t('un.guiCopyCmd'))}</button>` : ''}
             ${info.runnable
-                ? `<button class="btn primary" id="unRun">${esc(t('un.guiRunOfficial'))}</button>`
-                : `<button class="btn primary" id="unSkip">${esc(t('un.guiSkipRun'))}</button>`}
-            <button class="btn primary" id="unResidue">${esc(t('un.guiResidueTitle'))} →</button>
+                ? `<button class="btn" id="unSkip">${esc(t('un.guiSkipToResidue'))}</button><button class="btn primary" id="unRun">${esc(t('un.guiRunOfficial'))}</button>`
+                : `<button class="btn primary" id="unResidue">${esc(t('un.guiResidueTitle'))}</button>`}
         </div>`;
     el('uninstallModal').classList.remove('hidden');
     el('unCancel').onclick = () => { stopUninstallPoll(); el('uninstallModal').classList.add('hidden'); };
