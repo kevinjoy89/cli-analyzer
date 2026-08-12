@@ -37,6 +37,7 @@ CLI Analyzer 扫描系统上安装的 CLI 工具，归因每个工具的总磁�
 - **占用趋势**：每次扫描自动追加历史快照；GUI 趋势视图（手写 SVG 折线）展示总占用/可清理随时间的变化与 cleanable 增量 Top 5，并在某工具可清理量超过阈值时以铃铛徽标提醒（点击可查看待清理工具并快速跳转，阈值可在"首选项"配置）
 - **树形明细**：可清理项展开显示一级子目录占用（如 `~/.npm` → `_cacache` 10G / `_npx` 764M），可只勾选部分子项单独清理；子路径删除同样经过 SAFE 门槛与守卫（必须是扫描归因过的父项子路径）
 - **内置更新**：启动时自动检查 GitHub Releases 是否有新版本（可在「首选项 → 更新」关闭，带 24h 限流缓存）；发现新版提示下载并展示进度条，下载后校验 SHA256 校验和，再打开安装包由你手动完成安装。CLI 侧：`cli-analyzer update check`。注意：新版本发布后 24h 内可能因缓存尚未刷新而不提示，稍候即会弹出
+- **官方卸载**：不知道卸载命令？工具自动识别安装来源（brew / npm / pipx / cargo…），给出官方命令并可选代跑，随后检测残留的配置/缓存目录并移入内置回收站（可恢复）——这是唯一允许触碰用户数据的操作，绝不永久删除；系统关键工具拒绝卸载。CLI：`cli-analyzer uninstall <工具>`
 - **多语言界面**：简体中文 / 繁體中文 / English 三种语言，默认跟随系统，可在「首选项 → 语言」切换（前端即时生效；macOS 原生菜单重启后生效）
 - **双接口**：CLI（`scan` / `clean` / `cache` / `trash` / `trends` / `update` / `version`）+ 原生 GUI
 
@@ -80,6 +81,7 @@ cli-analyzer trash restore <id>      # 恢复一个项目到原路径
 cli-analyzer trash empty             # 清空内置回收站（彻底删除）
 cli-analyzer trends [天数]           # 查看最近 N 天占用趋势（默认 30 天）
 cli-analyzer update check           # 检查新版本（退出码：0 已是最新 / 2 有更新 / 1 错误）
+cli-analyzer uninstall <工具>       # 官方卸载 + 残留清理（走内置回收站）
 cli-analyzer version                # 显示版本与安装来源（如 0.3.3 (darwin, dmg)）
 cli-analyzer cache --clear           # 清除扫描缓存
 cli-analyzer                         # 打开 GUI
