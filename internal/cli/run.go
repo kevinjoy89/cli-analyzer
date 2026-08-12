@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	goruntime "runtime"
 	"strings"
+
+	"cli-analyzer/internal/buildinfo"
 )
 
 var out io.Writer = os.Stdout
@@ -13,8 +16,8 @@ var errOut io.Writer = os.Stderr
 func stdout() io.Writer { return out }
 func stderr() io.Writer { return errOut }
 
-// Version is the CLI/GUI version string.
-const Version = "0.2.3"
+// Version is the CLI/GUI version string, sourced from buildinfo (single source).
+var Version = buildinfo.Version
 
 // Run dispatches CLI subcommands. args excludes argv[0]; the root main.go
 // routes scan/clean/cache/version here and everything else to the Wails GUI.
@@ -34,8 +37,10 @@ func Run(args []string) int {
 		return runTrash(args[1:])
 	case "trends":
 		return runTrends(args[1:])
+	case "update":
+		return runUpdate(args[1:])
 	case "version", "--version", "-v":
-		fmt.Fprintf(stdout(), "cli-analyzer %s\n", Version)
+		fmt.Fprintf(stdout(), "cli-analyzer %s (%s, %s)\n", Version, goruntime.GOOS, buildinfo.InstallSource)
 		return 0
 	case "help", "-h", "--help":
 		usage()
@@ -55,6 +60,7 @@ func usage() {
   cli-analyzer cache [--clear]
   cli-analyzer trash [list|restore <id>|empty]
   cli-analyzer trends [天数]   # 查看占用趋势与可清理增量 Top 5（默认最近 30 天）
+  cli-analyzer update check [--json]   # 检查新版本（退出码: 0 最新 / 2 有更新 / 1 错误）
   cli-analyzer version
   cli-analyzer gui        # 打开图形界面（无参数时默认）
 

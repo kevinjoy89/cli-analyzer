@@ -33,17 +33,42 @@ type ReminderConfig struct {
 	ThresholdBytes int64 `json:"thresholdBytes"`
 }
 
+// UpdateConfig 是版本更新相关的配置项
+type UpdateConfig struct {
+	// CheckUpdates 表示启动时是否自动检查更新（默认 true）。
+	// 用指针区分“未设置（nil → 默认 true）”与“显式 false”。
+	CheckUpdates *bool `json:"checkUpdates,omitempty"`
+	// LastCheckAt 是上次成功检查的时间（RFC3339），用于 24h 限流缓存。
+	LastCheckAt string `json:"lastCheckAt,omitempty"`
+	// LastResult 是上次检查结果的缓存 JSON（限流期内复用，避免重复请求）。
+	LastResult string `json:"lastResult,omitempty"`
+	// IgnoredVersion 是用户选择“忽略该版本”的版本号；
+	// 在出现比它更新的版本前不再提示。
+	IgnoredVersion string `json:"ignoredVersion,omitempty"`
+}
+
 // Config 是应用的本地配置
 type Config struct {
 	Trash    TrashConfig    `json:"trash"`
 	Reminder ReminderConfig `json:"reminder"`
+	Update   UpdateConfig   `json:"update"`
 }
 
 // defaultThresholdBytes 是阈值提醒的默认值（5 GB）
 const defaultThresholdBytes int64 = 5 * 1024 * 1024 * 1024
 
+// defaultCheckUpdates 是自动检查更新的默认值（开启）
+func defaultCheckUpdates() bool { return true }
+
 // dataRoot 可被测试替换，指向隔离的临时目录
 var dataRoot = platform.DataRoot
+
+// SetDataRoot 临时覆盖配置数据根目录（测试隔离用），返回恢复函数。
+func SetDataRoot(dir string) func() {
+	orig := dataRoot
+	dataRoot = func() string { return dir }
+	return func() { dataRoot = orig }
+}
 
 // Path 返回配置文件路径：<DataRoot>/config.json
 func Path() string { return filepath.Join(dataRoot(), "config.json") }
@@ -108,4 +133,18 @@ func (c *Config) normalize() {
 	if c.Reminder.ThresholdBytes <= 0 {
 		c.Reminder.ThresholdBytes = defaultThresholdBytes
 	}
+	// UpdateConfig 缺失或未显式设置时默认开启自动检查；
+	// 旧 config.json（无 update 段）加载后 CheckUpdates 为 nil → 默认 true
+	if c.Update.CheckUpdates == nil {
+		d := defaultCheckUpdates()
+		c.Update.CheckUpdates = &d
+	}
+}
+
+// CheckUpdatesEnabled 返回自动检查更新的生效值（nil 兜底为 true）。
+func (u UpdateConfig) CheckUpdatesEnabled() bool {
+	if u.CheckUpdates == nil {
+		return defaultCheckUpdates()
+	}
+	return *u.CheckUpdates
 }

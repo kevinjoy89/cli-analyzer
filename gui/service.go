@@ -6,31 +6,40 @@ package gui
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"os"
 	goruntime "runtime"
 	"sync"
 
+	"cli-analyzer/internal/buildinfo"
 	"cli-analyzer/internal/cleaner"
 	"cli-analyzer/internal/config"
 	"cli-analyzer/internal/history"
 	"cli-analyzer/internal/scanner"
 	"cli-analyzer/internal/trash"
+	"cli-analyzer/internal/updater"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// AppVersion is the app version shown in the UI footer and About dialog.
-const AppVersion = "0.2.3"
+// AppVersion is the app version shown in the UI footer and About dialog,
+// sourced from buildinfo (single source).
+var AppVersion = buildinfo.Version
 
 // ScannerService is the Wails binding the frontend calls.
 type ScannerService struct {
-	ctx  context.Context
-	mu   sync.Mutex
-	last *scanner.ScanResult
+	ctx            context.Context
+	mu             sync.Mutex
+	last           *scanner.ScanResult
+	check          *updater.CheckResult // 最近一次更新检查结果
+	downloadedPath string               // 已下载并通过校验的安装包路径
+	downloadCancel context.CancelFunc   // 进行中的下载取消句柄
 }
 
 func NewScannerService() *ScannerService { return &ScannerService{} }
 
-// Startup loads the last scan from cache so the window renders instantly.
+// Startup loads the last scan from cache so the window renders instantly,
+// then kicks off a background (silent) update check when enabled.
 func (s *ScannerService) Startup(ctx context.Context) {
 	s.ctx = ctx
 	s.mu.Lock()
@@ -38,6 +47,8 @@ func (s *ScannerService) Startup(ctx context.Context) {
 	if res, err := scanner.LoadCache(); err == nil {
 		s.last = res
 	}
+	// 自动检查更新：异步执行；配置关闭、命中 24h 缓存或网络失败时均静默无提示
+	go s.autoCheck()
 }
 
 // GetLastResult returns the cached scan result as JSON ("" when none yet).
@@ -206,6 +217,164 @@ func (s *ScannerService) SetReminderConfig(cfgJSON string) string {
 	}
 	c := config.Load()
 	c.Reminder = rc
+	if err := config.Save(c); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// ---- update 检查/下载/安装 ----
+
+// autoCheck 是启动时的后台自动检查：失败或无需更新时静默；
+// 发现更新时向前端推送 "update:available" 事件。
+func (s *ScannerService) autoCheck() {
+	if !config.Load().Update.CheckUpdatesEnabled() {
+		return
+	}
+	res := updater.CheckForUpdates(context.Background(), false)
+	s.mu.Lock()
+	s.check = &res
+	s.mu.Unlock()
+	if res.Error != "" || !res.UpdateAvailable {
+		return // 静默：网络失败不打扰，已是最新也不打扰
+	}
+	b, _ := json.Marshal(res)
+	runtime.EventsEmit(s.ctx, "update:available", string(b))
+}
+
+// CheckForUpdates 手动检查更新（不受 24h 缓存限制），返回 CheckResult JSON；
+// 同时推送 "update:check-done" 事件（与返回值为同一结果）。
+func (s *ScannerService) CheckForUpdates() string {
+	res := updater.CheckForUpdates(context.Background(), true)
+	s.mu.Lock()
+	s.check = &res
+	s.mu.Unlock()
+	b, _ := json.Marshal(res)
+	runtime.EventsEmit(s.ctx, "update:check-done", string(b))
+	return string(b)
+}
+
+// DownloadUpdate 开始下载最新版安装包（异步）。下载进度经 "update:progress"
+// 推送；完成后自动校验 SHA256，成功推 "update:downloaded"，校验失败推
+// "update:verify-failed"，取消推 "update:cancelled"，其他错误推 "update:error"。
+func (s *ScannerService) DownloadUpdate() string {
+	s.mu.Lock()
+	res := s.check
+	inFlight := s.downloadCancel != nil
+	s.mu.Unlock()
+	if inFlight {
+		return "下载已在进行中"
+	}
+	if res == nil || !res.UpdateAvailable || res.DownloadURL == "" {
+		return "没有可下载的更新"
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.mu.Lock()
+	s.downloadCancel = cancel
+	s.mu.Unlock()
+	go s.runDownload(ctx, *res, cancel)
+	return ""
+}
+
+// runDownload 执行下载 + 校验，并通过事件汇报各阶段结果。
+func (s *ScannerService) runDownload(ctx context.Context, res updater.CheckResult, cancel context.CancelFunc) {
+	defer func() {
+		cancel()
+		s.mu.Lock()
+		s.downloadCancel = nil
+		s.mu.Unlock()
+	}()
+	// 重新拉取 release 以拿到 checksums.txt 附件（检查阶段只缓存了摘要）
+	release, err := updater.LatestRelease(ctx, nil)
+	if err != nil {
+		runtime.EventsEmit(s.ctx, "update:error", map[string]any{"error": err.Error()})
+		return
+	}
+	asset, err := updater.SelectAsset(release, goruntime.GOOS, goruntime.GOARCH, res.InstallSource)
+	if err != nil {
+		runtime.EventsEmit(s.ctx, "update:error", map[string]any{"error": err.Error(), "releaseURL": res.ReleaseURL})
+		return
+	}
+	path, err := updater.DownloadInstaller(ctx, nil, release, asset, func(w, t int64) {
+		runtime.EventsEmit(s.ctx, "update:progress", map[string]any{"downloaded": w, "total": t})
+	})
+	if err != nil {
+		if path != "" {
+			// 下载成功但校验失败（checksums 缺失或哈希不匹配）：安全优先，不给安装入口
+			runtime.EventsEmit(s.ctx, "update:verify-failed", map[string]any{
+				"error": err.Error(), "releaseURL": res.ReleaseURL, "path": path,
+			})
+			return
+		}
+		if errors.Is(err, context.Canceled) {
+			runtime.EventsEmit(s.ctx, "update:cancelled", map[string]any{})
+		} else {
+			runtime.EventsEmit(s.ctx, "update:error", map[string]any{"error": err.Error()})
+		}
+		return
+	}
+	s.mu.Lock()
+	s.downloadedPath = path
+	s.mu.Unlock()
+	exe, _ := os.Executable()
+	runtime.EventsEmit(s.ctx, "update:downloaded", map[string]any{
+		"path": path, "releaseURL": res.ReleaseURL,
+		"executablePath": exe, "installSource": res.InstallSource,
+	})
+}
+
+// CancelDownload 取消进行中的下载；无下载时返回提示。
+func (s *ScannerService) CancelDownload() string {
+	s.mu.Lock()
+	cancel := s.downloadCancel
+	s.mu.Unlock()
+	if cancel == nil {
+		return "没有进行中的下载"
+	}
+	cancel()
+	return ""
+}
+
+// InstallUpdate 打开已下载并通过校验的安装包，随后退出应用（design D7：
+// 先打开后退出，打开失败则保留应用并返回错误信息）。
+func (s *ScannerService) InstallUpdate() string {
+	s.mu.Lock()
+	path := s.downloadedPath
+	s.mu.Unlock()
+	if path == "" {
+		return "没有已下载的安装包"
+	}
+	if err := updater.OpenInstaller(path); err != nil {
+		return err.Error()
+	}
+	runtime.Quit(s.ctx)
+	return ""
+}
+
+// GetUpdateConfig 返回更新相关配置 JSON（自动检查开关、忽略版本等）。
+func (s *ScannerService) GetUpdateConfig() string {
+	b, _ := json.Marshal(config.Load().Update)
+	return string(b)
+}
+
+// SetUpdateConfig 保存更新配置；成功返回 ""，失败返回错误信息。
+func (s *ScannerService) SetUpdateConfig(cfgJSON string) string {
+	var uc config.UpdateConfig
+	if err := json.Unmarshal([]byte(cfgJSON), &uc); err != nil {
+		return err.Error()
+	}
+	c := config.Load()
+	c.Update = uc
+	if err := config.Save(c); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// IgnoreVersion 持久化“忽略该版本”：在出现比它更新的版本前不再提示。
+func (s *ScannerService) IgnoreVersion(version string) string {
+	c := config.Load()
+	c.Update.IgnoredVersion = version
 	if err := config.Save(c); err != nil {
 		return err.Error()
 	}

@@ -1,7 +1,7 @@
 name: Release
 
 # 打 tag（v*，如 v0.1.0）即构建三平台安装包并创建 GitHub Release。
-# 建议 tag 版本与 wails.json 的 productVersion 保持一致。
+# 建议 tag 版本与 wails.json 的 productVersion 保持一致（工作流会在构建前自动覆写）。
 on:
   push:
     tags:
@@ -40,6 +40,14 @@ jobs:
         shell: bash
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
+      # 版本单一来源：构建前用 tag 覆写 wails.json 的 productVersion，
+      # 让安装包元数据与 dmg 文件名与 tag 保持一致（design D1）。
+      - name: Stamp version into wails.json
+        shell: bash
+        run: |
+          sed -i.bak "s/\"productVersion\": *\"[^\"]*\"/\"productVersion\": \"${VERSION}\"/" wails.json
+          rm -f wails.json.bak
+
       - name: Install Wails CLI
         shell: bash
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
@@ -54,6 +62,7 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.0-dev libwebkit2gtk-4.1-dev libgtk-3-dev build-essential pkg-config
 
       # ---- macOS：通用二进制 dmg ----
+      # build-dmg.sh 内部注入 Version + InstallSource=dmg 的 ldflags。
       - name: Install create-dmg (macOS)
         if: matrix.platform == 'macos'
         shell: bash
@@ -75,39 +84,53 @@ jobs:
           ./scripts/build-dmg.sh amd64
           cp "dist/CLI Analyzer-${VERSION}-amd64.dmg" "dist/CLI-Analyzer-${VERSION}-macos-amd64.dmg"
           rm "dist/CLI Analyzer-${VERSION}-amd64.dmg"
+          # 校验和（macOS 无 sha256sum，用 shasum -a 256；输出格式与 sha256sum 兼容）
+          cd dist && shasum -a 256 * > checksums.txt
 
       # ---- Windows：NSIS 安装器 + 便携 zip ----
       # wails -nsis 需要 makensis。choco 把 NSIS 写入系统 PATH，但 runner 当前
       # 进程的环境不会自动刷新，所以装完必须在同一 step 内把 NSIS 目录加进
       # PATH 再构建，否则 wails 会静默跳过安装器生成。
+      # 构建两次注入不同 InstallSource：installer（装进 NSIS）与 portable（打 zip）。
       - name: Build Windows installer and portable zip
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
           choco install nsis -y
           $env:Path = "$env:Path;C:\Program Files (x86)\NSIS"
-          wails build -platform windows/amd64 -nsis
           New-Item -ItemType Directory -Force dist | Out-Null
+          # 1) installer flavor：NSIS 安装器内嵌携带 installer 标识的 exe
+          wails build -platform windows/amd64 -nsis -ldflags "-X cli-analyzer/internal/buildinfo.Version=$env:VERSION -X cli-analyzer/internal/buildinfo.InstallSource=installer"
           # wails 输出 <产品名>-<arch>-installer.exe（产品名含空格），用通配匹配，
           # 重命名为带版本号，与其他平台产物命名一致。
-          Copy-Item "build/bin/*-installer.exe" `
-            "dist/CLI-Analyzer-$env:VERSION-windows-amd64-installer.exe"
+          Copy-Item "build/bin/*-installer.exe" "dist/CLI-Analyzer-$env:VERSION-windows-amd64-installer.exe"
+          # 2) portable flavor：重建普通 exe（携带 portable 标识）后打 zip
+          wails build -platform windows/amd64 -ldflags "-X cli-analyzer/internal/buildinfo.Version=$env:VERSION -X cli-analyzer/internal/buildinfo.InstallSource=portable"
           Compress-Archive -Path build/bin/cli-analyzer.exe, build/windows/icon.ico `
             -DestinationPath "dist/CLI-Analyzer-$env:VERSION-windows-amd64-portable.zip" -Force
+          # 校验和：输出与 sha256sum 兼容的 "<hex>  <name>" 格式
+          Get-ChildItem dist -File | ForEach-Object {
+            "$((Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower())  $($_.Name)"
+          } | Out-File -Encoding ascii dist/checksums.txt
 
       # ---- Linux：deb + 便携 tar.gz ----
+      # 构建两次注入不同 InstallSource：deb 与 tarball（同一源码，仅标识不同）。
       - name: Build Linux deb and portable archive
         if: matrix.platform == 'linux'
         shell: bash
         run: |
-          wails build -platform linux/amd64
+          LDFLAGS="-X cli-analyzer/internal/buildinfo.Version=${VERSION} -X cli-analyzer/internal/buildinfo.InstallSource="
+          wails build -platform linux/amd64 -ldflags "${LDFLAGS}deb"
+          cp build/bin/cli-analyzer /tmp/cli-analyzer-deb
+          wails build -platform linux/amd64 -ldflags "${LDFLAGS}tarball"
+          cp build/bin/cli-analyzer /tmp/cli-analyzer-tarball
           mkdir -p dist
           # deb 中间目录放临时路径，dist/ 只保留最终产物（否则 upload-artifact
           # 会把 deb 内部的二进制/desktop/control 也带上 release）。
           DEB_DIR="$(mktemp -d)"
           mkdir -p "$DEB_DIR/DEBIAN" "$DEB_DIR/usr/bin" \
             "$DEB_DIR/usr/share/applications" "$DEB_DIR/usr/share/pixmaps"
-          cp build/bin/cli-analyzer "$DEB_DIR/usr/bin/"
+          cp /tmp/cli-analyzer-deb "$DEB_DIR/usr/bin/"
           cp build/appicon.png "$DEB_DIR/usr/share/pixmaps/cli-analyzer.png"
           cat > "$DEB_DIR/usr/share/applications/cli-analyzer.desktop" <<'EOF'
           [Desktop Entry]
@@ -127,7 +150,10 @@ jobs:
           Description: Scan and clean CLI tool disk usage
           EOF
           dpkg-deb --build --root-owner-group "$DEB_DIR" "dist/CLI-Analyzer-${VERSION}-linux-amd64.deb"
-          tar -czf "dist/CLI-Analyzer-${VERSION}-linux-amd64.tar.gz" -C build/bin cli-analyzer
+          cp /tmp/cli-analyzer-tarball /tmp/cli-analyzer
+          tar -czf "dist/CLI-Analyzer-${VERSION}-linux-amd64.tar.gz" -C /tmp cli-analyzer
+          # 校验和
+          cd dist && sha256sum * > checksums.txt
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7

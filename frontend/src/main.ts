@@ -1,6 +1,6 @@
 import './style.css';
 
-import {Clean, GetLastResult, GetReminderConfig, GetTrashConfig, GetTrends, GetVersion, OpenURL, PurgeNow, Restore, Scan, SetReminderConfig, SetTheme, SetTrashConfig, TrashInfo, TrashList} from '../wailsjs/go/gui/ScannerService';
+import {CancelDownload, CheckForUpdates, Clean, DownloadUpdate, GetLastResult, GetReminderConfig, GetTrashConfig, GetTrends, GetUpdateConfig, GetVersion, IgnoreVersion, InstallUpdate, OpenURL, PurgeNow, Restore, Scan, SetReminderConfig, SetTheme, SetTrashConfig, SetUpdateConfig, TrashInfo, TrashList} from '../wailsjs/go/gui/ScannerService';
 import {Environment, EventsOn, Quit} from '../wailsjs/runtime/runtime';
 import {applyCleanLocally} from './lib/clean';
 import {hb, fmtTime} from './lib/format';
@@ -12,6 +12,9 @@ interface CleanReport { dryRun: boolean; deleted: string[]; freedBytes: number; 
 interface TrashInfoData { items: number; totalBytes: number; earliestExpiresAt: string }
 interface TrashItem { id: string; original: string; tool: string; kind: string; bytes: number; trashedAt: string; expiresAt: string }
 interface TrashConfig { retentionDays: number; expireAction: string; useTrash: boolean }
+interface UpdateConfig { checkUpdates?: boolean; lastCheckAt?: string; ignoredVersion?: string }
+interface UpdateResult { current: string; latest: string; updateAvailable: boolean; assetName?: string; downloadURL?: string; releaseURL?: string; installSource?: string; error?: string }
+interface UpdateDownloaded { path: string; releaseURL: string; executablePath: string; installSource: string }
 
 // ---- state ----
 let result: ScanResult | null = null;
@@ -427,12 +430,101 @@ async function refreshTrashList() {
     });
 }
 
+// ---- update state ----
+type UpdateProgress = { downloaded: number; total: number };
+let updateState: 'idle' | 'downloading' | 'downloaded' = 'idle';
+let lastUpdateResult: UpdateResult | null = null;
+
+// 发现新版本：展示 当前/最新 版本与 [下载] [忽略该版本] [稍后]
+function showUpdateAvailable(res: UpdateResult) {
+    if (!res.updateAvailable) return;
+    lastUpdateResult = res;
+    updateState = 'idle';
+    const body = el('updateBody');
+    body.innerHTML = `
+        <p class="update-versions">当前 <b>v${esc(res.current)}</b> → 最新 <b>v${esc(res.latest)}</b></p>
+        <p class="muted">下载安装包后由你手动完成安装。</p>
+        <div class="update-actions">
+            <button class="btn" id="updLater">稍后</button>
+            <button class="btn" id="updIgnore">忽略该版本</button>
+            <button class="btn primary" id="updDownload">下载</button>
+        </div>`;
+    el('updateModal').classList.remove('hidden');
+    el('updLater').onclick = () => el('updateModal').classList.add('hidden');
+    el('updIgnore').onclick = async () => {
+        await IgnoreVersion(res.latest);
+        el('updateModal').classList.add('hidden');
+        showToast(`已忽略 v${res.latest}`);
+    };
+    el('updDownload').onclick = () => startDownload();
+}
+
+// 开始下载：进度条 + 取消；进度由 update:progress 事件驱动
+function startDownload() {
+    updateState = 'downloading';
+    const body = el('updateBody');
+    body.innerHTML = `
+        <p class="update-versions">正在下载 <b>${esc(lastUpdateResult?.assetName ?? '')}</b></p>
+        <div class="progress"><div id="updBar" class="progress-bar" style="width:0%"></div></div>
+        <p id="updPct" class="muted">0%</p>
+        <div class="update-actions"><button class="btn" id="updCancel">取消</button></div>`;
+    el('updCancel').onclick = () => { CancelDownload(); };
+    DownloadUpdate().then(err => {
+        if (err) { showToast('下载启动失败: ' + err, true); el('updateModal').classList.add('hidden'); }
+    });
+}
+
+// 下载完成（已通过校验）：[立即安装] [稍后]；压缩包产物额外展示当前二进制路径
+function showUpdateDownloaded(d: UpdateDownloaded) {
+    updateState = 'downloaded';
+    const isArchive = d.installSource === 'tarball' || d.installSource === 'portable';
+    const body = el('updateBody');
+    body.innerHTML = `
+        <p class="update-versions">下载完成 ✓</p>
+        <p class="muted">${isArchive ? '压缩包已保存（非安装器）：' : '安装包已保存：'}<code>${esc(d.path)}</code></p>
+        ${isArchive ? `<p class="muted">当前二进制位置：<code>${esc(d.executablePath)}</code></p>` : ''}
+        <div class="update-actions">
+            <button class="btn" id="updLater">稍后</button>
+            <button class="btn primary" id="updInstall">立即安装</button>
+        </div>`;
+    el('updLater').onclick = () => el('updateModal').classList.add('hidden');
+    // 点击后 Go 侧先打开安装包再退出应用（design D7）
+    el('updInstall').onclick = () => { InstallUpdate(); };
+}
+
+// 校验失败：安全优先，不给安装入口，仅提供 Release 页面链接
+function showUpdateVerifyFailed(err: string, releaseURL: string) {
+    updateState = 'idle';
+    const body = el('updateBody');
+    body.innerHTML = `
+        <p class="warn">下载校验失败，未提供安装入口</p>
+        <p class="muted">${esc(err)}</p>
+        <div class="update-actions">
+            <button class="btn" id="updClose">关闭</button>
+            <button class="btn" id="updRelease">打开 Release 页面</button>
+        </div>`;
+    el('updClose').onclick = () => el('updateModal').classList.add('hidden');
+    el('updRelease').onclick = () => OpenURL(releaseURL || 'https://github.com/kevinjoy89/cli-analyzer/releases');
+}
+
+// 手动检查（Help 菜单「检查更新…」）：不受 24h 缓存限制
+async function manualCheck() {
+    let res: UpdateResult;
+    try { res = JSON.parse(await CheckForUpdates()); }
+    catch (e) { showToast('检查更新失败: ' + String(e), true); return; }
+    if (res.error) { showToast(res.error, true); return; }
+    if (res.updateAvailable) showUpdateAvailable(res);
+    else showToast(`已是最新版本 v${res.latest}`);
+}
+
 // ---- preferences ----
 async function openPrefs() {
     let cfg: TrashConfig;
     let rem: ReminderConfig;
+    let upd: UpdateConfig;
     try { cfg = JSON.parse(await GetTrashConfig()); } catch { cfg = {retentionDays: 7, expireAction: 'system-trash', useTrash: true}; }
     try { rem = JSON.parse(await GetReminderConfig()); } catch { rem = {thresholdBytes: 5 * 1024 * 1024 * 1024}; }
+    try { upd = JSON.parse(await GetUpdateConfig()); } catch { upd = {}; }
     const threshGB = (rem.thresholdBytes || 5 * 1024 * 1024 * 1024) / (1024 * 1024 * 1024);
     el('prefsBody').innerHTML = `
         <div class="pref-head">♻️ 内置回收站</div>
@@ -453,6 +545,11 @@ async function openPrefs() {
         <label class="pref-row">清理提醒阈值
             <input id="prefThreshold" type="number" min="0" step="0.5" value="${threshGB.toFixed(1)}"/>
             <span>GB</span>
+        </label>
+        <div class="pref-head">更新</div>
+        <label class="pref-row check">
+            <input id="prefCheckUpdates" type="checkbox" ${upd.checkUpdates !== false ? 'checked' : ''}/>
+            <span>启动时自动检查更新（Help 菜单可随时手动检查）</span>
         </label>`;
     el('prefsModal').classList.remove('hidden');
     el('prefsSave').onclick = async () => {
@@ -464,10 +561,17 @@ async function openPrefs() {
         const rem2: ReminderConfig = {
             thresholdBytes: Math.round(parseFloat((el('prefThreshold') as HTMLInputElement).value || '5') * 1024 * 1024 * 1024),
         };
+        // 合并回读的缓存字段，避免整体覆盖丢 lastCheckAt / ignoredVersion
+        const upd2: UpdateConfig = {
+            checkUpdates: (el('prefCheckUpdates') as HTMLInputElement).checked,
+            lastCheckAt: upd.lastCheckAt,
+            ignoredVersion: upd.ignoredVersion,
+        };
         const err = await SetTrashConfig(JSON.stringify(next));
         const rerr = await SetReminderConfig(JSON.stringify(rem2));
+        const uerr = await SetUpdateConfig(JSON.stringify(upd2));
         el('prefsModal').classList.add('hidden');
-        if (err || rerr) showToast('保存失败: ' + (err || rerr), true);
+        if (err || rerr || uerr) showToast('保存失败: ' + (err || rerr || uerr), true);
         else { showToast('配置已保存'); refreshTrashInfo(); refreshReminder(); }
     };
     el('prefsCancel').onclick = () => el('prefsModal').classList.add('hidden');
@@ -602,6 +706,7 @@ function initMenuBar() {
                 case 'prefs': openPrefs(); break;
                 case 'quit': Quit(); break;
                 case 'about': openAbout(); break;
+                case 'check-updates': manualCheck(); break;
                 case 'github': OpenURL('https://github.com/kevinjoy89/cli-analyzer'); break;
                 case 'issue': OpenURL('https://github.com/kevinjoy89/cli-analyzer/issues/new'); break;
             }
@@ -676,6 +781,34 @@ async function init() {
     EventsOn('open-about', openAbout);
     el('aboutClose').onclick = () => el('aboutModal').classList.add('hidden');
     el('aboutLink').onclick = (e) => { e.preventDefault(); OpenURL('https://github.com/kevinjoy89/cli-analyzer'); };
+
+    // update flow: native Help 菜单「检查更新…」触发手动检查
+    EventsOn('check-updates', manualCheck);
+    // 启动时自动检查发现新版（Go 侧推送）
+    EventsOn('update:available', (payload: unknown) => {
+        try { showUpdateAvailable(JSON.parse(String(payload)) as UpdateResult); } catch { /* 忽略异常负载 */ }
+    });
+    EventsOn('update:progress', (p: UpdateProgress) => {
+        if (updateState !== 'downloading') return;
+        const bar = el('updBar') as HTMLElement;
+        const pct = el('updPct');
+        if (!p.total) { bar.style.width = '100%'; pct.textContent = `${p.downloaded} 字节`; return; }
+        const n = Math.min(100, Math.round((p.downloaded / p.total) * 100));
+        bar.style.width = n + '%';
+        pct.textContent = `${n}%（${hb(p.downloaded)} / ${hb(p.total)}）`;
+    });
+    EventsOn('update:downloaded', (p: UpdateDownloaded) => showUpdateDownloaded(p));
+    EventsOn('update:verify-failed', (p: {error: string; releaseURL: string}) => showUpdateVerifyFailed(p.error, p.releaseURL));
+    EventsOn('update:cancelled', () => {
+        updateState = 'idle';
+        el('updateModal').classList.add('hidden');
+        showToast('已取消下载');
+    });
+    EventsOn('update:error', (p: {error: string}) => {
+        updateState = 'idle';
+        el('updateModal').classList.add('hidden');
+        showToast('更新失败: ' + p.error, true);
+    });
 
     // theme toggle: system -> light -> dark -> system
     applyTheme('system');

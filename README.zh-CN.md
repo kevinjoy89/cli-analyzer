@@ -36,11 +36,14 @@ CLI Analyzer 扫描系统上安装的 CLI 工具，归因每个工具的总磁�
 - **恢复**：可从 GUI 回收站面板或 `cli-analyzer trash restore` 还原项目；`clean --permanent` 可跳过内置回收站直接删除
 - **占用趋势**：每次扫描自动追加历史快照；GUI 趋势视图（手写 SVG 折线）展示总占用/可清理随时间的变化与 cleanable 增量 Top 5，并在某工具可清理量超过阈值时以铃铛徽标提醒（点击可查看待清理工具并快速跳转，阈值可在"首选项"配置）
 - **树形明细**：可清理项展开显示一级子目录占用（如 `~/.npm` → `_cacache` 10G / `_npx` 764M），可只勾选部分子项单独清理；子路径删除同样经过 SAFE 门槛与守卫（必须是扫描归因过的父项子路径）
-- **双接口**：CLI（`scan` / `clean` / `cache` / `trash` / `trends` / `version`）+ 原生 GUI
+- **内置更新**：启动时自动检查 GitHub Releases 是否有新版本（可在「首选项 → 更新」关闭，带 24h 限流缓存）；发现新版提示下载并展示进度条，下载后校验 SHA256 校验和，再打开安装包由你手动完成安装。CLI 侧：`cli-analyzer update check`
+- **双接口**：CLI（`scan` / `clean` / `cache` / `trash` / `trends` / `update` / `version`）+ 原生 GUI
 
 ## 安装
 
 > **发布版**：macOS / Windows / Linux 安装包已发布在 [Releases 页面](https://github.com/kevinjoy89/cli-analyzer/releases)，也可从源码构建。
+>
+> **更新**：从包含该功能的版本起，应用启动时自动检查新版本（可在「首选项 → 更新」关闭），有新版时提示下载；下载到 `~/Downloads` 并与发布附带的 SHA256 校验和比对通过后，才会打开安装包——安装本身仍走系统原生流程。macOS 产物目前**未签名**，从网络下载的副本首次打开若被 Gatekeeper 拦截，请右键 → 打开。
 
 依赖：**Go ≥ 1.26** 与 **npm**。
 
@@ -75,6 +78,7 @@ cli-analyzer trash list              # 列出内置回收站项目
 cli-analyzer trash restore <id>      # 恢复一个项目到原路径
 cli-analyzer trash empty             # 清空内置回收站（彻底删除）
 cli-analyzer trends [天数]           # 查看最近 N 天占用趋势（默认 30 天）
+cli-analyzer update check           # 检查新版本（退出码：0 已是最新 / 2 有更新 / 1 错误）
 cli-analyzer cache --clear           # 清除扫描缓存
 cli-analyzer                         # 打开 GUI
 ```

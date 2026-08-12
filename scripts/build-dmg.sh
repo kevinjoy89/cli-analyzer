@@ -20,6 +20,8 @@ case "$PLATFORM" in
 esac
 
 VERSION="$(grep -m1 '"productVersion"' wails.json | sed -E 's/.*: *"([^"]+)".*/\1/')"
+# 版本单一来源 + 安装来源标识（design D1/D2）：macOS 无歧义，注入仅为 version 输出统一
+LDFLAGS="-X cli-analyzer/internal/buildinfo.Version=${VERSION} -X cli-analyzer/internal/buildinfo.InstallSource=dmg"
 APP="build/bin/CLI Analyzer.app"
 OUT="dist/CLI Analyzer-${VERSION}${SUFFIX}.dmg"
 STAGE="$(mktemp -d)"
@@ -27,7 +29,7 @@ STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 
 echo "==> wails build ($WAILS_PLATFORM)"
-wails build -platform "$WAILS_PLATFORM"
+wails build -platform "$WAILS_PLATFORM" -ldflags "$LDFLAGS"
 
 echo "==> packaging $OUT"
 mkdir -p dist

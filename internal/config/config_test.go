@@ -68,3 +68,61 @@ func TestCorruptJSONFallsBackToDefaults(t *testing.T) {
 		t.Errorf("RetentionDays = %d, want 7", cfg.Trash.RetentionDays)
 	}
 }
+
+// ---- update config ----
+
+func TestUpdateDefaultsEnabled(t *testing.T) {
+	withTempRoot(t)
+	cfg := Default()
+	if !cfg.Update.CheckUpdatesEnabled() {
+		t.Error("CheckUpdatesEnabled() = false, want true (default)")
+	}
+}
+
+// 旧 config.json（无 update 段）加载后应兼容：CheckUpdates 为 nil → 默认 true
+func TestLegacyConfigWithoutUpdateSection(t *testing.T) {
+	withTempRoot(t)
+	if err := os.WriteFile(Path(), []byte(`{"trash":{"retentionDays":7}}`), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	cfg := Load()
+	if !cfg.Update.CheckUpdatesEnabled() {
+		t.Error("legacy config: CheckUpdatesEnabled() = false, want true")
+	}
+	if cfg.Update.LastCheckAt != "" {
+		t.Errorf("LastCheckAt = %q, want empty", cfg.Update.LastCheckAt)
+	}
+}
+
+func TestUpdateConfigRoundTrip(t *testing.T) {
+	withTempRoot(t)
+	cfg := Default()
+	off := false
+	cfg.Update.CheckUpdates = &off
+	cfg.Update.IgnoredVersion = "0.3.0"
+	cfg.Update.LastCheckAt = "2026-01-02T15:04:05Z"
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got := Load()
+	if got.Update.CheckUpdatesEnabled() {
+		t.Error("CheckUpdatesEnabled() = true, want false after save")
+	}
+	if got.Update.IgnoredVersion != "0.3.0" {
+		t.Errorf("IgnoredVersion = %q, want 0.3.0", got.Update.IgnoredVersion)
+	}
+	if got.Update.LastCheckAt != "2026-01-02T15:04:05Z" {
+		t.Errorf("LastCheckAt = %q, want saved value", got.Update.LastCheckAt)
+	}
+}
+
+func TestExplicitFalseStaysFalseAfterNormalize(t *testing.T) {
+	withTempRoot(t)
+	if err := os.WriteFile(Path(), []byte(`{"update":{"checkUpdates":false}}`), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	cfg := Load()
+	if cfg.Update.CheckUpdatesEnabled() {
+		t.Error("explicit false got normalized back to true")
+	}
+}

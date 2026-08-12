@@ -36,11 +36,14 @@ CLI Analyzer scans every CLI tool installed on your machine, attributes its **to
 - **Restore** — restore a trashed item from the GUI trash panel or `cli-analyzer trash restore`; `clean --permanent` skips the built-in trash entirely
 - **Usage trends** — every scan appends a snapshot; view total/cleanable over time (SVG chart) and the top cleanable growers, with a bell reminder when a tool's cleanable space exceeds a configurable limit (click it to list the tools and jump to one)
 - **Tree drill-down** — expand a cleanable item to its one-level child dirs (`~/.npm` → `_cacache` 10G / `_npx` 764M) and clean only the selected children. Sub-path deletion passes the same SAFE gate + guard (must be a child of an already-scanned, attributed parent)
-- **Two interfaces** — CLI (`scan` / `clean` / `cache` / `trash` / `trends` / `version`) + native GUI
+- **Built-in updater** — checks GitHub Releases on startup for a new version (toggleable in 首选项, with a 24h rate-limit cache); prompts to download with a progress bar, verifies the SHA256 checksum, then opens the installer for you to complete manually. CLI: `cli-analyzer update check`
+- **Two interfaces** — CLI (`scan` / `clean` / `cache` / `trash` / `trends` / `update` / `version`) + native GUI
 
 ## Installation
 
 > **Releases**: installers for macOS / Windows / Linux are published on the [Releases page](https://github.com/kevinjoy89/cli-analyzer/releases). Building from source also works.
+>
+> **Updates**: starting from the release that ships this feature, the app checks for new versions automatically on startup (disable in 首选项 → 更新) and prompts you to download when one is available. Downloads land in `~/Downloads` and are verified against the published SHA256 checksums before the installer is opened — installation itself stays with the system flow. macOS builds are currently **unsigned**, so Gatekeeper may require right-click → Open on first launch of a downloaded copy.
 
 Requirements: **Go ≥ 1.26** and **npm**.
 
@@ -75,6 +78,7 @@ cli-analyzer trash list              # list built-in trash items
 cli-analyzer trash restore <id>      # restore an item to its original path
 cli-analyzer trash empty             # empty the built-in trash (permanent)
 cli-analyzer trends [days]           # usage trends over the last N days (default 30)
+cli-analyzer update check           # check for a new version (exit: 0 up-to-date / 2 update / 1 error)
 cli-analyzer cache --clear           # clear the scan cache
 cli-analyzer                         # open the GUI
 ```

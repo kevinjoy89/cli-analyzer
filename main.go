@@ -104,6 +104,13 @@ func buildMenu() *menu.Menu {
 		}))
 		help.Append(menu.Separator())
 	}
+	// 手动检查更新：前端监听 "check-updates" 事件，走与自动检查一致的提示流程
+	help.Append(menu.Text("检查更新…", nil, func(_ *menu.CallbackData) {
+		if appCtx != nil {
+			runtime.EventsEmit(appCtx, "check-updates")
+		}
+	}))
+	help.Append(menu.Separator())
 	help.Append(menu.Text("GitHub Repository", nil, func(_ *menu.CallbackData) {
 		if appCtx != nil {
 			runtime.BrowserOpenURL(appCtx, repoURL)
@@ -125,7 +132,7 @@ func buildMenu() *menu.Menu {
 func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
-		case "scan", "clean", "cache", "trash", "trends", "version", "--version", "-v", "help", "-h", "--help":
+		case "scan", "clean", "cache", "trash", "trends", "update", "version", "--version", "-v", "help", "-h", "--help":
 			os.Exit(cli.Run(os.Args[1:]))
 		}
 		// "gui" and anything else fall through to the window.

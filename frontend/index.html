@@ -18,6 +18,7 @@
         <div class="menu-item">
             <button class="menu-btn" data-pop="help">帮助</button>
             <div class="menu-pop" data-pop="help">
+                <button class="menu-opt" data-act="check-updates">检查更新…</button>
                 <button class="menu-opt" data-act="about">关于 CLI Analyzer</button>
                 <button class="menu-opt" data-act="github">GitHub 仓库</button>
                 <button class="menu-opt" data-act="issue">反馈问题</button>
@@ -136,6 +137,13 @@
         <div class="modal-actions">
             <button id="aboutClose" class="btn">关闭</button>
         </div>
+    </div>
+</div>
+
+<div id="updateModal" class="modal hidden">
+    <div class="modal-box update">
+        <h3>软件更新</h3>
+        <div id="updateBody" class="modal-body"></div>
     </div>
 </div>
 

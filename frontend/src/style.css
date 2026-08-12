@@ -628,8 +628,7 @@ body.platform-linux #header { padding-top: 10px; }
 .grower-name { flex: 1; }
 
 /* about dialog */
-.modal-box.about { width: 360px; }
-.about-body {
+.modal-box.about { width: 360px; }.about-body {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -640,6 +639,31 @@ body.platform-linux #header { padding-top: 10px; }
 .about-body h2 { margin: 4px 0 0; font-size: 18px; }
 .about-version { font-family: var(--mono); color: var(--muted); font-size: 12px; }
 .about-body p { color: var(--path); font-size: 12px; margin: 2px 0; }
+
+/* update dialog */
+.modal-box.update { width: 480px; }
+.update-versions { font-size: 14px; margin: 4px 0 8px; }
+.update-versions code, .update-actions code { font-family: var(--mono); font-size: 12px; word-break: break-all; }
+.update-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+}
+.update-actions .btn + .btn { margin-left: 0; }
+.progress {
+    height: 8px;
+    border-radius: 4px;
+    background: var(--row-border);
+    overflow: hidden;
+    margin: 10px 0 6px;
+}
+.progress-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 4px;
+    transition: width 0.15s ease;
+}
 
 /* ---- toast ---- */
 .toast {
