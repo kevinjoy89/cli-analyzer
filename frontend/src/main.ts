@@ -2,30 +2,16 @@ import './style.css';
 
 import {Clean, GetLastResult, GetReminderConfig, GetTrashConfig, GetTrends, GetVersion, OpenURL, PurgeNow, Restore, Scan, SetReminderConfig, SetTheme, SetTrashConfig, TrashInfo, TrashList} from '../wailsjs/go/gui/ScannerService';
 import {Environment, EventsOn, Quit} from '../wailsjs/runtime/runtime';
+import {applyCleanLocally} from './lib/clean';
+import {hb, fmtTime} from './lib/format';
+import {computeTrendPaths} from './lib/trends';
+import {Cleanable, Grower, Point, ReminderConfig, ScanResult, Tool, TrendsResult} from './lib/types';
 
 // ---- types mirroring the Go JSON contract ----
-interface Binary { name: string; path: string; real: string; size: number }
-interface DataDir { path: string; bytes: number; tier: string; kind: string }
-interface Cleanable { id: string; tool: string; path: string; bytes: number; tier: string; kind: string; keep: string; desc: string; sub: {id: string; path: string; bytes: number}[] }
-interface Tool {
-    name: string; aliases: string[]; installer: string;
-    version: string; updatedAt: string; homepage: string; description: string;
-    binaries: Binary[]; dataDirs: DataDir[]; cleanables: Cleanable[];
-    footprintBytes: number; cleanableBytes: number; userBytes: number;
-}
-interface ScanResult {
-    scannedAt: string; scanTimeMs: number; platform: string; goVersion: string;
-    tools: Tool[]; totals: { footprintBytes: number; cleanableBytes: number; userBytes: number };
-    roots: Record<string, string[]>; walkErrors: number;
-}
 interface CleanReport { dryRun: boolean; deleted: string[]; freedBytes: number; skipped: string[]; errors: string[] }
 interface TrashInfoData { items: number; totalBytes: number; earliestExpiresAt: string }
 interface TrashItem { id: string; original: string; tool: string; kind: string; bytes: number; trashedAt: string; expiresAt: string }
 interface TrashConfig { retentionDays: number; expireAction: string; useTrash: boolean }
-interface Point { date: string; footprint: number; cleanable: number; user: number }
-interface Grower { tool: string; deltaBytes: number }
-interface TrendsResult { points: Point[]; topGrowers: Grower[] }
-interface ReminderConfig { thresholdBytes: number }
 
 // ---- state ----
 let result: ScanResult | null = null;
@@ -63,23 +49,10 @@ function applyTheme(mode: ThemeMode) {
 }
 
 // ---- helpers ----
-function hb(n: number): string {
-    if (n < 1024) return `${n} B`;
-    const units = ['K', 'M', 'G', 'T'];
-    let v = n;
-    let i = -1;
-    do { v /= 1024; i++; } while (v >= 1024 && i < units.length - 1);
-    return `${v.toFixed(1)} ${units[i]}B`;
-}
-
 function el<T extends HTMLElement>(id: string): T {
     const e = document.getElementById(id);
     if (!e) throw new Error(`missing element #${id}`);
     return e as T;
-}
-
-function fmtTime(ts: string): string {
-    return ts.slice(0, 16).replace('T', ' ');
 }
 
 function showToast(msg: string, isError = false) {
@@ -353,36 +326,6 @@ function selectedItems(t: Tool): PickItem[] {
     return out;
 }
 
-// applyCleanLocally 清理成功后本地立即从扫描快照移除已清理项（含子项），
-// 并重算各工具与总计，无需等待整体重扫即可刷新界面
-function applyCleanLocally(ids: string[]) {
-    if (!result) return;
-    const idSet = new Set(ids);
-    for (const t of result.tools) {
-        let toolFreed = 0;
-        // 整项清理
-        for (const c of t.cleanables) {
-            if (idSet.has(c.id)) { toolFreed += c.bytes; c.bytes = 0; c.sub = []; }
-        }
-        // 子项清理
-        for (const c of t.cleanables) {
-            if (!(c.sub ?? []).length) continue;
-            let subFreed = 0;
-            c.sub = c.sub.filter(s => { if (idSet.has(s.id)) { subFreed += s.bytes; return false; } return true; });
-            c.bytes -= subFreed;
-            toolFreed += subFreed;
-        }
-        t.cleanables = t.cleanables.filter(c => c.bytes > 0);
-        t.cleanableBytes = t.cleanables.reduce((a, c) => a + c.bytes, 0);
-        t.footprintBytes = Math.max(0, t.footprintBytes - toolFreed);
-        t.userBytes = Math.max(0, t.footprintBytes - t.cleanableBytes);
-    }
-    result.tools = result.tools.filter(t => t.cleanableBytes > 0 || t.userBytes > 0 || t.binaries.length > 0);
-    result.totals.footprintBytes = result.tools.reduce((a, t) => a + t.footprintBytes, 0);
-    result.totals.cleanableBytes = result.tools.reduce((a, t) => a + t.cleanableBytes, 0);
-    result.totals.userBytes = result.tools.reduce((a, t) => a + t.userBytes, 0);
-}
-
 // ---- confirm modal ----
 function showConfirmModal(items: PickItem[]) {
     const total = items.reduce((a, c) => a + c.bytes, 0);
@@ -405,9 +348,9 @@ function showConfirmModal(items: PickItem[]) {
             const hasErr = (rep.errors ?? []).length > 0;
             showToast(`清理完成：删除 ${del} 项，释放 ${hb(rep.freedBytes)}${skipped ? `，${skipped} 项被跳过` : ''}`, hasErr);
             selectedCleanIds.clear();
-            if (del > 0) {
+            if (del > 0 && result) {
                 // 本地立即刷新详情，无需等整体重扫
-                applyCleanLocally(ids);
+                applyCleanLocally(result, ids);
                 renderSummary(); renderToolList(); renderDetail(); refreshReminder(); refreshTrashInfo();
             }
             rescan();
@@ -596,26 +539,19 @@ async function refreshTrends() {
 // 手写 SVG 折线，延续零依赖风格；历史不足两个点提示"数据积累中"
 const CHART_W = 760, CHART_H = 240, CHART_PAD = 34;
 function renderTrendChart(container: HTMLElement, points: Point[]) {
-    if (points.length < 2) {
+    const { footprint, cleanable, labels, max } = computeTrendPaths(points, CHART_W, CHART_H, CHART_PAD);
+    if (!footprint) {
         container.innerHTML = '<div class="empty">数据积累中 — 完成两次扫描后即可查看趋势</div>';
         return;
     }
-    const max = Math.max(1, ...points.map(p => p.footprint));
-    const xs = (i: number) => CHART_PAD + i * (CHART_W - 2 * CHART_PAD) / (points.length - 1);
-    const ys = (v: number) => CHART_H - CHART_PAD - (v / max) * (CHART_H - 2 * CHART_PAD);
-    const path = (pick: (p: Point) => number) =>
-        points.map((p, i) => `${i ? 'L' : 'M'}${xs(i).toFixed(1)},${ys(pick(p)).toFixed(1)}`).join(' ');
-    const step = Math.max(1, Math.floor(points.length / 6));
-    const labels = points.map((p, i) => (i % step === 0 || i === points.length - 1)
-        ? `<text x="${xs(i)}" y="${CHART_H - CHART_PAD + 16}" text-anchor="middle" font-size="10" fill="var(--muted)">${esc(p.date.slice(5))}</text>` : '').join('');
     container.innerHTML = `
         <div class="trend-legend">
             <span><i class="dot user"></i>总占用</span>
             <span><i class="dot clean"></i>可清理</span>
         </div>
         <svg viewBox="0 0 ${CHART_W} ${CHART_H}" preserveAspectRatio="xMidYMid meet" width="100%">
-            <path d="${path(p => p.footprint)}" fill="none" stroke="var(--user)" stroke-width="2" opacity="0.9"/>
-            <path d="${path(p => p.cleanable)}" fill="none" stroke="var(--clean)" stroke-width="2" opacity="0.9"/>
+            <path d="${footprint}" fill="none" stroke="var(--user)" stroke-width="2" opacity="0.9"/>
+            <path d="${cleanable}" fill="none" stroke="var(--clean)" stroke-width="2" opacity="0.9"/>
             ${labels}
             <text x="${CHART_PAD}" y="${CHART_PAD - 8}" font-size="11" fill="var(--muted)">${hb(max)}</text>
         </svg>`;

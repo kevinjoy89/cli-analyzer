@@ -44,6 +44,10 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      - name: Run frontend unit tests
+        working-directory: frontend
+        run: npm test
+
       - name: Check formatting
         run: |
           unformatted=$(gofmt -l .)
