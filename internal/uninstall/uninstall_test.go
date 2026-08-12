@@ -171,3 +171,27 @@ func TestResiduesEmptyIsNotNil(t *testing.T) {
 		t.Fatal("Residues() returned nil slice for empty result")
 	}
 }
+
+// ResolveCommand 应在（增强的）PATH 目录中找到命令：模拟 GUI 最小 PATH，
+// 命令只存在于 ~/.local/bin（增强目录）。
+func TestResolveCommandViaAugmentedPath(t *testing.T) {
+	home := t.TempDir()
+	localBin := filepath.Join(home, ".local", "bin")
+	mkdir(t, localBin)
+	fake := filepath.Join(localBin, "faketool-un")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\necho hi\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "/usr/bin:/bin")
+	resolved, err := ResolveCommand("faketool-un")
+	if err != nil {
+		t.Fatalf("ResolveCommand: %v", err)
+	}
+	if resolved != fake {
+		t.Errorf("resolved = %q, want %q", resolved, fake)
+	}
+	if _, err := ResolveCommand("no-such-cmd-xyz"); err == nil {
+		t.Error("missing command should error")
+	}
+}

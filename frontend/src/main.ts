@@ -638,9 +638,11 @@ function startUninstall(toolName: string) {
 
 function showUninstallConfirm(info: UninstallStartInfo) {
     const body = el('uninstallBody');
-    // 复制按钮内联在命令后面（小图标），不放操作行
+    // 标题承载「卸载 <tool>」，body 不再重复工具名
+    el('uninstallTitle').textContent = t('un.guiUninstall') + ' ' + info.tool;
+    // 复制按钮内联在命令后面（极简 SVG 图标），不放操作行
     const cmdHtml = info.officialCommand
-        ? `<p class="muted un-cmdline">${esc(t('un.guiOfficialCmd'))}<br><code>${esc(info.officialCommand)}</code> <button id="unCopy" class="btn icon" title="${esc(t('un.guiCopyCmd'))}">📋</button></p>`
+        ? `<p class="muted un-cmdline">${esc(t('un.guiOfficialCmd'))}<br><code>${esc(info.officialCommand)}</code> <button id="unCopy" class="btn icon" title="${esc(t('un.guiCopyCmd'))}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></p>`
         : `<p class="muted">${esc(t('un.noOfficialCmd'))}</p>`;
     // 两行按钮：主文案 + 小字说明（语义：主路径 = 卸载并自动检测；跳过 = 直达残留检测）
     const runnableActions = info.runnable ? `
@@ -648,7 +650,6 @@ function showUninstallConfirm(info: UninstallStartInfo) {
             <button class="btn primary" id="unRun"><span class="btn-main">${esc(t('un.guiRunMain'))}</span><span class="btn-sub">${esc(t('un.guiRunSub'))}</span></button>` : `
             <button class="btn primary" id="unResidue">${esc(t('un.guiResidueTitle'))}</button>`;
     body.innerHTML = `
-        <p class="update-versions">${esc(t('un.guiUninstall'))} <b>${esc(info.tool)}</b>（${esc(info.installer ?? '')}）</p>
         <p class="muted">占用 ${hb(info.footprint || 0)} · 用户数据 ${hb(info.userBytes || 0)}</p>
         ${cmdHtml}
         <p id="unOut" class="muted un-output"></p>
@@ -704,8 +705,8 @@ async function showUninstallResidue() {
     } catch { showToast(t('un.residueNone'), true); return; }
     if (!rr.length) { showToast(t('un.guiResidueNone')); return; }
     const body = el('uninstallBody');
+    el('uninstallTitle').textContent = t('un.guiResidueTitle');
     body.innerHTML = `
-        <p class="update-versions">${esc(t('un.guiResidueTitle'))}</p>
         ${rr.map((r, i) => `
             <label class="pref-row check">
                 <input type="checkbox" data-idx="${i}" checked/>

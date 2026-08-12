@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	goruntime "runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -562,7 +563,14 @@ func (s *ScannerService) runUninstallOfficial(off uninstall.Official) {
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, off.Bin, off.Args...)
+	// GUI 启动 PATH 是最小集：先经（增强的）PATH 解析出命令绝对路径，
+	// 并给子进程注入完整 PATH（npm 内部的 node 等子进程依赖它）。
+	bin := off.Bin
+	if resolved, rerr := uninstall.ResolveCommand(off.Bin); rerr == nil {
+		bin = resolved
+	}
+	cmd := exec.CommandContext(ctx, bin, off.Args...)
+	cmd.Env = withPath(os.Environ(), uninstall.AugmentedPathEnv())
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
@@ -627,4 +635,16 @@ func (s *ScannerService) UninstallTrashResidues(paths []string) string {
 	s.Scan() // 后台重扫，让主界面刷新
 	b, _ := json.Marshal(map[string]any{"deleted": deleted, "errors": errs})
 	return string(b)
+}
+
+// withPath 返回替换 PATH 后的环境变量切片（保留其余环境）。
+func withPath(env []string, path string) []string {
+	out := make([]string, 0, len(env)+1)
+	for _, e := range env {
+		if strings.HasPrefix(e, "PATH=") {
+			continue
+		}
+		out = append(out, e)
+	}
+	return append(out, "PATH="+path)
 }
