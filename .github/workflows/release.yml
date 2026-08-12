@@ -84,8 +84,6 @@ jobs:
           ./scripts/build-dmg.sh amd64
           cp "dist/CLI Analyzer-${VERSION}-amd64.dmg" "dist/CLI-Analyzer-${VERSION}-macos-amd64.dmg"
           rm "dist/CLI Analyzer-${VERSION}-amd64.dmg"
-          # 校验和（macOS 无 sha256sum，用 shasum -a 256；输出格式与 sha256sum 兼容）
-          cd dist && shasum -a 256 * > checksums.txt
 
       # ---- Windows：NSIS 安装器 + 便携 zip ----
       # wails -nsis 需要 makensis。choco 把 NSIS 写入系统 PATH，但 runner 当前
@@ -108,13 +106,6 @@ jobs:
           wails build -platform windows/amd64 -ldflags "-X cli-analyzer/internal/buildinfo.Version=$env:VERSION -X cli-analyzer/internal/buildinfo.InstallSource=portable"
           Compress-Archive -Path build/bin/cli-analyzer.exe, build/windows/icon.ico `
             -DestinationPath "dist/CLI-Analyzer-$env:VERSION-windows-amd64-portable.zip" -Force
-          # 校验和：输出与 sha256sum 兼容的 "<hex>  <name>" 格式。
-          # 先收集到变量再写文件：流式管道会先锁定目标文件，而 Get-ChildItem
-          # 枚举 dist/ 时会把刚创建的 checksums.txt 也列进去导致 Get-FileHash 撞锁。
-          $sums = Get-ChildItem dist -File | Where-Object { $_.Name -ne 'checksums.txt' } | ForEach-Object {
-            "$((Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower())  $($_.Name)"
-          }
-          $sums | Out-File -Encoding ascii dist/checksums.txt
 
       # ---- Linux：deb + 便携 tar.gz ----
       # 构建两次注入不同 InstallSource：deb 与 tarball（同一源码，仅标识不同）。
@@ -155,8 +146,6 @@ jobs:
           dpkg-deb --build --root-owner-group "$DEB_DIR" "dist/CLI-Analyzer-${VERSION}-linux-amd64.deb"
           cp /tmp/cli-analyzer-tarball /tmp/cli-analyzer
           tar -czf "dist/CLI-Analyzer-${VERSION}-linux-amd64.tar.gz" -C /tmp cli-analyzer
-          # 校验和
-          cd dist && sha256sum * > checksums.txt
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
@@ -173,6 +162,17 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
+      # 汇总三平台产物生成唯一的 checksums.txt：更新功能按资产名匹配校验和。
+      # 不能在各构建 job 内各自生成——重名文件上传时会互相覆盖，导致只有
+      # 一个平台的产物被覆盖（v0.3.0 曾因此只含 Linux 条目）。
+      - name: Generate consolidated checksums.txt
+        run: |
+          cd artifacts
+          find . -type f ! -name 'checksums.txt' -exec sha256sum {} + | while read -r hash path; do
+            echo "$hash  $(basename "$path")"
+          done | sort > checksums.txt
+          echo '== checksums.txt =='
+          cat checksums.txt
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
