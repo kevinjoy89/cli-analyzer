@@ -108,7 +108,9 @@ func PathDirs(skipSystem bool) []string {
 		}
 		out = append(out, abs)
 	}
-	return out
+	// 补齐 GUI 启动（Finder/Start Menu）时缺失的 shell-only 二进制目录，
+	// 使 GUI 扫描与终端扫描结果一致（见 path_augment_unix.go）。
+	return augmentUserDirs(seen, out)
 }
 
 func isSystemDir(d string) bool {
