@@ -64,6 +64,8 @@ export function TrashInfo():Promise<string>;
 
 export function TrashList():Promise<string>;
 
+export function UninstallBlocked(arg1:string):Promise<string>;
+
 export function UninstallResidue():Promise<string>;
 
 export function UninstallRunOfficial():Promise<string>;

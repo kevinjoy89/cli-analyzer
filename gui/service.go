@@ -528,6 +528,12 @@ func (s *ScannerService) UninstallStart(tool string) string {
 	return string(b)
 }
 
+// UninstallBlocked 报告该工具是否命中系统关键工具黑名单（前端据此禁用卸载按钮）。
+func (s *ScannerService) UninstallBlocked(tool string) string {
+	b, _ := json.Marshal(map[string]any{"tool": tool, "blocked": uninstall.IsBlocked(tool)})
+	return string(b)
+}
+
 // UninstallRunOfficial 异步代跑标准卸载命令；状态经 GetUninstallStatus 轮询读取。
 func (s *ScannerService) UninstallRunOfficial() string {
 	s.mu.Lock()

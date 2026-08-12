@@ -1,6 +1,6 @@
 import './style.css';
 
-import {CancelDownload, CheckForUpdates, Clean, DownloadUpdate, GetDownloadProgress, GetLanguage, GetLastResult, GetReminderConfig, GetTranslations, GetTrashConfig, GetUninstallStatus, GetUpdateStatus, GetTrends, GetUpdateConfig, GetVersion, IgnoreVersion, InstallUpdate, OpenURL, PurgeNow, Restore, Scan, SetLanguage, SetLanguagePreference, SetReminderConfig, SetTheme, SetTrashConfig, SetUpdateConfig, TrashInfo, TrashList, UninstallResidue, UninstallRunOfficial, UninstallStart, UninstallTrashResidues} from '../wailsjs/go/gui/ScannerService';
+import {CancelDownload, CheckForUpdates, Clean, DownloadUpdate, GetDownloadProgress, GetLanguage, GetLastResult, GetReminderConfig, GetTranslations, GetTrashConfig, GetUninstallStatus, GetUpdateStatus, GetTrends, GetUpdateConfig, GetVersion, IgnoreVersion, InstallUpdate, OpenURL, PurgeNow, Restore, Scan, SetLanguage, SetLanguagePreference, SetReminderConfig, SetTheme, SetTrashConfig, SetUpdateConfig, TrashInfo, TrashList, UninstallBlocked, UninstallResidue, UninstallRunOfficial, UninstallStart, UninstallTrashResidues} from '../wailsjs/go/gui/ScannerService';
 import {Environment, EventsOn, Quit} from '../wailsjs/runtime/runtime';
 import {applyCleanLocally} from './lib/clean';
 import {hb} from './lib/format';
@@ -277,7 +277,7 @@ function renderDetail() {
         <div class="detail-section"><h4>${esc(t('ui.sectionSafe'))}</h4>${cleanHtml}</div>
         <div class="detail-actions">
             <button id="cleanBtn" class="btn danger">${esc(t('ui.cleanSelected'))}</button>
-            <button id="uninstallBtn" class="btn small danger" title="${esc(t('un.guiUninstall'))}">${esc(t('un.guiUninstall'))}</button>
+            <button id="uninstallBtn" class="btn danger" title="${esc(t('un.guiUninstall'))}">${esc(t('un.guiUninstall'))}</button>
             <span class="sel-info" id="selInfo">${esc(t('ui.selectedCount', {n: selectedCleanIds.size}))}</span>
         </div>`;
 
@@ -319,6 +319,13 @@ function renderDetail() {
         showConfirmModal(selectedItems(tool));
     };
     el<HTMLButtonElement>('uninstallBtn').onclick = () => startUninstall(tool.name);
+    // 黑名单工具禁用卸载按钮（UninstallBlocked 来自服务层）
+    UninstallBlocked(tool.name).then(raw => {
+        try {
+            const b = JSON.parse(raw) as {blocked: boolean};
+            el<HTMLButtonElement>('uninstallBtn').disabled = !!b.blocked;
+        } catch { /* 忽略 */ }
+    });
 }
 
 function esc(s: string): string {
@@ -642,22 +649,24 @@ function showUninstallConfirm(info: UninstallStartInfo) {
         </div>`;
     el('uninstallModal').classList.remove('hidden');
     el('unCancel').onclick = () => { stopUninstallPoll(); el('uninstallModal').classList.add('hidden'); };
-    if (info.officialCommand) el('unCopy').onclick = () => {
+    // 条件渲染的按钮用 getElementById 可空查找（el() 对缺失元素会 throw，
+    // 导致后续按钮事件全部丢失——曾报 "missing element #unRun"）
+    const copyBtn = document.getElementById('unCopy');
+    if (copyBtn) copyBtn.onclick = () => {
         navigator.clipboard?.writeText(info.officialCommand!).catch(() => {});
         showToast(info.officialCommand!);
     };
-    // 代跑：轮询输出（macOS 事件不可靠，沿用 update 进度方案）
-    const runBtn = el<HTMLButtonElement>('unRun');
+    const runBtn = document.getElementById('unRun') as HTMLButtonElement | null;
     if (runBtn) runBtn.onclick = async () => {
         runBtn.disabled = true;
         const err = await UninstallRunOfficial();
         if (err) { showToast(err, true); runBtn.disabled = false; return; }
         startUninstallPoll();
     };
-    // 自行执行：直接进入残留检测
-    const skipBtn = el('unSkip');
+    const skipBtn = document.getElementById('unSkip');
     if (skipBtn) skipBtn.onclick = () => showUninstallResidue();
-    el('unResidue').onclick = () => showUninstallResidue();
+    const residueBtn = document.getElementById('unResidue');
+    if (residueBtn) residueBtn.onclick = () => showUninstallResidue();
 }
 
 function startUninstallPoll() {
