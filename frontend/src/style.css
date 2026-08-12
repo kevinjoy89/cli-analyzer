@@ -379,12 +379,13 @@ body.platform-linux #header { padding-top: 10px; }
     border-radius: 5px;
     font-size: 12px;
 }
-.detail-item .path { flex: 1; font-family: var(--mono); font-size: 11px; color: var(--path); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.detail-item .size { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+.detail-item .path { flex: 1 1 0; min-width: 0; font-family: var(--mono); font-size: 11px; color: var(--path); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detail-item .size { flex-shrink: 0; font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
 .detail-item .size.safe { color: var(--clean); }
 .detail-item .size.clean { color: var(--clean); }
 .detail-item .size.user { color: var(--user); }
-.detail-item .keep { font-size: 10px; color: var(--amber); }
+.detail-item .keep { flex-shrink: 0; font-size: 10px; color: var(--amber); }
+.detail-item .badge { flex-shrink: 0; }
 
 /* cleanable checkbox rows */
 .clean-row { display: flex; align-items: center; gap: 8px; }
@@ -417,8 +418,8 @@ body.platform-linux #header { padding-top: 10px; }
 .clean-block { display: flex; flex-direction: column; gap: 2px; }
 .sub-list { display: flex; flex-direction: column; gap: 1px; margin-left: 22px; padding-left: 8px; border-left: 1px dashed var(--border); }
 .detail-item.sub-row { background: transparent; padding: 2px 8px; }
-.detail-item.sub-row .sub-path { flex: 1; font-family: var(--mono); font-size: 10.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.detail-item.sub-row .size { font-size: 10.5px; }
+.detail-item.sub-row .sub-path { flex: 1 1 0; min-width: 0; font-family: var(--mono); font-size: 10.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detail-item.sub-row .size { flex-shrink: 0; font-size: 10.5px; }
 .detail-item.sub-row input[type="checkbox"] { accent-color: var(--clean); width: 11px; height: 11px; flex-shrink: 0; }
 .detail-item.sub-row input[type="checkbox"]:disabled { opacity: .3; }
 .sub-more { font-size: 10px; color: var(--muted); padding: 1px 8px 3px 26px; }
