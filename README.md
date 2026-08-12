@@ -1,7 +1,3 @@
-<p align="center">
-  <b>English</b> · <a href="README.zh-CN.md">简体中文</a>
-</p>
-
 <h1 align="center">CLI Analyzer</h1>
 
 <p align="center">
@@ -15,6 +11,10 @@
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License: MIT">
 </p>
 
+<p align="center">
+  <b>English</b> · <a href="README.zh-CN.md">简体中文</a>
+</p>
+
 ---
 
 Cleanup tools like CleanMyMac show how much disk your **desktop apps** use — but they are blind to **CLI tools**. A CLI tool's footprint is scattered across hidden dotfiles and XDG directories (`~/.claude`, `~/.npm`, `~/.cache/*`), so it gets lumped under "Other" or ignored entirely.
@@ -23,7 +23,7 @@ CLI Analyzer scans every CLI tool installed on your machine, attributes its **to
 
 | Light theme | Dark theme |
 |---|---|
-| ![Light](./docs/screenshots/app-light.png) | ![Dark](./docs/screenshots/app-dark.png) |
+| ![Light](./docs/screenshots/app-light-en.png) | ![Dark](./docs/screenshots/app-dark-en.png) |
 
 ## Features
 
@@ -36,7 +36,7 @@ CLI Analyzer scans every CLI tool installed on your machine, attributes its **to
 - **Restore** — restore a trashed item from the GUI trash panel or `cli-analyzer trash restore`; `clean --permanent` skips the built-in trash entirely
 - **Usage trends** — every scan appends a snapshot; view total/cleanable over time (SVG chart) and the top cleanable growers, with a bell reminder when a tool's cleanable space exceeds a configurable limit (click it to list the tools and jump to one)
 - **Tree drill-down** — expand a cleanable item to its one-level child dirs (`~/.npm` → `_cacache` 10G / `_npx` 764M) and clean only the selected children. Sub-path deletion passes the same SAFE gate + guard (must be a child of an already-scanned, attributed parent)
-- **Built-in updater** — checks GitHub Releases on startup for a new version (toggleable in 首选项, with a 24h rate-limit cache); prompts to download with a progress bar, verifies the SHA256 checksum, then opens the installer for you to complete manually. CLI: `cli-analyzer update check`
+- **Built-in updater** — checks GitHub Releases on startup for a new version (toggleable in 首选项, with a 24h rate-limit cache); prompts to download with a progress bar, verifies the SHA256 checksum, then opens the installer for you to complete manually. CLI: `cli-analyzer update check`. Note: within 24h of a release, a cached check may not yet report it — the prompt appears once the cache refreshes
 - **Localized UI** — Simplified Chinese / Traditional Chinese / English; follows the system language by default, switchable in 首选项 → 语言 (applies instantly; macOS native menu applies after restart)
 - **Two interfaces** — CLI (`scan` / `clean` / `cache` / `trash` / `trends` / `update` / `version`) + native GUI
 
@@ -80,6 +80,7 @@ cli-analyzer trash restore <id>      # restore an item to its original path
 cli-analyzer trash empty             # empty the built-in trash (permanent)
 cli-analyzer trends [days]           # usage trends over the last N days (default 30)
 cli-analyzer update check           # check for a new version (exit: 0 up-to-date / 2 update / 1 error)
+cli-analyzer version                # show version and install source (e.g. 0.3.3 (darwin, dmg))
 cli-analyzer cache --clear           # clear the scan cache
 cli-analyzer                         # open the GUI
 ```

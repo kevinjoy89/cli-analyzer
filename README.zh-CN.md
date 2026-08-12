@@ -1,7 +1,3 @@
-<p align="center">
-  <a href="README.md">English</a> · <b>简体中文</b>
-</p>
-
 <h1 align="center">CLI Analyzer</h1>
 
 <p align="center">
@@ -13,6 +9,10 @@
   <img src="https://img.shields.io/badge/Wails-v2-8A2BE2" alt="Wails v2">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey" alt="Platform">
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License: MIT">
+</p>
+
+<p align="center">
+  <a href="README.md">English</a> · <b>简体中文</b>
 </p>
 
 ---
@@ -36,7 +36,7 @@ CLI Analyzer 扫描系统上安装的 CLI 工具，归因每个工具的总磁�
 - **恢复**：可从 GUI 回收站面板或 `cli-analyzer trash restore` 还原项目；`clean --permanent` 可跳过内置回收站直接删除
 - **占用趋势**：每次扫描自动追加历史快照；GUI 趋势视图（手写 SVG 折线）展示总占用/可清理随时间的变化与 cleanable 增量 Top 5，并在某工具可清理量超过阈值时以铃铛徽标提醒（点击可查看待清理工具并快速跳转，阈值可在"首选项"配置）
 - **树形明细**：可清理项展开显示一级子目录占用（如 `~/.npm` → `_cacache` 10G / `_npx` 764M），可只勾选部分子项单独清理；子路径删除同样经过 SAFE 门槛与守卫（必须是扫描归因过的父项子路径）
-- **内置更新**：启动时自动检查 GitHub Releases 是否有新版本（可在「首选项 → 更新」关闭，带 24h 限流缓存）；发现新版提示下载并展示进度条，下载后校验 SHA256 校验和，再打开安装包由你手动完成安装。CLI 侧：`cli-analyzer update check`
+- **内置更新**：启动时自动检查 GitHub Releases 是否有新版本（可在「首选项 → 更新」关闭，带 24h 限流缓存）；发现新版提示下载并展示进度条，下载后校验 SHA256 校验和，再打开安装包由你手动完成安装。CLI 侧：`cli-analyzer update check`。注意：新版本发布后 24h 内可能因缓存尚未刷新而不提示，稍候即会弹出
 - **多语言界面**：简体中文 / 繁體中文 / English 三种语言，默认跟随系统，可在「首选项 → 语言」切换（前端即时生效；macOS 原生菜单重启后生效）
 - **双接口**：CLI（`scan` / `clean` / `cache` / `trash` / `trends` / `update` / `version`）+ 原生 GUI
 
@@ -80,6 +80,7 @@ cli-analyzer trash restore <id>      # 恢复一个项目到原路径
 cli-analyzer trash empty             # 清空内置回收站（彻底删除）
 cli-analyzer trends [天数]           # 查看最近 N 天占用趋势（默认 30 天）
 cli-analyzer update check           # 检查新版本（退出码：0 已是最新 / 2 有更新 / 1 错误）
+cli-analyzer version                # 显示版本与安装来源（如 0.3.3 (darwin, dmg)）
 cli-analyzer cache --clear           # 清除扫描缓存
 cli-analyzer                         # 打开 GUI
 ```
