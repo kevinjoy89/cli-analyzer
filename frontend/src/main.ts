@@ -733,6 +733,8 @@ async function showUninstallResidue() {
         el('uninstallModal').classList.add('hidden');
         const hasErr = (rep.errors ?? []).length > 0;
         showToast(t('un.guiResidueDone') + (hasErr ? '（' + t('un.runFailed') + '）' : ''), hasErr);
+        // 立即刷新右下角回收站占用（不等后台重扫完成，与 clean 流程一致）
+        refreshTrashInfo();
     };
 }
 
