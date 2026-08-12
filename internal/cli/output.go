@@ -35,8 +35,11 @@ func printTable(res *scanner.ScanResult) {
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 			t.Name, cmds, humanBytes(t.Footprint), humanBytes(t.Cleanable), humanBytes(t.User), t.Installer)
 	}
-	fmt.Fprintf(w, i18n.T("cli.totalsRow"),
-		humanBytes(res.Totals.Footprint), humanBytes(res.Totals.Cleanable), humanBytes(res.Totals.User))
+	fmt.Fprint(w, i18n.T("cli.totalsRow", map[string]any{
+		"footprint": humanBytes(res.Totals.Footprint),
+		"cleanable": humanBytes(res.Totals.Cleanable),
+		"user":      humanBytes(res.Totals.User),
+	}))
 	w.Flush()
 	fmt.Fprint(stdout(), i18n.T("cli.statsLine", map[string]any{"n": len(res.Tools), "ms": res.ScanTimeMS, "errors": res.Errors}))
 	if len(res.Unattributed) > 0 {

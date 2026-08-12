@@ -202,9 +202,15 @@ func TestPrintTable(t *testing.T) {
 	buf := captureStdout(t)
 	printTable(res)
 	s := buf.String()
-	for _, want := range []string{"工具", "npm", "gh", "合计", "共 2 个工具"} {
+	for _, want := range []string{"工具", "npm", "gh", "合计", "共 2 个工具", "110 B", "60 B", "50 B"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("table missing %q in:\n%s", want, s)
+		}
+	}
+	// 回归：totalsRow 必须经 i18n 插值（占位符被替换、无多余 Fprintf 参数垃圾）
+	for _, bad := range []string{"{footprint}", "{cleanable}", "{user}", "%!(EXTRA"} {
+		if strings.Contains(s, bad) {
+			t.Errorf("table contains un-interpolated placeholder %q in:\n%s", bad, s)
 		}
 	}
 }
