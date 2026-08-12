@@ -138,7 +138,7 @@
   "upd.releasePage": "打开 Release 页面",
   "upd.checkFailed": "检查更新失败: {err}",
   "upd.upToDate": "已是最新版本 v{version}",
-  "cli.usage": "cli-analyzer — 扫描 CLI 工具的磁盘占用并安全清理\n\n用法:\n  cli-analyzer scan [-j|--json] [--full] [--refresh] [--order=size|name] [工具...]\n  cli-analyzer clean [-a|--all] [-n|--dry-run] [-y|--yes] [-j|--json] [--list] [--permanent] [工具...]\n  cli-analyzer cache [--clear]\n  cli-analyzer trash [list|restore <id>|empty]\n  cli-analyzer trends [天数]   # 查看占用趋势与可清理增量 Top 5（默认最近 30 天）\n  cli-analyzer update check [--json]   # 检查新版本（退出码: 0 最新 / 2 有更新 / 1 错误）\n  cli-analyzer version\n  cli-analyzer gui        # 打开图形界面（无参数时默认）\n\n安全模型: 只有 SAFE 级（缓存/旧版本/包管理器缓存）可被清理；\nUSER 级（配置/历史/venv）仅展示，任何情况下都不会被自动删除。",
+  "cli.usage": "cli-analyzer — 扫描 CLI 工具的磁盘占用并安全清理\n\n用法:\n  cli-analyzer scan [-j|--json] [--full] [--refresh] [--order=size|name] [工具...]\n  cli-analyzer clean [-a|--all] [-n|--dry-run] [-y|--yes] [-j|--json] [--list] [--permanent] [工具...]\n  cli-analyzer cache [--clear]\n  cli-analyzer trash [list|restore <id>|empty]\n  cli-analyzer trends [天数]   # 查看占用趋势与可清理增量 Top 5（默认最近 30 天）\n  cli-analyzer update check [--json]   # 检查新版本（退出码: 0 最新 / 2 有更新 / 1 错误）\n  cli-analyzer uninstall <工具> [--residue] [--yes]   # 官方卸载 + 残留清理（走内置回收站）\n  cli-analyzer version\n  cli-analyzer gui        # 打开图形界面（无参数时默认）\n\n安全模型: 只有 SAFE 级（缓存/旧版本/包管理器缓存）可被清理；\nUSER 级（配置/历史/venv）仅展示，任何情况下都不会被自动删除。",
   "cli.cacheClearFailed": "清除失败: {err}",
   "cli.cacheCleared": "缓存已清除",
   "cli.cacheExists": "缓存存在，写入时间 {time}\n位置: {path}",
