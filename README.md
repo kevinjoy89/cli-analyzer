@@ -32,19 +32,19 @@ CLI Analyzer scans every CLI tool installed on your machine, attributes its **to
 - **Two-level safety model**
   - **SAFE** (caches, old versions, backups, package-manager caches) — moved into the built-in trash (recoverable) after per-item confirmation
   - **USER** (config, history, venv) — display-only, **never auto-deleted**. The hard gate lives in the cleaner layer; `--yes` cannot bypass it
-- **Built-in trash** — deletions go to the app's own trash first (same filesystem, instant), recoverable for 7 days (configurable in 首选项); expired items move to the OS trash or are deleted permanently
+- **Built-in trash** — deletions go to the app's own trash first (same filesystem, instant), recoverable for 7 days (configurable in Preferences); expired items move to the OS trash or are deleted permanently
 - **Restore** — restore a trashed item from the GUI trash panel or `cli-analyzer trash restore`; `clean --permanent` skips the built-in trash entirely
 - **Usage trends** — every scan appends a snapshot; view total/cleanable over time (SVG chart) and the top cleanable growers, with a bell reminder when a tool's cleanable space exceeds a configurable limit (click it to list the tools and jump to one)
 - **Tree drill-down** — expand a cleanable item to its one-level child dirs (`~/.npm` → `_cacache` 10G / `_npx` 764M) and clean only the selected children. Sub-path deletion passes the same SAFE gate + guard (must be a child of an already-scanned, attributed parent)
-- **Built-in updater** — checks GitHub Releases on startup for a new version (toggleable in 首选项, with a 24h rate-limit cache); prompts to download with a progress bar, verifies the SHA256 checksum, then opens the installer for you to complete manually. CLI: `cli-analyzer update check`. Note: within 24h of a release, a cached check may not yet report it — the prompt appears once the cache refreshes
-- **Localized UI** — Simplified Chinese / Traditional Chinese / English; follows the system language by default, switchable in 首选项 → 语言 (applies instantly; macOS native menu applies after restart)
+- **Built-in updater** — checks GitHub Releases on startup for a new version (toggleable in Preferences, with a 24h rate-limit cache); prompts to download with a progress bar, verifies the SHA256 checksum, then opens the installer for you to complete manually. CLI: `cli-analyzer update check`. Note: within 24h of a release, a cached check may not yet report it — the prompt appears once the cache refreshes
+- **Localized UI** — Simplified Chinese / Traditional Chinese / English; follows the system language by default, switchable in Preferences → Language (applies instantly; macOS native menu applies after restart)
 - **Two interfaces** — CLI (`scan` / `clean` / `cache` / `trash` / `trends` / `update` / `version`) + native GUI
 
 ## Installation
 
 > **Releases**: installers for macOS / Windows / Linux are published on the [Releases page](https://github.com/kevinjoy89/cli-analyzer/releases). Building from source also works.
 >
-> **Updates**: starting from the release that ships this feature, the app checks for new versions automatically on startup (disable in 首选项 → 更新) and prompts you to download when one is available. Downloads land in `~/Downloads` and are verified against the published SHA256 checksums before the installer is opened — installation itself stays with the system flow. macOS builds are currently **unsigned**, so Gatekeeper may require right-click → Open on first launch of a downloaded copy.
+> **Updates**: starting from the release that ships this feature, the app checks for new versions automatically on startup (disable in Preferences → Update) and prompts you to download when one is available. Downloads land in `~/Downloads` and are verified against the published SHA256 checksums before the installer is opened — installation itself stays with the system flow. macOS builds are currently **unsigned**, so Gatekeeper may require right-click → Open on first launch of a downloaded copy.
 
 Requirements: **Go ≥ 1.26** and **npm**.
 
@@ -88,21 +88,21 @@ cli-analyzer                         # open the GUI
 Example scan output:
 
 ```
-工具           命令  总占用       可清理(SAFE)  用户数据      来源
-npm          -   10.2 GB   10.2 GB    0 B       npm
-opencode     -   8.2 GB    0 B        8.2 GB    other
-uv           -   7.3 GB    7.2 GB     57.0 MB   other
-codex        -   2.0 GB    288.7 MB   1.8 GB    other
-pip          -   1.1 GB    1.1 GB     0 B       pip
-go           -   1.0 GB    753.7 MB   282.3 MB  go
-pyenv        -   759.8 MB  0 B        759.8 MB  pyenv
+Tool   Cmd   Total   Cleanable(SAFE)   User   Source
+npm    -     10.2 GB  10.2 GB           0 B     npm
+opencode -   8.2 GB   0 B               8.2 GB  other
+uv     -     7.3 GB   7.2 GB            57.0 MB other
+codex  -     2.0 GB   288.7 MB          1.8 GB  other
+pip    -     1.1 GB   1.1 GB            0 B     pip
+go     -     1.0 GB   753.7 MB          282.3 MB go
+pyenv  -     759.8 MB 0 B               759.8 MB pyenv
 ...
-合计           -   31.5 GB   19.9 GB    11.7 GB   -
+Total  -     31.5 GB  19.9 GB           11.7 GB -
 ```
 
 **Safety model**: only SAFE-level items (caches / old versions / backups / package-manager caches) are cleaned; USER-level (config / history / venv) is display-only. Old-version cleanup always keeps the current version (e.g. the symlink target for `claude`).
 
-**Deferred deletion**: SAFE items are moved into the app's built-in trash first — same filesystem, instant, and recoverable. They stay there for the retention window (default 7 days, configurable in 首选项) and are then purged: by default into the OS trash, or permanently if configured. The GUI status bar shows the trash occupancy and the earliest expiry, so "cleaned" and "space released" stay distinct. Use `clean --permanent` to bypass the built-in trash.
+**Deferred deletion**: SAFE items are moved into the app's built-in trash first — same filesystem, instant, and recoverable. They stay there for the retention window (default 7 days, configurable in Preferences) and are then purged: by default into the OS trash, or permanently if configured. The GUI status bar shows the trash occupancy and the earliest expiry, so "cleaned" and "space released" stay distinct. Use `clean --permanent` to bypass the built-in trash.
 
 ### Cleaning boundaries — verified, never listed as SAFE
 
