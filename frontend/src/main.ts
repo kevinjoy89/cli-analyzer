@@ -488,11 +488,13 @@ let lastUpdateResult: UpdateResult | null = null;
 // 下载进度改用轮询（GetDownloadProgress）：macOS WKWebView 对跨桥事件不可靠，
 // 事件推进度在 Mac 上完全不显示，轮询与 GetUpdateStatus 同一套路（已验证有效）。
 let downloadPoll: number | null = null;
+let lastShownPct = 0;
 function stopDownloadPoll() {
     if (downloadPoll !== null) { window.clearInterval(downloadPoll); downloadPoll = null; }
 }
 function startDownloadPoll() {
     stopDownloadPoll();
+    lastShownPct = 0;
     downloadPoll = window.setInterval(async () => {
         try {
             const raw = await GetDownloadProgress();
@@ -501,8 +503,12 @@ function startDownloadPoll() {
             if (updateState !== 'downloading') return;
             const bar = el('updBar') as HTMLElement;
             const pct = el('updPct');
-            if (!p.total) { bar.style.width = '100%'; pct.textContent = t('ui.bytes', {n: p.downloaded}); return; }
+            // 总量未知（下载未真正开始，如重取 release 阶段）：不跳 100%，保持 0%
+            if (!p.total) { pct.textContent = t('ui.bytes', {n: p.downloaded}); return; }
             const n = Math.min(100, Math.round((p.downloaded / p.total) * 100));
+            // 单调防线：进度只进不退（双保险，Go 侧已有同样守卫）
+            if (n < lastShownPct) return;
+            lastShownPct = n;
             bar.style.width = n + '%';
             pct.textContent = `${n}%（${hb(p.downloaded)} / ${hb(p.total)}）`;
         } catch { /* 单次轮询失败忽略 */ }

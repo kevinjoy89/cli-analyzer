@@ -232,7 +232,7 @@
   "err.updateNoStable": "查询更新失败：没有可用的正式版本",
   "err.updateNoAssetRule": "平台 {goos}/{goarch}、安装来源 {source} 没有对应的产物命名规则",
   "err.updateAssetMissing": "版本 {version} 缺少产物 {name}（安装来源 {source}）",
-  "err.updateDownload": "下载失败: {err}",
+  "err.updateDownload": "下载失败",
   "err.updateFetchChecksums": "获取校验和失败: {err}",
   "err.updateChecksumMismatch": "校验和不匹配（{name}）：期望 {want}，实际 {got}",
   "err.updateChecksumMissing": "校验和文件缺少 {name} 的条目"

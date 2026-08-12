@@ -280,17 +280,20 @@ func (s *ScannerService) GetUpdateStatus() string {
 // "update:verify-failed"，取消推 "update:cancelled"，其他错误推 "update:error"。
 func (s *ScannerService) DownloadUpdate() string {
 	s.mu.Lock()
-	res := s.check
-	inFlight := s.downloadCancel != nil
-	s.mu.Unlock()
-	if inFlight {
+	// 检查与占位在锁内原子完成，杜绝双启动竞态（两次调用各起一个下载 goroutine
+	// 会互写进度，表现为进度条前进后回退）
+	if s.downloadCancel != nil {
+		s.mu.Unlock()
 		return i18n.T("upd.downloadInProgress")
 	}
+	res := s.check
 	if res == nil || !res.UpdateAvailable || res.DownloadURL == "" {
+		s.mu.Unlock()
 		return i18n.T("upd.nothingToDownload")
 	}
+	s.dlDownloaded = 0
+	s.dlTotal = 0
 	ctx, cancel := context.WithCancel(context.Background())
-	s.mu.Lock()
 	s.downloadCancel = cancel
 	s.mu.Unlock()
 	go s.runDownload(ctx, *res, cancel)
@@ -298,13 +301,14 @@ func (s *ScannerService) DownloadUpdate() string {
 }
 
 // progressFn 更新下载进度状态（前端轮询 GetDownloadProgress 读取）。
-// 原先用 EventsEmit 推进度：macOS WKWebView 连低频事件都不可靠（问题复测
-// 未修复），改为与 GetUpdateStatus 相同的轮询模式。
+// 单调守卫：忽略回退值（w 小于当前已读），即使出现双写也不会让进度倒退。
 func (s *ScannerService) progressFn() updater.ProgressFunc {
 	return func(w, t int64) {
 		s.mu.Lock()
-		s.dlDownloaded = w
-		s.dlTotal = t
+		if w > s.dlDownloaded || t != s.dlTotal {
+			s.dlDownloaded = w
+			s.dlTotal = t
+		}
 		s.mu.Unlock()
 	}
 }

@@ -197,8 +197,12 @@ func TestDownloadCancelRemovesPart(t *testing.T) {
 		})
 		done <- err
 	}()
-	if err := <-done; err == nil {
+	err := <-done
+	if err == nil {
 		t.Fatal("want error after cancel")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("cancel error must match errors.Is(err, context.Canceled), got %v", err)
 	}
 	matches, _ := filepath.Glob(filepath.Join(downloadsDir(), "big.bin*"))
 	if len(matches) != 0 {
