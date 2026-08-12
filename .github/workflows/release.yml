@@ -94,14 +94,27 @@ jobs:
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
+          # NSIS 是安装器生成的前提：choco 偶发安装失败（如源解析错误）时 wails
+          # 只打 Warning 静默跳过、Copy-Item 空匹配错误也被吞——必须显式校验，
+          # 否则安装器会悄悄缺失（v0.3.4 曾因此只有 5/6 产物）。
           choco install nsis -y
+          if (-not (Test-Path "C:\Program Files (x86)\NSIS\makensis.exe")) {
+            choco install nsis -y --force
+          }
+          if (-not (Test-Path "C:\Program Files (x86)\NSIS\makensis.exe")) {
+            throw "makensis not installed after choco install nsis"
+          }
           $env:Path = "$env:Path;C:\Program Files (x86)\NSIS"
           New-Item -ItemType Directory -Force dist | Out-Null
           # 1) installer flavor：NSIS 安装器内嵌携带 installer 标识的 exe
           wails build -platform windows/amd64 -nsis -ldflags "-X cli-analyzer/internal/buildinfo.Version=$env:VERSION -X cli-analyzer/internal/buildinfo.InstallSource=installer"
           # wails 输出 <产品名>-<arch>-installer.exe（产品名含空格），用通配匹配，
           # 重命名为带版本号，与其他平台产物命名一致。
-          Copy-Item "build/bin/*-installer.exe" "dist/CLI-Analyzer-$env:VERSION-windows-amd64-installer.exe"
+          Copy-Item "build/bin/*-installer.exe" "dist/CLI-Analyzer-$env:VERSION-windows-amd64-installer.exe" -ErrorAction Stop
+          # 显式确认安装器已生成（makensis 缺失时 wails 静默跳过，这里直接失败）
+          if (-not (Test-Path "dist/CLI-Analyzer-$env:VERSION-windows-amd64-installer.exe")) {
+            throw "NSIS installer was not generated"
+          }
           # 2) portable flavor：重建普通 exe（携带 portable 标识）后打 zip
           wails build -platform windows/amd64 -ldflags "-X cli-analyzer/internal/buildinfo.Version=$env:VERSION -X cli-analyzer/internal/buildinfo.InstallSource=portable"
           Compress-Archive -Path build/bin/cli-analyzer.exe, build/windows/icon.ico `
