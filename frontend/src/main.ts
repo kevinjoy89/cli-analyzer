@@ -638,9 +638,15 @@ function startUninstall(toolName: string) {
 
 function showUninstallConfirm(info: UninstallStartInfo) {
     const body = el('uninstallBody');
+    // 复制按钮内联在命令后面（小图标），不放操作行
     const cmdHtml = info.officialCommand
-        ? `<p class="muted">${esc(t('un.guiOfficialCmd'))}<br><code>${esc(info.officialCommand)}</code></p>`
+        ? `<p class="muted un-cmdline">${esc(t('un.guiOfficialCmd'))}<br><code>${esc(info.officialCommand)}</code> <button id="unCopy" class="btn icon" title="${esc(t('un.guiCopyCmd'))}">📋</button></p>`
         : `<p class="muted">${esc(t('un.noOfficialCmd'))}</p>`;
+    // 两行按钮：主文案 + 小字说明（语义：主路径 = 卸载并自动检测；跳过 = 直达残留检测）
+    const runnableActions = info.runnable ? `
+            <button class="btn" id="unSkip"><span class="btn-main">${esc(t('un.guiSkipMain'))}</span><span class="btn-sub">${esc(t('un.guiSkipSub'))}</span></button>
+            <button class="btn primary" id="unRun"><span class="btn-main">${esc(t('un.guiRunMain'))}</span><span class="btn-sub">${esc(t('un.guiRunSub'))}</span></button>` : `
+            <button class="btn primary" id="unResidue">${esc(t('un.guiResidueTitle'))}</button>`;
     body.innerHTML = `
         <p class="update-versions">${esc(t('un.guiUninstall'))} <b>${esc(info.tool)}</b>（${esc(info.installer ?? '')}）</p>
         <p class="muted">占用 ${hb(info.footprint || 0)} · 用户数据 ${hb(info.userBytes || 0)}</p>
@@ -648,10 +654,7 @@ function showUninstallConfirm(info: UninstallStartInfo) {
         <p id="unOut" class="muted un-output"></p>
         <div class="update-actions">
             <button class="btn" id="unCancel">${esc(t('ui.cancel'))}</button>
-            ${info.officialCommand ? `<button class="btn" id="unCopy">${esc(t('un.guiCopyCmd'))}</button>` : ''}
-            ${info.runnable
-                ? `<button class="btn" id="unSkip">${esc(t('un.guiSkipToResidue'))}</button><button class="btn primary" id="unRun">${esc(t('un.guiRunOfficial'))}</button>`
-                : `<button class="btn primary" id="unResidue">${esc(t('un.guiResidueTitle'))}</button>`}
+            ${runnableActions}
         </div>`;
     el('uninstallModal').classList.remove('hidden');
     el('unCancel').onclick = () => { stopUninstallPoll(); el('uninstallModal').classList.add('hidden'); };
@@ -660,7 +663,7 @@ function showUninstallConfirm(info: UninstallStartInfo) {
     const copyBtn = document.getElementById('unCopy');
     if (copyBtn) copyBtn.onclick = () => {
         navigator.clipboard?.writeText(info.officialCommand!).catch(() => {});
-        showToast(info.officialCommand!);
+        showToast(t('un.copied'));
     };
     const runBtn = document.getElementById('unRun') as HTMLButtonElement | null;
     if (runBtn) runBtn.onclick = async () => {

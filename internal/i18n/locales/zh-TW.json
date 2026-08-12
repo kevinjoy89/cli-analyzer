@@ -258,7 +258,6 @@
   "un.guiResidueTitle": "殘留偵測",
   "un.guiTrashConfirm": "確認將選取殘留移入內建資源回收筒？（可還原）",
   "un.guiBlocked": "系統關鍵工具，無法卸載",
-  "un.guiRunOfficial": "執行標準卸載並偵測殘留",
   "un.guiCopyCmd": "複製命令",
   "un.guiSkipRun": "自行執行",
   "un.guiUninstall": "卸載",
@@ -280,5 +279,9 @@
   "ui.installer.rustup": "rustup",
   "ui.installer.versioned": "版本化安裝器",
   "ui.installer.other": "其他",
-  "un.guiSkipToResidue": "略過，直接偵測殘留"
+  "un.guiRunMain": "標準卸載",
+  "un.guiRunSub": "卸載後自動偵測殘留",
+  "un.guiSkipMain": "殘留偵測",
+  "un.guiSkipSub": "略過卸載流程",
+  "un.copied": "已複製"
 }

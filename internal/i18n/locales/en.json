@@ -258,7 +258,6 @@
   "un.guiResidueTitle": "Residue detection",
   "un.guiTrashConfirm": "Move the selected residue into the built-in trash? (recoverable)",
   "un.guiBlocked": "system-critical tool, cannot uninstall",
-  "un.guiRunOfficial": "Run standard uninstall & detect residue",
   "un.guiCopyCmd": "Copy command",
   "un.guiSkipRun": "Run it myself",
   "un.guiUninstall": "Uninstall",
@@ -280,5 +279,9 @@
   "ui.installer.rustup": "rustup",
   "ui.installer.versioned": "Versioned installer",
   "ui.installer.other": "Other",
-  "un.guiSkipToResidue": "Skip — detect residue only"
+  "un.guiRunMain": "Standard uninstall",
+  "un.guiRunSub": "auto-detects residue after",
+  "un.guiSkipMain": "Detect residue",
+  "un.guiSkipSub": "skips the uninstall",
+  "un.copied": "Copied"
 }

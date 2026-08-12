@@ -694,3 +694,9 @@ body.platform-linux #header { padding-top: 10px; }
 
 /* uninstall button: neutral secondary action; disabled state clearly grayed */
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* uninstall: inline copy icon + two-line buttons */
+.un-cmdline code { word-break: break-all; }
+.btn.icon { padding: 2px 7px; font-size: 12px; border-radius: 5px; vertical-align: middle; }
+.btn .btn-main { display: block; }
+.btn .btn-sub { display: block; font-size: 10px; opacity: 0.7; margin-top: 1px; font-weight: normal; }
