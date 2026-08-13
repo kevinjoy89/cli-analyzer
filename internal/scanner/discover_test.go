@@ -64,3 +64,18 @@ func TestStructuralSignals(t *testing.T) {
 }
 
 // 确保测试里 strings 被使用（工具链健全性）。
+
+func TestVendorDataOnlyContext(t *testing.T) {
+	// "code" 是 DataOnly：exe 发现语境不拦截（真实 PATH 目录安全），
+	// 数据目录语境拦截（VS Code 数据目录）。
+	if platform.ExcludedByVendor(`C:\code`, "git.exe") {
+		t.Error("DataOnly pattern must not affect exe discovery")
+	}
+	if !platform.ExcludedByVendorData(`/Users/me/Library/Application Support/Code`, "Code") {
+		t.Error("DataOnly pattern must apply in data-dir context")
+	}
+	// 非 DataOnly 模式两语境都生效
+	if !platform.ExcludedByVendor(`C:\Program Files (x86)\NetSarang\Xshell 8`, "xftpcl.exe") {
+		t.Error("vendor pattern should apply in exe discovery")
+	}
+}

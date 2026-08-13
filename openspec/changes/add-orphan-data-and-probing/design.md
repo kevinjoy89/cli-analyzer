@@ -49,16 +49,19 @@ var vendorExclusions = []VendorExclusion{
 ### D3: 孤儿数据管线
 
 ```
-scanner.Scan: Unattributed = findUnattributed(...)   ← 从 opts.Full 改为默认执行
-                                                    （GUI 用 Options{} 即默认）
+scanner.Scan: Unattributed = findUnattributed(...)   ← 默认执行（GUI Options{} 即默认）
   过滤层（findUnattributed 内）:
-    系统/OS 目录 → 结构信号 → 厂商排除表（allow 不适用，目录名精确判例）→ 本应用自身
-GUI: renderToolList 底部"未归属数据"小节（伪工具行，展开显示条目 + 移入回收站按钮）
-处置: 复用 UninstallTrashResidues 的 trash 移入路径（新绑定 OrphanTrash 或通用化）
-体积: 惰性——先列目录，点开才 WalkAll 计算（避免每次启动扫大目录）
+    本应用自身 → 结构信号（macOS Containers bundle-id / Windows UWP 包族
+    + Packages 容器）→ 厂商排除表 DataOnly 语境（目录名精确判例）→ 认领集合
+    （含各工具 cleanable 规则覆盖的顶层目录，如 codex 的 codex-runtimes）
+GUI: renderToolList 底部"未归属数据"小节（可折叠，条目含路径/大小/数据根 + 移入回收站）
+处置: 新绑定 OrphanTrash（trash.Trash，USER 级可恢复）
+体积: 扫描内并行计体积（spec 要求大小进扫描结果；磁盘 Sizer 并行 WalkAll，
+      排除表过滤先行可显著缩小待走目录。实测：过滤后本机 210→200 目录、
+      37.5GB→11.6GB；扫描总时长 ~21s 与工具数据 walk 基线相当，非孤儿引入）
 ```
 
-`findUnattributed` 现有实现已含认领集合与 WalkAll；改动点：默认启用（去掉 `opts.Full` 门控）、加过滤层、GUI 渲染与处置绑定。CLI `--full` 语义保留为兼容，但默认输出含孤儿字段。
+`findUnattributed` 现有实现已含认领集合与 WalkAll；改动点：默认启用（去掉 `opts.Full` 门控）、加过滤层（含 cleanable 认领）、GUI 渲染与处置绑定。CLI `--full` 语义保留为兼容，但默认输出含孤儿字段。
 
 ### D4: 探测编排与缓存
 

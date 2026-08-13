@@ -22,6 +22,7 @@ import (
 	"cli-analyzer/internal/history"
 	"cli-analyzer/internal/i18n"
 	"cli-analyzer/internal/platform"
+	"cli-analyzer/internal/probe"
 	"cli-analyzer/internal/scanner"
 	"cli-analyzer/internal/trash"
 	"cli-analyzer/internal/uninstall"
@@ -101,7 +102,66 @@ func (s *ScannerService) Scan() {
 		s.mu.Unlock()
 		b, _ := json.Marshal(res)
 		runtime.EventsEmit(s.ctx, "scan:done", string(b))
+		// 健康探测：后台并行填充空版本字段（缓存优先，不阻塞任何流程）
+		go s.probeAll()
 	}()
+}
+
+// probeAll 为版本未知的工具后台探测版本（--version/-V/--help，超时+缓存），
+// 完成后用更新后的结果发射 probe:done 事件。缓存命中时秒回；挂起工具按
+// 3s 超时中断。失败静默，不产生错误事件。
+func (s *ScannerService) probeAll() {
+	s.mu.Lock()
+	res := s.last
+	s.mu.Unlock()
+	if res == nil {
+		return
+	}
+	type upd struct {
+		idx int
+		v   string
+	}
+	var (
+		wg      sync.WaitGroup
+		sem     = make(chan struct{}, 8)
+		results = make([]upd, len(res.Tools))
+	)
+	for i := range res.Tools {
+		t := &res.Tools[i]
+		if t.Version != "" || len(t.Binaries) == 0 {
+			continue
+		}
+		b := t.Binaries[0]
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int, real string, size int64) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if v, ok := probe.CachedOrRun(real, size); ok && v != "" {
+				results[i] = upd{i, v}
+			}
+		}(i, b.Real, b.Size)
+	}
+	wg.Wait()
+	probe.Save()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.last != res {
+		return // 探测期间已发生新的扫描，旧结果作废
+	}
+	changed := false
+	for _, u := range results {
+		if u.v != "" && s.last.Tools[u.idx].Version == "" {
+			s.last.Tools[u.idx].Version = u.v
+			changed = true
+		}
+	}
+	if !changed {
+		return
+	}
+	b, _ := json.Marshal(s.last)
+	runtime.EventsEmit(s.ctx, "probe:done", string(b))
 }
 
 // Clean deletes the given SAFE items (by ID) and returns a CleanReport JSON.

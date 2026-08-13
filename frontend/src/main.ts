@@ -19,6 +19,7 @@ interface UpdateDownloaded { path: string; releaseURL: string; executablePath: s
 
 // ---- state ----
 let result: ScanResult | null = null;
+let probing = false; // 健康探测进行中（版本列显示 …）
 let selected: string | null = null;
 let appVersion = '';
 let filterText = '';
@@ -208,7 +209,7 @@ function renderToolList() {
         const clean = tool.cleanableBytes > 0 ? `<span class="cleanable-flag">✓</span>` : '';
         row.innerHTML = `
             <span class="tool-name" title="${esc(tool.name)}">${esc(tool.name)}</span>
-            <span class="ver">${esc(tool.version || '—')}</span>
+            <span class="ver">${esc(tool.version || (probing ? '…' : '—'))}</span>
             <span class="num">${hb(tool.footprintBytes)}</span>
             <span class="num clean">${hb(tool.cleanableBytes)}${clean}</span>
             <span class="num user">${hb(tool.userBytes)}</span>`;
@@ -1149,10 +1150,23 @@ async function init() {
             if (parsed && (!selected || !parsed.tools.some(t => t.name === selected))) {
                 selected = parsed.tools[0]?.name ?? null;
             }
+            // 存在版本未知的工具 → 后台探测进行中（版本列显示 …）
+            probing = !!parsed && parsed.tools.some(t => !t.version && t.binaries?.length);
             renderSummary(); renderToolList(); renderDetail(); refreshTrashInfo(); refreshReminder();
         } catch (err) {
             showToast(t('ui.scanParseFailed'), true);
         }
+    });
+
+    // 健康探测完成：用探测后的结果重渲染版本列
+    EventsOn('probe:done', (payload: unknown) => {
+        probing = false;
+        try {
+            if (typeof payload === 'string') {
+                result = JSON.parse(payload) as ScanResult;
+                renderSummary(); renderToolList(); renderDetail();
+            }
+        } catch { /* 忽略 */ }
     });
 
     try {

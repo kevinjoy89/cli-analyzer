@@ -40,6 +40,8 @@ CLI Analyzer scans every CLI tool installed on your machine, attributes its **to
 - **Official uninstall** — don't know the uninstall command? The tool detects the install source (brew / npm / pipx / cargo…), shows the standard command and can run it for you, then detects leftover config/cache dirs and moves them into the built-in trash (recoverable) — the only operation allowed to touch USER data, never deleting it permanently. System-critical tools are blocked. CLI: `cli-analyzer uninstall <tool>`
 - **Localized UI** — Simplified Chinese / Traditional Chinese / English; follows the system language by default, switchable in Preferences → Language (applies instantly; macOS native menu applies after restart)
 - **Two interfaces** — CLI (`scan` / `clean` / `cache` / `trash` / `trends` / `update` / `version`) + native GUI
+- **Unattributed data dirs** — top-level dirs under the data roots that no tool claims (leftovers of removed or never-on-PATH tools) appear in a collapsible "Unattributed data" section; USER-level, move-to-trash only (recoverable), filtered by the non-CLI exclusion system (GUI apps, their data and command-line companions are out of scope)
+- **Health probing** — tools with an unknown version are probed in the background (`--version` / `-V` / `--help`, 3s timeout, result cache keyed by binary path/size/mtime, GBK-safe on Windows); failures degrade silently to `—`
 
 ## Installation
 
@@ -71,7 +73,7 @@ Cross-platform installers (macOS dmg / Windows installer / Linux deb + AppImage)
 
 ```bash
 cli-analyzer scan                    # scan (first run is slower, cached afterwards)
-cli-analyzer scan --refresh --json   # force a rescan, JSON output
+cli-analyzer scan --refresh --json   # force a rescan, JSON output (includes unattributed + probed versions)
 cli-analyzer clean                   # interactive, per-item SAFE cleanup (into built-in trash)
 cli-analyzer clean --dry-run --all   # show the plan only, delete nothing
 cli-analyzer clean --yes kimi        # clean all SAFE items for a specific tool

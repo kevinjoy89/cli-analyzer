@@ -5,8 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"sort"
+	"time"
 
 	"cli-analyzer/internal/history"
+	"cli-analyzer/internal/probe"
 	"cli-analyzer/internal/scanner"
 )
 
@@ -46,6 +48,8 @@ func runScan(args []string) int {
 	if *order == "name" {
 		sort.Slice(res.Tools, func(i, j int) bool { return res.Tools[i].Name < res.Tools[j].Name })
 	}
+	// 健康探测：缓存优先，总预算 2s（挂起工具按 3s 单条超时中断，不会拖垮输出）
+	probe.FillVersions(res.Tools, 2*time.Second)
 	if *jsonOut {
 		b, _ := json.MarshalIndent(res, "", "  ")
 		fmt.Fprintln(stdout(), string(b))

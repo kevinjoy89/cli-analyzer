@@ -85,5 +85,5 @@ func resolveSymlinkExec(full, name string) []execEntry {
 	return nil
 }
 
-// vendorGUIAppDirs 已由 platform.MatchVendorExclusion / ExcludedByVendor 取代
-// （internal/platform/vendorexclusion.go）：路径片段精确匹配 + 纯 CLI 例外。
+// 非 CLI 排除体系见 internal/platform/vendorexclusion.go：
+// 路径片段精确匹配 + 纯 CLI 例外（DataOnly 模式不参与 exe 发现）。

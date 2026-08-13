@@ -1,0 +1,172 @@
+// Package probe 探测 CLI 工具的版本/描述：依次尝试 --version / -V / --help，
+// 带超时、结果缓存与 Windows 编码处理。失败静默降级，不阻塞调用方。
+package probe
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
+	"unicode/utf8"
+
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/transform"
+
+	"cli-analyzer/internal/platform"
+)
+
+// timeout 是单条探测命令的超时上限（spec：3 秒）。
+const timeout = 3 * time.Second
+
+// ProbeVersion 探测单个二进制的版本：按 --version / -V / --help 顺序，
+// 取首个成功（0 退出且非空输出）的首行。ok=false 表示失败/超时/无输出。
+func ProbeVersion(bin string) (string, bool) {
+	for _, args := range [][]string{{"--version"}, {"-V"}, {"--help"}} {
+		out, ok, timedOut := runWithTimeout(bin, args, timeout)
+		if timedOut {
+			// 一条命令挂起说明该工具不适合探测：不再浪费 -V/--help
+			return "", false
+		}
+		if ok {
+			if v := extractVersion(out); v != "" {
+				return v, true
+			}
+		}
+	}
+	return "", false
+}
+
+func runWithTimeout(bin string, args []string, d time.Duration) (out []byte, ok, timedOut bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), d)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, args...)
+	platform.HideConsoleWindow(cmd)
+	setupProcessGroup(cmd)
+
+	// 超时后连同进程组一起终止（防止 --version 派生的子进程残留）。
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-ctx.Done():
+			killGroup(cmd)
+		case <-done:
+		}
+	}()
+
+	b, err := cmd.CombinedOutput()
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, false, true // 超时
+		}
+		return nil, false, false // 非 0 退出
+	}
+	if len(strings.TrimSpace(cleanOutput(b))) == 0 {
+		return nil, false, false // 空输出不算成功
+	}
+	return b, true, false
+}
+
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]`)
+
+// cleanOutput 转码（GBK → UTF-8）、剥离 ANSI 与控制字符。
+func cleanOutput(b []byte) string {
+	if !utf8.Valid(b) {
+		if dec, _, err := transform.Bytes(simplifiedchinese.GBK.NewDecoder(), b); err == nil {
+			b = dec
+		}
+	}
+	s := ansiRe.ReplaceAllString(string(b), "")
+	var sb strings.Builder
+	for _, r := range s {
+		if r == '\n' || r == '\t' || r >= 0x20 {
+			sb.WriteRune(r)
+		}
+	}
+	return sb.String()
+}
+
+// extractVersion 返回输出的首个非空行（trim 后）。
+func extractVersion(b []byte) string {
+	for _, line := range strings.Split(cleanOutput(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			return line
+		}
+	}
+	return ""
+}
+
+// ---- 结果缓存 ----
+
+type entry struct {
+	Size    int64  `json:"size"`
+	MtimeNs int64  `json:"mtimeNs"`
+	Version string `json:"version,omitempty"`
+	Ok      bool   `json:"ok"`
+}
+
+var (
+	cacheOnce sync.Once
+	cacheMu   sync.Mutex
+	cache     = map[string]entry{}
+)
+
+func cachePath() string { return filepath.Join(platform.CacheRoot(), "probe-versions.json") }
+
+func loadCache() {
+	cacheOnce.Do(func() {
+		b, err := os.ReadFile(cachePath())
+		if err != nil {
+			return
+		}
+		if err := json.Unmarshal(b, &cache); err != nil {
+			cache = map[string]entry{}
+		}
+	})
+}
+
+// Save 把缓存写回磁盘（在探测批次完成后调用一次，避免逐条写盘）。
+func Save() {
+	cacheMu.Lock()
+	b, err := json.Marshal(cache)
+	cacheMu.Unlock()
+	if err != nil {
+		return
+	}
+	p := cachePath()
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		return
+	}
+	tmp := p + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o644); err == nil {
+		_ = os.Rename(tmp, p)
+	}
+}
+
+// CachedOrRun 优先命中缓存（键 = real path + size + mtime）；未命中则探测并
+// 写回内存缓存。ok=false 表示失败（失败结果同样缓存，二进制不变不重探）。
+func CachedOrRun(real string, size int64) (string, bool) {
+	st, err := os.Stat(real)
+	if err != nil {
+		return "", false
+	}
+	mtime := st.ModTime().UnixNano()
+	loadCache()
+	cacheMu.Lock()
+	e, hit := cache[real]
+	cacheMu.Unlock()
+	if hit && e.Size == size && e.MtimeNs == mtime {
+		return e.Version, e.Ok
+	}
+	v, ok := ProbeVersion(real)
+	cacheMu.Lock()
+	cache[real] = entry{Size: size, MtimeNs: mtime, Version: v, Ok: ok}
+	cacheMu.Unlock()
+	return v, ok
+}

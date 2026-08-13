@@ -106,6 +106,13 @@ func findUnattributed(tools map[string]*toolBuilder, order []string, sizer *disk
 			claimed[n] = true
 		}
 	}
+	// cleanable 规则覆盖的路径也算认领：codex 的 ~/.cache/codex-runtimes 等
+	// 已作为该工具的 cleanable 提供，不应再列为孤儿。
+	for _, id := range order {
+		for _, c := range tools[id].cleanables {
+			claimTopLevel(claimed, c.Path)
+		}
+	}
 	var paths []string
 	var pathKind = map[string]string{}
 	for _, k := range []platform.RootKind{platform.XDGCache, platform.XDGData, platform.XDGConfig, platform.MacAppSupport} {
@@ -129,7 +136,7 @@ func findUnattributed(tools map[string]*toolBuilder, order []string, sizer *disk
 				platform.IsContainerBundleDir(e.Name()) ||
 				platform.IsUWPFamilyDir(e.Name()) ||
 				strings.EqualFold(e.Name(), "packages") || // Windows UWP 容器目录
-				platform.ExcludedByVendor(p, e.Name()) {
+				platform.ExcludedByVendorData(p, e.Name()) {
 				continue
 			}
 			paths = append(paths, p)
@@ -159,4 +166,23 @@ func goVersion() string {
 		return bi.GoVersion
 	}
 	return runtime.Version()
+}
+
+// claimTopLevel 把 path 在任一扫描数据根下的顶层目录名加入 claimed。
+// （cleanable 通常位于某数据根下；无法归属到根时忽略。）
+func claimTopLevel(claimed map[string]bool, path string) {
+	for _, k := range []platform.RootKind{platform.XDGCache, platform.XDGData, platform.XDGConfig, platform.MacAppSupport} {
+		root := platform.Root(k)
+		if root == "" || !strings.HasPrefix(path, root+string(filepath.Separator)) {
+			continue
+		}
+		rel := strings.TrimPrefix(path, root+string(filepath.Separator))
+		if i := strings.IndexByte(rel, filepath.Separator); i > 0 {
+			rel = rel[:i]
+		}
+		if rel != "" {
+			claimed[rel] = true
+		}
+		return
+	}
 }
