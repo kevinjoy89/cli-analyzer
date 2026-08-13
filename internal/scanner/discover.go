@@ -24,6 +24,14 @@ func discoverExecs() []execEntry {
 		if err != nil {
 			continue
 		}
+		// 两遍扫描：第一遍判定本目录是否存在 GUI 主程序（如 Xshell.exe），
+		// 并收集控制台候选；第二遍过滤。
+		type cand struct {
+			entry os.DirEntry
+			full  string
+		}
+		var cands []cand
+		dirHasGUI := false
 		for _, e := range entries {
 			if e.Type().IsDir() {
 				continue
@@ -44,12 +52,44 @@ func discoverExecs() []execEntry {
 				out = append(out, resolveSymlinkExec(full, name)...)
 				continue
 			}
-			if platform.IsExecutable(info) && platform.IsConsoleExe(full) {
-				out = append(out, execEntry{Path: full, Name: name})
+			if !platform.IsExecutable(info) {
+				continue
 			}
+			console := true
+			if strings.HasSuffix(low, ".exe") {
+				console = platform.IsConsoleExe(full)
+			}
+			if !console {
+				// GUI 主程序：本身不是工具，但标记本目录为 GUI 应用安装目录
+				dirHasGUI = true
+				continue
+			}
+			cands = append(cands, cand{e, full})
+		}
+		for _, c := range cands {
+			// GUI 应用安装目录（Xshell、Xftp…）里的内部控制台助手
+			// （installanchorservice.exe、RealCmdModule.exe…）不是工具。
+			if dirHasGUI && isVendorHelper(c.full) {
+				continue
+			}
+			out = append(out, execEntry{Path: c.full, Name: c.entry.Name()})
 		}
 	}
 	return out
+}
+
+// isVendorHelper 报告文件名是否命中 GUI 应用安装目录内的内部助手命名模式。
+// 仅在该目录同时存在 GUI 主程序时才会被调用，故可安全覆盖 install/module/
+// agent 等通用词（命令行工具目录不会触发）。
+func isVendorHelper(path string) bool {
+	stem := strings.ToLower(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
+	for _, p := range []string{"install", "setup", "unins", "update", "updater",
+		"helper", "repair", "module", "anchor", "service", "svc", "agent"} {
+		if strings.Contains(stem, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveSymlinkExec resolves a symlinked PATH entry: if it points at a file it
