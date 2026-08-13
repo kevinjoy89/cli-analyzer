@@ -73,7 +73,7 @@ func resolveSymlinkExec(full, name string) []execEntry {
 		}
 		return nil
 	}
-	if platform.IsExecutable(st) {
+	if platform.IsExecutable(st) && platform.IsConsoleExe(full) {
 		return []execEntry{{Path: full, Name: name}}
 	}
 	return nil
