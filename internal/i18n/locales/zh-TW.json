@@ -156,7 +156,7 @@
   "cli.totalsRow": "合計\t-\t{footprint}\t{cleanable}\t{user}\t-",
   "cli.statsLine_one": "\n共 {n} 個工具 · 掃描耗時 {ms} ms · 遍歷錯誤 {errors}",
   "cli.statsLine_other": "\n共 {n} 個工具 · 掃描耗時 {ms} ms · 遍歷錯誤 {errors}",
-  "cli.unattributed": "另有 {n} 個未歸因目錄（--full）",
+  "cli.unattributed": "另有 {n} 個未歸屬資料目錄，共 {size}",
   "cli.cleanHeader": "工具\t佔用\t類型\t路徑",
   "cli.cleanTotal_one": "\n共 {n} 項可安全清理，合計 {size}",
   "cli.cleanTotal_other": "\n共 {n} 項可安全清理，合計 {size}",
@@ -284,5 +284,10 @@
   "un.guiSkipMain": "殘留偵測",
   "un.guiSkipSub": "略過卸載流程",
   "un.copied": "已複製",
-  "un.toolGone": "此工具可能已卸載，正在重新掃描…"
+  "un.toolGone": "此工具可能已卸載，正在重新掃描…",
+  "ui.orphanSection": "未歸屬資料",
+  "ui.orphanTrash": "移入回收站",
+  "ui.orphanRoot": "資料根",
+  "ui.orphanExpanded": "收合",
+  "ui.orphanCollapsed": "展開"
 }

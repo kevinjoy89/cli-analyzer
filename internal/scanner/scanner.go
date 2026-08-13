@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"cli-analyzer/internal/disk"
@@ -77,9 +78,8 @@ func Scan(opts Options) (*ScanResult, error) {
 	attribute(tools, order, ruleTable, opts, sizer)
 
 	res := finalize(tools, order, opts)
-	if opts.Full {
-		res.Unattributed = findUnattributed(tools, order, sizer)
-	}
+	// 孤儿数据始终计算（非 CLI 排除体系过滤后），GUI 与 CLI 共用。
+	res.Unattributed = findUnattributed(tools, order, sizer)
 	res.Errors = sizer.Errors
 
 	if !opts.NoCache {
@@ -96,7 +96,9 @@ func Scan(opts Options) (*ScanResult, error) {
 }
 
 // findUnattributed walks every top-level dir under the data roots that no tool
-// claims, reporting non-empty ones. Only used with --full (opt-in, slow).
+// claims, reporting non-empty ones. Candidates pass the non-CLI exclusion
+// system (self dirs, structural GUI signals, vendor table) — see the
+// non-cli-exclusion capability. Always runs (sizes computed in parallel).
 func findUnattributed(tools map[string]*toolBuilder, order []string, sizer *disk.Sizer) []DataDir {
 	claimed := map[string]bool{}
 	for _, id := range order {
@@ -120,6 +122,16 @@ func findUnattributed(tools map[string]*toolBuilder, order []string, sizer *disk
 				continue
 			}
 			p := filepath.Join(root, e.Name())
+			// 非 CLI 排除体系（确定性规则）：本应用自身、结构性 GUI 信号
+			// （macOS 容器 bundle-id / Windows UWP 包族及 Packages 容器）、
+			// 非 CLI 厂商排除表（microsoft 等系统目录一并覆盖）。
+			if isSelfDataDir(e.Name()) ||
+				platform.IsContainerBundleDir(e.Name()) ||
+				platform.IsUWPFamilyDir(e.Name()) ||
+				strings.EqualFold(e.Name(), "packages") || // Windows UWP 容器目录
+				platform.ExcludedByVendor(p, e.Name()) {
+				continue
+			}
 			paths = append(paths, p)
 			pathKind[p] = string(k)
 		}
@@ -131,10 +143,15 @@ func findUnattributed(tools map[string]*toolBuilder, order []string, sizer *disk
 	var out []DataDir
 	for _, p := range paths {
 		if sizes[p] > 0 {
-			out = append(out, DataDir{Path: p, Bytes: sizes[p], Tier: TierUser, Kind: "data"})
+			out = append(out, DataDir{Path: p, Bytes: sizes[p], Tier: TierUser, Kind: "data", Root: pathKind[p]})
 		}
 	}
 	return out
+}
+
+// isSelfDataDir 报告目录名是否为应用自身（数据/缓存根下的 cli-analyzer）。
+func isSelfDataDir(name string) bool {
+	return strings.EqualFold(name, "cli-analyzer")
 }
 
 func goVersion() string {

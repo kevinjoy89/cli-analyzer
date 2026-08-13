@@ -43,7 +43,11 @@ func printTable(res *scanner.ScanResult) {
 	w.Flush()
 	fmt.Fprint(stdout(), i18n.T("cli.statsLine", map[string]any{"n": len(res.Tools), "ms": res.ScanTimeMS, "errors": res.Errors}))
 	if len(res.Unattributed) > 0 {
-		fmt.Fprint(stdout(), i18n.T("cli.unattributed", map[string]any{"n": len(res.Unattributed)}))
+		var total int64
+		for _, u := range res.Unattributed {
+			total += u.Bytes
+		}
+		fmt.Fprint(stdout(), i18n.T("cli.unattributed", map[string]any{"n": len(res.Unattributed), "size": humanBytes(total)}))
 	}
 }
 

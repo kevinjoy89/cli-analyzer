@@ -702,3 +702,21 @@ body.platform-linux #header { padding-top: 10px; }
 .btn.icon { padding: 2px 7px; font-size: 12px; border-radius: 5px; vertical-align: middle; }
 .btn .btn-main { display: block; }
 .btn .btn-sub { display: block; font-size: 10px; opacity: 0.7; margin-top: 1px; font-weight: normal; }
+
+/* unattributed data (orphan) section */
+.orphan-head { cursor: pointer; color: var(--muted); border-top: 1px solid var(--border); }
+.orphan-head .tool-name { color: var(--text); font-weight: 600; }
+.orphan-toggle { font-size: 10px; color: var(--muted); justify-self: end; }
+.orphan-body { padding: 2px 14px 8px; }
+.orphan-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 11px;
+    min-width: 0;
+}
+.orphan-item .path { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); color: var(--path); }
+.orphan-item .num { flex-shrink: 0; font-family: var(--mono); color: var(--muted); }
+.orphan-item .orphan-root { flex-shrink: 0; font-size: 10px; color: var(--muted); }
+.btn.mini { flex-shrink: 0; padding: 2px 8px; font-size: 10px; border-radius: 5px; }

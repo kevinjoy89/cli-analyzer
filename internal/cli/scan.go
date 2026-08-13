@@ -14,7 +14,7 @@ func runScan(args []string) int {
 	fs := flag.NewFlagSet("scan", flag.ContinueOnError)
 	jsonOut := fs.Bool("j", false, "output JSON")
 	fs.BoolVar(jsonOut, "json", false, "output JSON")
-	full := fs.Bool("full", false, "also measure unmatched dirs (slow)")
+	full := fs.Bool("full", false, "unattributed data dirs are always measured now; kept for compatibility")
 	refresh := fs.Bool("refresh", false, "ignore the cache and rescan")
 	noCache := fs.Bool("no-cache", false, "do not write the cache")
 	order := fs.String("order", "size", "sort order: size|name")

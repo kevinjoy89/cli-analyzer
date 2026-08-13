@@ -18,6 +18,7 @@ import (
 	"cli-analyzer/internal/buildinfo"
 	"cli-analyzer/internal/cleaner"
 	"cli-analyzer/internal/config"
+	"cli-analyzer/internal/disk"
 	"cli-analyzer/internal/history"
 	"cli-analyzer/internal/i18n"
 	"cli-analyzer/internal/platform"
@@ -180,6 +181,23 @@ func (s *ScannerService) Restore(id string) string {
 func (s *ScannerService) PurgeNow(ids []string) string {
 	deleted, errs := trash.Purge(ids)
 	b, _ := json.Marshal(map[string]any{"deleted": deleted, "errors": errs})
+	return string(b)
+}
+
+// OrphanTrash 将孤儿数据目录移入内置回收站（USER 级，可恢复，无永久删除）。
+func (s *ScannerService) OrphanTrash(paths []string) string {
+	sizer := &disk.Sizer{Skip: map[string]bool{trash.Root(): true}}
+	trashed := []string{}
+	errs := []string{}
+	for _, p := range paths {
+		if err := trash.Trash(p, trash.Item{Tool: "orphan", Kind: "data", Bytes: sizer.WalkSize(p)}); err != nil {
+			errs = append(errs, p+": "+err.Error())
+			continue
+		}
+		trashed = append(trashed, p)
+	}
+	s.Scan() // 后台重扫，刷新孤儿列表
+	b, _ := json.Marshal(map[string]any{"trashed": trashed, "errors": errs})
 	return string(b)
 }
 

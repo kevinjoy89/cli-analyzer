@@ -40,6 +40,8 @@ export function InstallUpdate():Promise<string>;
 
 export function OpenURL(arg1:string):Promise<void>;
 
+export function OrphanTrash(arg1:Array<string>):Promise<string>;
+
 export function PurgeNow(arg1:Array<string>):Promise<string>;
 
 export function Restore(arg1:string):Promise<string>;

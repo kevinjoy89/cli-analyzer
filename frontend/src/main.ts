@@ -1,6 +1,6 @@
 import './style.css';
 
-import {CancelDownload, CheckForUpdates, Clean, DownloadUpdate, GetDownloadProgress, GetLanguage, GetLastResult, GetReminderConfig, GetTranslations, GetTrashConfig, GetUninstallStatus, GetUpdateStatus, GetTrends, GetUpdateConfig, GetVersion, IgnoreVersion, InstallUpdate, OpenURL, PurgeNow, Restore, Scan, SetLanguage, SetLanguagePreference, SetReminderConfig, SetTheme, SetTrashConfig, SetUpdateConfig, TrashInfo, TrashList, UninstallBlocked, UninstallResidue, UninstallRunOfficial, UninstallStart, UninstallTrashResidues} from '../wailsjs/go/gui/ScannerService';
+import {CancelDownload, CheckForUpdates, Clean, DownloadUpdate, GetDownloadProgress, GetLanguage, GetLastResult, GetReminderConfig, GetTranslations, GetTrashConfig, GetUninstallStatus, GetUpdateStatus, GetTrends, GetUpdateConfig, GetVersion, IgnoreVersion, InstallUpdate, OpenURL, OrphanTrash, PurgeNow, Restore, Scan, SetLanguage, SetLanguagePreference, SetReminderConfig, SetTheme, SetTrashConfig, SetUpdateConfig, TrashInfo, TrashList, UninstallBlocked, UninstallResidue, UninstallRunOfficial, UninstallStart, UninstallTrashResidues} from '../wailsjs/go/gui/ScannerService';
 import {Environment, EventsOn, Quit} from '../wailsjs/runtime/runtime';
 import {applyCleanLocally} from './lib/clean';
 import {hb} from './lib/format';
@@ -215,6 +215,52 @@ function renderToolList() {
         row.onclick = () => { selected = tool.name; selectedCleanIds.clear(); expandedCleanIds.clear(); renderToolList(); renderDetail(); };
         list.appendChild(row);
     }
+    renderOrphanSection(list);
+}
+
+// ---- unattributed data (orphan) section ----
+let orphanOpen = true;
+
+function renderOrphanSection(list: HTMLElement) {
+    const orphans = (result?.unattributed ?? []).filter(o => !filterText || o.path.toLowerCase().includes(filterText.toLowerCase()));
+    // 空态：无孤儿时不显示小节
+    if (!orphans.length) return;
+    const total = orphans.reduce((a, o) => a + (o.bytes || 0), 0);
+
+    const head = document.createElement('div');
+    head.className = 'tool-row orphan-head';
+    head.innerHTML = `
+        <span class="tool-name">${esc(t('ui.orphanSection'))} (${orphans.length})</span>
+        <span class="num">${hb(total)}</span>
+        <span class="orphan-toggle">${orphanOpen ? esc(t('ui.orphanExpanded')) : esc(t('ui.orphanCollapsed'))}</span>`;
+    head.onclick = () => { orphanOpen = !orphanOpen; renderToolList(); };
+    list.appendChild(head);
+
+    if (!orphanOpen) return;
+    const body = document.createElement('div');
+    body.className = 'orphan-body';
+    for (const o of orphans) {
+        const row = document.createElement('div');
+        row.className = 'orphan-item';
+        row.innerHTML = `
+            <span class="path" title="${esc(o.path)}">${esc(o.path)}</span>
+            <span class="num">${hb(o.bytes || 0)}</span>
+            <span class="orphan-root">${esc(o.root || '')}</span>
+            <button class="btn mini" data-orphan="${esc(o.path)}">${esc(t('ui.orphanTrash'))}</button>`;
+        body.appendChild(row);
+    }
+    list.appendChild(body);
+    body.querySelectorAll<HTMLButtonElement>('button[data-orphan]').forEach(btn => {
+        btn.onclick = async () => {
+            const p = btn.dataset.orphan as string;
+            try {
+                const rep = JSON.parse(await OrphanTrash([p])) as {trashed?: string[]; errors?: string[]};
+                const hasErr = (rep.errors ?? []).length > 0;
+                showToast((rep.trashed?.length ? t('ui.orphanTrash') + ' ✓' : '') + (hasErr ? t('un.runFailed') : ''), hasErr);
+                refreshTrashInfo(); // 立即刷新右下角回收站占用
+            } catch (e) { showToast(String(e), true); }
+        };
+    });
 }
 
 // ---- detail ----

@@ -156,7 +156,7 @@
   "cli.totalsRow": "Total\t-\t{footprint}\t{cleanable}\t{user}\t-",
   "cli.statsLine_one": "\n{n} tool · scan {ms} ms · walk errors {errors}",
   "cli.statsLine_other": "\n{n} tools · scan {ms} ms · walk errors {errors}",
-  "cli.unattributed": "{n} unattributed dirs ({--full} extra)",
+  "cli.unattributed": "{n} unattributed data dirs ({size})",
   "cli.cleanHeader": "Tool\tSize\tType\tPath",
   "cli.cleanTotal_one": "\n{n} safe-to-clean item, {size} total",
   "cli.cleanTotal_other": "\n{n} safe-to-clean items, {size} total",
@@ -284,5 +284,10 @@
   "un.guiSkipMain": "Detect residue",
   "un.guiSkipSub": "skips the uninstall",
   "un.copied": "Copied",
-  "un.toolGone": "the tool appears to be uninstalled — rescanning…"
+  "un.toolGone": "the tool appears to be uninstalled — rescanning…",
+  "ui.orphanSection": "Unattributed data",
+  "ui.orphanTrash": "Move to trash",
+  "ui.orphanRoot": "Data root",
+  "ui.orphanExpanded": "collapse",
+  "ui.orphanCollapsed": "expand"
 }

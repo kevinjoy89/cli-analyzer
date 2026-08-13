@@ -47,7 +47,8 @@ type DataDir struct {
 	Path  string `json:"path"`
 	Bytes int64  `json:"bytes"`
 	Tier  Tier   `json:"tier"`
-	Kind  string `json:"kind"` // config|data|cache|install|state
+	Kind  string `json:"kind"`           // config|data|cache|install|state
+	Root  string `json:"root,omitempty"` // 所在数据根类型（孤儿数据专用）
 }
 
 // SubEntry is one direct child (file or dir) of a cleanable path, used to

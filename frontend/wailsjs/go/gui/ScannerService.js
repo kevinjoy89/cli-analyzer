@@ -78,6 +78,10 @@ export function OpenURL(arg1) {
   return window['go']['gui']['ScannerService']['OpenURL'](arg1);
 }
 
+export function OrphanTrash(arg1) {
+  return window['go']['gui']['ScannerService']['OrphanTrash'](arg1);
+}
+
 export function PurgeNow(arg1) {
   return window['go']['gui']['ScannerService']['PurgeNow'](arg1);
 }
