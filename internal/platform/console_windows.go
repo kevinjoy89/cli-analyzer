@@ -41,12 +41,35 @@ func IsConsoleExe(path string) bool {
 	if _, err := f.ReadAt(pe[:], eLfanew); err != nil || pe[0] != 'P' || pe[1] != 'E' || pe[2] != 0 || pe[3] != 0 {
 		return true
 	}
-	// Subsystem lives at optional-header offset 68; optional header starts
-	// right after the 24-byte PE signature block.
-	var sub [2]byte
-	if _, err := f.ReadAt(sub[:], eLfanew+24+68); err != nil {
+	peOff := eLfanew
+	optOff := eLfanew + 24
+	var coff [20]byte
+	if _, err := f.ReadAt(coff[:], eLfanew+4); err != nil {
 		return true
 	}
-	// IMAGE_SUBSYSTEM_WINDOWS_GUI == 2
-	return binary.LittleEndian.Uint16(sub[:]) != 2
+	numSec := binary.LittleEndian.Uint16(coff[2:])
+	// Optional-header Magic: 0x10b = PE32, 0x20b = PE32+.
+	var magic [2]byte
+	if _, err := f.ReadAt(magic[:], optOff); err != nil {
+		return true
+	}
+	optSize := 224
+	if binary.LittleEndian.Uint16(magic[:]) == 0x20b {
+		optSize = 240
+	}
+	// Subsystem lives at optional-header offset 68 (both PE32 and PE32+).
+	var sub [2]byte
+	if _, err := f.ReadAt(sub[:], optOff+68); err != nil {
+		return true
+	}
+	// IMAGE_SUBSYSTEM_WINDOWS_GUI == 2 → GUI app.
+	if binary.LittleEndian.Uint16(sub[:]) == 2 {
+		return false
+	}
+	// Subsystem claims console, but some GUI apps are built as CUI (no console
+	// window flashes) — e.g. NetSarang Xshell. Verify via the import table.
+	if importsGUI(f, peOff, optOff, optSize, numSec) {
+		return false
+	}
+	return true
 }
