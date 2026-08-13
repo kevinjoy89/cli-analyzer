@@ -79,3 +79,29 @@ func TestVendorDataOnlyContext(t *testing.T) {
 		t.Error("vendor pattern should apply in exe discovery")
 	}
 }
+
+func TestProbeSafeInstaller(t *testing.T) {
+	for _, i := range []Installer{InstBrew, InstNpm, InstPipx, InstCargo, InstGo, InstPyenv, InstVersioned, InstRustup} {
+		if !ProbeSafeInstaller(i) {
+			t.Errorf("ProbeSafeInstaller(%q) = false, want true", i)
+		}
+	}
+	if ProbeSafeInstaller(InstOther) {
+		t.Error("ProbeSafeInstaller(other) must be false — never execute unknown-origin binaries")
+	}
+}
+
+func TestDiscoverSkipsLibraries(t *testing.T) {
+	// 库文件（.dylib/.so）不得作为工具发现；.bak/.old 同样
+	for _, n := range []string{"libzmq.5.dylib", "libgit2.dylib", "libfoo.so", "tool.bak", "tool.old"} {
+		if isLibraryOrBackup(n) {
+			continue
+		}
+		t.Errorf("expected %q to be skipped", n)
+	}
+	for _, n := range []string{"git", "node", "cli-analyzer"} {
+		if isLibraryOrBackup(n) {
+			t.Errorf("expected %q to be kept", n)
+		}
+	}
+}

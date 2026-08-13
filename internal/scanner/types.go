@@ -34,6 +34,17 @@ const (
 	InstOther     Installer = "other"
 )
 
+// ProbeSafeInstaller 报告安装来源是否属于已知 CLI 生态（可安全执行其二进制
+// 做版本探测）。InstOther（未知来源）不执行——GUI 应用内部件（SASE/Parallels/
+// Warp 等）常以 InstOther 出现，执行其二进制可能触发系统权限（TCC）提示。
+func ProbeSafeInstaller(i Installer) bool {
+	switch i {
+	case InstBrew, InstNpm, InstPipx, InstCargo, InstGo, InstPyenv, InstVersioned, InstRustup:
+		return true
+	}
+	return false
+}
+
 // Binary is one executable on PATH attributed to a tool.
 type Binary struct {
 	Name string `json:"name"` // base name as seen on PATH

@@ -35,6 +35,10 @@ func discoverExecs() []execEntry {
 			if strings.HasSuffix(low, ".bak") || strings.HasSuffix(low, ".old") {
 				continue
 			}
+			// 库文件不是命令：macOS .dylib / Linux .so（Windows .dll 已被 PATHEXT 过滤）
+			if isLibraryOrBackup(low) {
+				continue
+			}
 			full := filepath.Join(dir, name)
 			// 非 CLI 排除表：路径片段命中 GUI 厂商（NetSarang 等）且名称不在
 			// 该厂商纯 CLI 例外（aws/gcloud/az…）中 → 整体跳过。
@@ -87,3 +91,9 @@ func resolveSymlinkExec(full, name string) []execEntry {
 
 // 非 CLI 排除体系见 internal/platform/vendorexclusion.go：
 // 路径片段精确匹配 + 纯 CLI 例外（DataOnly 模式不参与 exe 发现）。
+
+// isLibraryOrBackup 报告文件名（小写）是否为库文件或备份残留（非命令）。
+func isLibraryOrBackup(name string) bool {
+	return strings.HasSuffix(name, ".dylib") || strings.HasSuffix(name, ".so") ||
+		strings.HasSuffix(name, ".bak") || strings.HasSuffix(name, ".old")
+}

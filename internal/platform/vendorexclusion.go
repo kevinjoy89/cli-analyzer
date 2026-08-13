@@ -58,6 +58,11 @@ var vendorExclusions = []VendorExclusion{
 	{Pattern: "xmind"},
 	{Pattern: "trae cn"},
 	{Pattern: "qclaw"},
+	{Pattern: "sase"}, // 企业安全代理（DLP 类，内部件会触达通讯录等 TCC 资源）
+	{Pattern: "parallels desktop"},
+	{Pattern: "orbstack"},
+	{Pattern: "uuremote"}, // 远程控制客户端
+	{Pattern: "warp"},     // Warp 终端（GUI；其 CLI 为伴侣）
 	{Pattern: "apple"},
 	{"code", nil, true}, // VS Code 数据目录；仅数据上下文（避免拦掉真实 PATH 目录）
 }

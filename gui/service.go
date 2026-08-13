@@ -128,7 +128,9 @@ func (s *ScannerService) probeAll() {
 	)
 	for i := range res.Tools {
 		t := &res.Tools[i]
-		if t.Version != "" || len(t.Binaries) == 0 {
+		// 安全门：仅探测已知 CLI 安装器来源的工具（不执行 InstOther——
+		// GUI 应用内部件执行时可能触发 macOS 通讯录等 TCC 权限提示）
+		if t.Version != "" || len(t.Binaries) == 0 || !scanner.ProbeSafeInstaller(scanner.Installer(t.Installer)) {
 			continue
 		}
 		b := t.Binaries[0]

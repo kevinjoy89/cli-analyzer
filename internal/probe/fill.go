@@ -11,7 +11,8 @@ import (
 func FillVersions(tools []scanner.Tool, budget time.Duration) {
 	deadline := time.Now().Add(budget)
 	for i := range tools {
-		if tools[i].Version != "" || len(tools[i].Binaries) == 0 {
+		if tools[i].Version != "" || len(tools[i].Binaries) == 0 ||
+			!scanner.ProbeSafeInstaller(scanner.Installer(tools[i].Installer)) {
 			continue
 		}
 		if budget > 0 && time.Now().After(deadline) {
