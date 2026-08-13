@@ -20,6 +20,11 @@ type execEntry struct {
 func discoverExecs() []execEntry {
 	var out []execEntry
 	for _, dir := range platform.PathDirs(true) {
+		// 已知 GUI 产品安装目录（NetSarang 等）整目录跳过：该目录下没有用户
+		// CLI 工具，无论 exe 叫什么（Xshell/Xftp 的 xftpcl.exe 也是其组件）。
+		if isVendorInstallDir(dir) {
+			continue
+		}
 		entries, err := os.ReadDir(dir)
 		if err != nil {
 			continue
@@ -117,4 +122,19 @@ func resolveSymlinkExec(full, name string) []execEntry {
 		return []execEntry{{Path: full, Name: name}}
 	}
 	return nil
+}
+
+// vendorGUIAppDirs 是已知 GUI 产品安装目录的厂商标识（路径任意层级命中即整体跳过）。
+// 与 isVendorHelper 互补：helper 模式管"通用命名助手"，这里管"整个厂商目录"。
+var vendorGUIAppDirs = []string{"netsarang"}
+
+// isVendorInstallDir 报告目录路径（小写）是否命中已知 GUI 产品厂商。
+func isVendorInstallDir(dir string) bool {
+	low := strings.ToLower(dir)
+	for _, v := range vendorGUIAppDirs {
+		if strings.Contains(low, v) {
+			return true
+		}
+	}
+	return false
 }

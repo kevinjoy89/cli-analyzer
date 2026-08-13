@@ -29,3 +29,26 @@ func TestIsVendorHelper(t *testing.T) {
 		}
 	}
 }
+
+func TestIsVendorInstallDir(t *testing.T) {
+	skip := []string{
+		`C:\Program Files (x86)\NetSarang\Xshell 8`,
+		`C:\Program Files (x86)\NetSarang\xftp 8`,
+		`C:\Program Files (x86)\NetSarang\Common\7`,
+	}
+	for _, p := range skip {
+		if !isVendorInstallDir(p) {
+			t.Errorf("isVendorInstallDir(%q) = false, want true", p)
+		}
+	}
+	keep := []string{
+		`C:\Program Files\Git\cmd`,
+		`C:\Program Files\nodejs`,
+		`C:\Program Files\Git\usr\bin`,
+	}
+	for _, p := range keep {
+		if isVendorInstallDir(p) {
+			t.Errorf("isVendorInstallDir(%q) = true, want false", p)
+		}
+	}
+}
