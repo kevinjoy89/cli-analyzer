@@ -1118,6 +1118,10 @@ async function init() {
 
     refreshTrashInfo();
     refreshReminder();
+
+    // 每次打开软件都触发一次异步扫描：缓存保证秒开，扫描动效/禁用按钮与
+    // 手动扫描一致，完成后 scan:done 用最新结果刷新界面。
+    rescan();
 }
 
 init();

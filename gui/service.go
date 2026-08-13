@@ -66,9 +66,8 @@ func (s *ScannerService) Startup(ctx context.Context) {
 		s.last = res
 	}
 	s.mu.Unlock()
-	// 每次打开软件都触发一次异步扫描：先渲染缓存保证秒开，随后后台重扫
-	// 让主界面自动刷新为最新结果（scan:done 事件覆盖缓存渲染）。
-	go s.Scan()
+	// 启动扫描由前端驱动（init 渲染缓存后调 Scan）：保证扫描动效与按钮禁用
+	// 状态与手动扫描一致，也避免 scan:done 事件早于前端监听注册而丢失。
 	// 自动检查更新：异步执行；配置关闭、命中 4h 缓存或网络失败时均静默无提示
 	go s.autoCheck()
 }
