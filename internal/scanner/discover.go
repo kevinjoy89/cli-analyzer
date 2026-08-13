@@ -44,7 +44,7 @@ func discoverExecs() []execEntry {
 				out = append(out, resolveSymlinkExec(full, name)...)
 				continue
 			}
-			if platform.IsExecutable(info) {
+			if platform.IsExecutable(info) && platform.IsConsoleExe(full) {
 				out = append(out, execEntry{Path: full, Name: name})
 			}
 		}
@@ -67,7 +67,7 @@ func resolveSymlinkExec(full, name string) []execEntry {
 	if st.IsDir() {
 		for _, cand := range []string{filepath.Join(real, "bin", name), filepath.Join(real, name)} {
 			ci, err := os.Stat(cand)
-			if err == nil && ci.Mode().IsRegular() && platform.IsExecutable(ci) {
+			if err == nil && ci.Mode().IsRegular() && platform.IsExecutable(ci) && platform.IsConsoleExe(full) {
 				return []execEntry{{Path: full, Name: name}}
 			}
 		}
