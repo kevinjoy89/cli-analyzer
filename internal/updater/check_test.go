@@ -74,7 +74,7 @@ func TestCheckUpToDate(t *testing.T) {
 	}
 }
 
-func TestCheckUsesCacheWithin24h(t *testing.T) {
+func TestCheckUsesCacheWithin4h(t *testing.T) {
 	checkEnv(t, "0.2.3", []Release{
 		{TagName: "v0.3.0", HTMLURL: "https://github.com/x/releases/tag/v0.3.0", Assets: sampleAssets("0.3.0")},
 	})

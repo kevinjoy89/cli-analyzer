@@ -15,7 +15,7 @@ import (
 
 // cacheInterval 是自动检查的限流窗口：距上次成功检查不足该时长时复用缓存结果，
 // 避免触发 GitHub 未认证接口的 60 req/h/IP 限流（design D3）。
-const cacheInterval = 24 * time.Hour
+const cacheInterval = 4 * time.Hour
 
 // CheckResult 是一次更新检查的完整结果，GUI/CLI 以 JSON 序列化后输出。
 type CheckResult struct {

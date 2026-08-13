@@ -62,11 +62,14 @@ func (s *ScannerService) Startup(ctx context.Context) {
 	// 前端 init() 会以 navigator.language 细化并经 SetLanguage 握手。
 	i18n.SetLocale(i18n.Resolve(config.Load().Language))
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if res, err := scanner.LoadCache(); err == nil {
 		s.last = res
 	}
-	// 自动检查更新：异步执行；配置关闭、命中 24h 缓存或网络失败时均静默无提示
+	s.mu.Unlock()
+	// 每次打开软件都触发一次异步扫描：先渲染缓存保证秒开，随后后台重扫
+	// 让主界面自动刷新为最新结果（scan:done 事件覆盖缓存渲染）。
+	go s.Scan()
+	// 自动检查更新：异步执行；配置关闭、命中 4h 缓存或网络失败时均静默无提示
 	go s.autoCheck()
 }
 
@@ -261,7 +264,7 @@ func (s *ScannerService) autoCheck() {
 	runtime.EventsEmit(s.ctx, "update:available", string(b))
 }
 
-// CheckForUpdates 手动检查更新（不受 24h 缓存限制），返回 CheckResult JSON；
+// CheckForUpdates 手动检查更新（不受限流缓存限制），返回 CheckResult JSON；
 // 同时推送 "update:check-done" 事件（与返回值为同一结果）。
 func (s *ScannerService) CheckForUpdates() string {
 	res := updater.CheckForUpdates(context.Background(), true)
