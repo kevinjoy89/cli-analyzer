@@ -46,6 +46,10 @@ func TestFindUnattributedFilter(t *testing.T) {
 	mkdir(filepath.Join(cacheRoot, "packages"))
 	// 厂商排除表：应排除
 	mkdir(filepath.Join(dataRoot, "Netsarang Computer"))
+	// macOS Application Support（GUI 主导，非孤儿来源）：应排除——即使 HOME
+	// 下有该目录也不应被遍历
+	mkdir(filepath.Join(base, "Library", "Application Support", "App Store"))
+	mkdir(filepath.Join(base, "Library", "Application Support", "Safari"))
 
 	tools := map[string]*toolBuilder{"claimed-tool": {name: "claimed-tool", aliases: map[string]bool{}}}
 	order := []string{"claimed-tool"}

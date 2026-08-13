@@ -115,7 +115,14 @@ func findUnattributed(tools map[string]*toolBuilder, order []string, sizer *disk
 	}
 	var paths []string
 	var pathKind = map[string]string{}
-	for _, k := range []platform.RootKind{platform.XDGCache, platform.XDGData, platform.XDGConfig, platform.MacAppSupport} {
+	// 孤儿遍历仅限 CLI 工具主导的数据根（平台不适用时解析为 "" 自动跳过）：
+	// macOS/Linux 用 XDG 目录；Windows 用 AppData/LocalAppData。
+	// macOS Application Support/Caches/Preferences 是 GUI 应用主导（Safari、
+	// App Store、Chrome…），只用于已认领工具的归因，不作为孤儿来源。
+	for _, k := range []platform.RootKind{
+		platform.XDGCache, platform.XDGData, platform.XDGConfig,
+		platform.AppData, platform.LocalAppData,
+	} {
 		root := platform.Root(k)
 		if root == "" {
 			continue
@@ -171,7 +178,10 @@ func goVersion() string {
 // claimTopLevel 把 path 在任一扫描数据根下的顶层目录名加入 claimed。
 // （cleanable 通常位于某数据根下；无法归属到根时忽略。）
 func claimTopLevel(claimed map[string]bool, path string) {
-	for _, k := range []platform.RootKind{platform.XDGCache, platform.XDGData, platform.XDGConfig, platform.MacAppSupport} {
+	for _, k := range []platform.RootKind{
+		platform.XDGCache, platform.XDGData, platform.XDGConfig,
+		platform.AppData, platform.LocalAppData,
+	} {
 		root := platform.Root(k)
 		if root == "" || !strings.HasPrefix(path, root+string(filepath.Separator)) {
 			continue

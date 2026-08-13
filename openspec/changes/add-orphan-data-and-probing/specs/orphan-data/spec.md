@@ -6,7 +6,7 @@
 
 ### Requirement: 孤儿数据发现
 
-扫描 SHALL 遍历各平台数据根（XDG cache/data/config/state、macOS Application Support、Windows AppData/LocalAppData）的顶层目录；未被任何已扫描工具认领的目录 MUST 列为孤儿数据候选，并计算其占用大小。
+扫描 SHALL 遍历各平台 CLI 工具主导的数据根（macOS/Linux 的 XDG cache/data/config；Windows 的 AppData/LocalAppData）的顶层目录；未被任何已扫描工具认领的目录 MUST 列为孤儿数据候选，并计算其占用大小。macOS Application Support/Caches/Preferences 等 GUI 应用主导的目录 SHALL 仅用于已认领工具的归因，不作为孤儿数据来源。
 
 #### Scenario: 扫描产生孤儿数据列表
 
@@ -19,6 +19,12 @@ THEN 扫描结果包含孤儿数据项（路径、大小、所在数据根类型
 WHEN 数据根下目录 `~/.config/gh` 已被工具 `gh` 认领
 
 THEN 该目录不进入孤儿数据列表
+
+#### Scenario: GUI 主导根不作为孤儿来源
+
+WHEN macOS 上存在 `~/Library/Application Support/App Store` 等 GUI 应用数据目录
+
+THEN 该目录不进入孤儿数据列表（Application Support 仅用于已认领工具的归因）
 
 ### Requirement: 排除体系应用于孤儿数据
 
