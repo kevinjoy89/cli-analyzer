@@ -20,6 +20,7 @@ import (
 	"cli-analyzer/internal/config"
 	"cli-analyzer/internal/history"
 	"cli-analyzer/internal/i18n"
+	"cli-analyzer/internal/platform"
 	"cli-analyzer/internal/scanner"
 	"cli-analyzer/internal/trash"
 	"cli-analyzer/internal/uninstall"
@@ -587,6 +588,7 @@ func (s *ScannerService) runUninstallOfficial(off uninstall.Official) {
 		bin = resolved
 	}
 	cmd := exec.CommandContext(ctx, bin, off.Args...)
+	platform.HideConsoleWindow(cmd) // Windows: 不闪控制台窗口
 	cmd.Env = withPath(os.Environ(), uninstall.AugmentedPathEnv())
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
