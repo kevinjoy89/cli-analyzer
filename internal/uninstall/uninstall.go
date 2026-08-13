@@ -38,12 +38,19 @@ var blocklist = map[string]bool{
 	"bun": true, "yarn": true, "pnpm": true, "deno": true,
 	"rustc": true, "cargo": true, "rustup": true,
 	"sudo": true, "ssh": true, "curl": true, "wget": true, "vim": true,
+	// Windows 系统命令（System32 已被扫描跳过，此处为纵深防御）
+	"cmd": true, "powershell": true, "pwsh": true, "wsl": true, "winload": true,
 	"cli-analyzer": true,
 }
 
 // IsBlocked 报告该工具名是否命中系统关键工具黑名单。
+// Windows 下工具名带扩展名（ssh.exe），匹配前剥掉以便与黑名单（ssh）对齐。
 func IsBlocked(name string) bool {
-	return blocklist[strings.ToLower(strings.TrimSpace(name))]
+	n := strings.ToLower(strings.TrimSpace(name))
+	for _, ext := range []string{".exe", ".cmd", ".bat"} {
+		n = strings.TrimSuffix(n, ext)
+	}
+	return blocklist[n]
 }
 
 // OfficialCommand 返回按安装来源映射的标准卸载建议。

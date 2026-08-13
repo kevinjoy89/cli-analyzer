@@ -113,14 +113,6 @@ func PathDirs(skipSystem bool) []string {
 	return augmentUserDirs(seen, out)
 }
 
-func isSystemDir(d string) bool {
-	switch d {
-	case "/usr/bin", "/bin", "/usr/sbin", "/sbin":
-		return true
-	}
-	return false
-}
-
 // OS returns a human-friendly platform label such as "macOS (arm64)" or
 // "Linux (x86_64)". The raw Go GOOS ("darwin", "linux"…) is cryptic to end
 // users, so the friendly name is what surfaces in the status bar.

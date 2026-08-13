@@ -45,6 +45,12 @@ func TestIsBlocked(t *testing.T) {
 			t.Errorf("IsBlocked(%q) = true, want false", name)
 		}
 	}
+	// Windows 扩展名变体同样命中黑名单
+	for _, ex := range []string{"ssh.exe", "SSH.EXE", "cmd.exe", "powershell.exe", "wsl.exe"} {
+		if !IsBlocked(ex) {
+			t.Errorf("IsBlocked(%q) = false, want true (extension variant)", ex)
+		}
+	}
 }
 
 func TestOfficialCommand(t *testing.T) {
