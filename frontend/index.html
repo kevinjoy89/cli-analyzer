@@ -33,11 +33,10 @@
             <span id="lastScan" class="muted"></span>
         </div>
         <div class="header-actions">
-            <span id="scanState" class="scan-state"></span>
             <button id="trendsBtn" class="btn" data-i18n="menu.trends" data-i18n-title="menu.trendsTitle">趋势</button>
             <button id="rescanBtn" class="btn primary" data-i18n="menu.rescan">重新扫描</button>
             <button id="bellBtn" class="bell-btn hidden" data-i18n-title="menu.reminder" title="待清理提醒">
-                <span class="bell-icon">🔔</span>
+                <span class="bell-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></span>
                 <span id="bellCount" class="bell-count"></span>
             </button>
         </div>
@@ -49,11 +48,16 @@
         <div class="stat"><span class="stat-label" data-i18n="ui.statCleanable">可安全清理</span><span id="sumCleanable" class="stat-value clean">–</span></div>
         <div class="stat"><span class="stat-label" data-i18n="ui.statUser">用户数据</span><span id="sumUser" class="stat-value user">–</span></div>
         <div class="stat"><span class="stat-label" data-i18n="ui.statTools">工具数</span><span id="sumTools" class="stat-value">–</span></div>
+        <div class="stat hidden" id="orphanStat">
+            <span class="stat-label" data-i18n="ui.orphanSection">未认领数据</span>
+            <span id="sumOrphan" class="stat-value amber">–</span>
+        </div>
     </section>
 
     <main id="layout">
         <section id="toolPanel" class="panel">
             <div class="panel-head">
+                <div id="panelTabs" class="tabs"></div>
                 <input id="filter" class="filter" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="ui.filterPlaceholder" placeholder="过滤工具…"/>
             </div>
             <div id="toolList" class="tool-list"></div>
@@ -67,8 +71,9 @@
     </main>
 
     <footer id="statusBar" class="status-bar">
+        <span id="scanState" class="scan-state hidden"></span>
         <span id="statusInfo" class="status-info"></span>
-        <button id="trashBtn" class="trash-btn" data-i18n-title="ui.trashBtnTitle" title="内置回收站：清理项在保留期内可恢复">♻️ <span data-i18n="ui.trashBtn">内置回收站</span> <b id="trashInfo">–</b></button>
+        <button id="trashBtn" class="trash-btn" data-i18n-title="ui.trashBtnTitle" title="内置回收站：清理项在保留期内可恢复"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> <span data-i18n="ui.trashBtn">内置回收站</span> <b id="trashInfo">–</b></button>
         <button id="themeBtn" class="theme-btn" data-i18n-title="ui.themeToggle" title="切换主题：跟随系统 / 明亮 / 暗黑">
             <span id="themeIcon">◐</span>
         </button>
@@ -89,11 +94,14 @@
 
 <div id="trashModal" class="modal hidden">
     <div class="modal-box wide">
-        <h3 data-i18n="ui.trashBtn">内置回收站</h3>
-        <div id="trashBody" class="modal-body"></div>
+        <div class="trash-bar">
+            <h3 data-i18n="ui.trashBtn">内置回收站</h3>
+            <span id="trashSummary" class="trash-sum"></span>
+            <button id="trashPurgeAll" class="btn ghost-danger" data-i18n="ui.emptyTrash">清空回收站</button>
+        </div>
+        <div id="trashBody" class="modal-body trash-list"></div>
         <div class="modal-actions">
             <button id="trashClose" class="btn" data-i18n="ui.close">关闭</button>
-            <button id="trashPurgeAll" class="btn danger" data-i18n="ui.emptyTrash">清空回收站</button>
         </div>
     </div>
 </div>

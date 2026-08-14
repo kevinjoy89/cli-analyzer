@@ -10,7 +10,7 @@ import (
 
 func TestLoadCurated(t *testing.T) {
 	tbl := Load()
-	for _, name := range []string{"claude", "npm", "gh", "uv", "pyenv", "go", "rustup", "p10k"} {
+	for _, name := range []string{"claude", "nodejs", "gh", "uv", "pyenv", "go", "rustup", "p10k"} {
 		if tbl.Lookup(name) == nil {
 			t.Errorf("curated rule %q missing", name)
 		}

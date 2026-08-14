@@ -1,7 +1,7 @@
 // 与 Go JSON 契约一致的共享类型，供 main.ts 与 lib/ 纯逻辑模块使用
 export interface Binary { name: string; path: string; real: string; size: number }
 export interface DataDir { path: string; bytes: number; tier: string; kind: string; root?: string }
-export interface SubEntry { id: string; path: string; bytes: number }
+export interface SubEntry { id: string; path: string; bytes: number; kind?: string }
 
 export interface Cleanable {
     id: string; tool: string; path: string; bytes: number; tier: string;
@@ -12,6 +12,7 @@ export interface Cleanable {
 export interface Tool {
     name: string; aliases: string[]; installer: string;
     version: string; updatedAt: string; homepage: string; description: string;
+    family?: string; // 家族合并根名（如 "nodejs"）；空 = 普通单工具
     binaries: Binary[]; dataDirs: DataDir[]; cleanables: Cleanable[];
     footprintBytes: number; cleanableBytes: number; userBytes: number;
 }

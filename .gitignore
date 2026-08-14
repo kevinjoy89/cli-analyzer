@@ -5,6 +5,9 @@ bin
 dist
 frontend/dist
 
+# 本地原型
+docs/mockups
+
 # 前端依赖
 node_modules
 

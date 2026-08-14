@@ -54,9 +54,18 @@ var curated = []Rule{
 		},
 	},
 	{
-		Name: "npm", Aliases: []string{"node"}, Installer: "npm",
+		// nodejs 是 Node.js 运行时家族（node/npm/npx/corepack/node-gyp）的合并
+		// 工具：Windows 官方安装器 / nvm-windows / Volta / scoop 目录里每个
+		// 命令原本各自成行，扫描器把它们归并为一条 nodejs（见 scanner 的
+		// nodejsFamily）。brew 公式 node 不走合并，保持 "node" 原名。
+		Name: "nodejs", Aliases: []string{"node", "npm", "npx", "corepack", "node-gyp"}, Installer: "nodejs",
+		DataDirs: []DataDirRule{
+			// Windows npm 全局前缀（-g 安装目录），卸载残留检测用
+			dd(platform.AppData, "npm", TierUser, "data"),
+		},
 		Cleanables: []CleanRule{
 			cl(platform.Home, ".npm", TierSafe, "cache", "", "npm cache (~/.npm) — safe to clear with npm cache clean or deleting the dir"),
+			cl(platform.LocalAppData, "npm-cache", TierSafe, "cache", "", "npm cache (%LocalAppData%\\npm-cache) — safe to clear with npm cache clean"),
 		},
 	},
 	{

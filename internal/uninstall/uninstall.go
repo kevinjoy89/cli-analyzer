@@ -33,6 +33,7 @@ type Official struct {
 var blocklist = map[string]bool{
 	"python": true, "python3": true, "python3.13": true, "python3.12": true,
 	"node": true, "npm": true, "npx": true, "corepack": true,
+	"nodejs": true, // nodejs 家族合并工具（node/npm/npx/corepack/node-gyp）
 	"git": true, "docker": true, "podman": true, "go": true, "gofmt": true,
 	"brew": true, "bash": true, "zsh": true, "sh": true, "fish": true,
 	"bun": true, "yarn": true, "pnpm": true, "deno": true,

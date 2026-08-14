@@ -3,6 +3,7 @@ package scanner
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -13,12 +14,18 @@ type classification struct {
 	Installer      Installer
 	CurrentVersion string // for versioned / brew: version of this binary
 	InstallRoot    string // install dir to size (Cellar/<f>, versions/, node_modules/<pkg>…)
+	// Family 是工具家族合并的根名（如 "nodejs"），仅当该二进制因家族合并
+	// 归并进聚合工具时非空；brew 公式 node 等保持独立身份的工具为空。
+	Family string
 }
 
 // classify maps a resolved real path to a tool identity. Match order matters
 // (most specific first); entryName is the base name as seen on PATH.
 func classify(real, entryName string) classification {
 	if real == "" {
+		if id, ok := nodejsFamilyRoot(entryName); ok {
+			return classification{ToolID: id, Installer: InstNodejs, Family: id}
+		}
 		return classification{ToolID: entryName, Installer: InstOther}
 	}
 
@@ -31,6 +38,8 @@ func classify(real, entryName string) classification {
 	}
 
 	// brew: /<prefix>/Cellar/<formula>/<ver>/...
+	// 注意：brew 公式 node 保持原名（Cellar/node 已把 node/npm/npx/corepack
+	// 合并为一条），改名会破坏 "brew uninstall node" 的公式名。
 	if f, ver, ok := brewCellarMatch(real); ok {
 		root := filepath.Join(brewPrefix(), "Cellar", f)
 		return classification{ToolID: f, Installer: InstBrew, CurrentVersion: ver, InstallRoot: root}
@@ -46,6 +55,11 @@ func classify(real, entryName string) classification {
 
 	// npm global packages: .../node_modules/<pkg>/…
 	if pkg, root, ok := npmPkgMatch(real); ok {
+		// Node.js 运行时家族（nvm/fnm 布局里 node/npm/npx/corepack 是独立的
+		// node_modules 包）→ 合并为一条 "nodejs"。
+		if id, ok := nodejsFamilyRoot(pkg); ok {
+			return classification{ToolID: id, Installer: InstNodejs, InstallRoot: root, Family: id}
+		}
 		return classification{ToolID: pkg, Installer: InstNpm, InstallRoot: root}
 	}
 
@@ -64,7 +78,74 @@ func classify(real, entryName string) classification {
 		return classification{ToolID: entryName, Installer: InstCargo}
 	}
 
+	// Node.js 运行时家族兜底：Windows 官方安装器 / nvm-windows / Volta / scoop
+	// 把 node.exe、npm.cmd、npx.cmd、corepack.cmd 放在同一目录，每个都是
+	// InstOther 独立工具 → 合并为一条 "nodejs"。unix 上独立放置的 node/npm
+	// 同理。brew/nvm 等更具体的来源已在上面命中，不会走到这里。
+	if id, ok := nodejsFamilyRoot(entryName); ok {
+		return classification{
+			ToolID: id, Installer: InstNodejs, Family: id,
+			InstallRoot: nodejsInstallRoot(filepath.Dir(real)),
+		}
+	}
+
 	return classification{ToolID: entryName, Installer: InstOther}
+}
+
+// ---- Node.js runtime family ----
+
+// nodejsFamily 是随 Node.js 运行时分发的命令。它们共享同一安装目录
+// （Windows）或同属一个 node_modules 布局（unix），应归并为一条 "nodejs"。
+// yarn/pnpm 等独立分发的包管理器不属于该家族，保持独立工具。
+var nodejsFamily = map[string]bool{
+	"node": true, "npm": true, "npx": true, "corepack": true, "node-gyp": true,
+}
+
+// normEntryName 把 PATH 入口名归一化用于家族匹配：Windows 入口带扩展名
+// （node.exe / npm.cmd），剥掉后与家族表比较（大小写不敏感）。
+func normEntryName(name string) string {
+	n := strings.ToLower(name)
+	for _, ext := range []string{".exe", ".cmd", ".bat", ".com"} {
+		n = strings.TrimSuffix(n, ext)
+	}
+	return n
+}
+
+// nodejsFamilyRoot 报告 entryName 是否属于 Node.js 运行时家族；命中时返回
+// 家族根名（"nodejs"）。
+func nodejsFamilyRoot(entryName string) (string, bool) {
+	if nodejsFamily[normEntryName(entryName)] {
+		return "nodejs", true
+	}
+	return "", false
+}
+
+// nodejsInstallRoot 仅当目录本身就是 Node 运行时目录时返回该目录作为安装根
+// （目录内存在 node / node.exe），避免把 ~/.local/bin 等共享 bin 目录整体
+// 算作 nodejs 的安装占用。Windows 官方安装器 / nvm-windows / Volta / scoop
+// 的目录都满足；unix 上独立散放的 npm 脚本不满足（返回 ""，按文件计大小）。
+func nodejsInstallRoot(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	for _, cand := range []string{"node.exe", "node"} {
+		if st, err := os.Stat(filepath.Join(dir, cand)); err == nil && !st.IsDir() {
+			return dir
+		}
+	}
+	return ""
+}
+
+// probeOrder 把工具的主二进制排到 Binaries[0]：版本探测（--version）取
+// Binaries[0]，nodejs 合并工具的主二进制是 node（而非 corepack/npm/npx）。
+func probeOrder(tb *toolBuilder) {
+	if tb.name != "nodejs" || len(tb.binaries) < 2 {
+		return
+	}
+	sort.SliceStable(tb.binaries, func(i, j int) bool {
+		return normEntryName(tb.binaries[i].Name) == "node" &&
+			normEntryName(tb.binaries[j].Name) != "node"
+	})
 }
 
 // ---- install-root helpers ----

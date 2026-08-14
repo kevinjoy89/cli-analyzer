@@ -179,11 +179,28 @@ func List() ([]Item, error) {
 			continue
 		}
 		if meta, err := readInfo(filepath.Join(Root(), d.Name())); err == nil {
+			// 自愈：子项精确分类修复前写入的旧条目（_logs/*.log 被记成父项的
+			// cache），列表时按与扫描器一致的规则纠正，避免错误标签保留整个
+			// 保留期。仅升级可明确识别的组合，不改动其他类型。
+			meta.Kind = refineKind(meta.Kind, meta.Original)
 			out = append(out, *meta)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].TrashedAt > out[j].TrashedAt })
 	return out, nil
+}
+
+// refineKind 纠正修复前写入的错误类型：路径名明确是日志（_logs / *.log）
+// 却记录为 cache 的旧条目 → logs。与 scanner.subKind 的分类规则一致。
+func refineKind(kind, original string) string {
+	if kind != "cache" {
+		return kind
+	}
+	low := strings.ToLower(filepath.Base(original))
+	if low == "_logs" || strings.HasSuffix(low, ".log") {
+		return "logs"
+	}
+	return kind
 }
 
 // Purge 立即清出回收站中指定项目；处理方式遵循过期配置——默认移到系统回收站

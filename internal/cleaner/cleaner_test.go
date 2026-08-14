@@ -235,3 +235,66 @@ func TestCleanSubUserParentRejected(t *testing.T) {
 		t.Fatalf("child was removed: %v", err)
 	}
 }
+
+// TestCleanSubUsesPreciseKind 验证子项移入回收站时使用扫描器给出的精确类型
+// （~/.npm/_logs → logs，而非父项的 cache）；旧缓存子项无 Kind 字段时回退
+// 父项类型，回收站条目类型随之正确。
+func TestCleanSubUsesPreciseKind(t *testing.T) {
+	useTempTrash(t)
+	td := t.TempDir()
+	parent := filepath.Join(td, "npm")
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	logsDir := filepath.Join(parent, "_logs")
+	if err := os.MkdirAll(logsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	parentID := "t|cache|" + parent
+
+	// 子项带精确类型：入库 logs
+	res := mkScanResult(scanner.Cleanable{
+		ID: parentID, Tool: "t", Path: parent, Bytes: 100, Tier: scanner.TierSafe, Kind: "cache",
+		Sub: []scanner.SubEntry{
+			{Path: logsDir, Bytes: 100, ID: parentID + "::" + logsDir, Kind: "logs"},
+		},
+	})
+	report := Clean(res, []string{parentID + "::" + logsDir}, false)
+	if len(report.Deleted) != 1 {
+		t.Fatalf("deleted=%v", report.Deleted)
+	}
+	items, err := trash.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Kind != "logs" {
+		t.Fatalf("trash item kind = %+v, want logs", items)
+	}
+
+	// 旧缓存子项无 Kind：回退父项 cache
+	drop := filepath.Join(parent, "drop")
+	if err := os.MkdirAll(drop, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	res2 := mkScanResult(scanner.Cleanable{
+		ID: parentID, Tool: "t", Path: parent, Bytes: 100, Tier: scanner.TierSafe, Kind: "cache",
+		Sub: []scanner.SubEntry{
+			{Path: drop, Bytes: 100, ID: parentID + "::" + drop},
+		},
+	})
+	report2 := Clean(res2, []string{parentID + "::" + drop}, false)
+	if len(report2.Deleted) != 1 {
+		t.Fatalf("deleted=%v", report2.Deleted)
+	}
+	items2, err := trash.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	kinds := map[string]bool{}
+	for _, it := range items2 {
+		kinds[it.Kind] = true
+	}
+	if !kinds["logs"] || !kinds["cache"] {
+		t.Fatalf("trash kinds = %v, want logs and cache", kinds)
+	}
+}

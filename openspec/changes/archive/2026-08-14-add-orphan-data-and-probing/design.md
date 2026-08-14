@@ -54,7 +54,8 @@ scanner.Scan: Unattributed = findUnattributed(...)   ← 默认执行（GUI Opti
     本应用自身 → 结构信号（macOS Containers bundle-id / Windows UWP 包族
     + Packages 容器）→ 厂商排除表 DataOnly 语境（目录名精确判例）→ 认领集合
     （含各工具 cleanable 规则覆盖的顶层目录，如 codex 的 codex-runtimes）
-GUI: renderToolList 底部"未归属数据"小节（可折叠，条目含路径/大小/数据根 + 移入回收站）
+GUI: 工具面板"未认领数据"标签页（与工具列表并列；按数据根分组，条目含路径/大小，
+      勾选/全选 + 二次确认后批量移入回收站；顶部汇总卡展示总占用；无孤儿时不显示标签）
 处置: 新绑定 OrphanTrash（trash.Trash，USER 级可恢复）
 体积: 扫描内并行计体积（spec 要求大小进扫描结果；磁盘 Sizer 并行 WalkAll，
       排除表过滤先行可显著缩小待走目录。实测：过滤后本机 210→200 目录、

@@ -31,7 +31,12 @@ const (
 	InstGo        Installer = "go"
 	InstCargo     Installer = "cargo"
 	InstRustup    Installer = "rustup"
-	InstOther     Installer = "other"
+	// InstNodejs 是 Node.js 运行时家族合并工具的安装来源（Windows 官方安装器、
+	// nvm-windows / Volta / scoop 等，或 unix 上 fnm 之类的 node_modules 布局）。
+	// node/npm/npx/corepack/node-gyp 归并为一条 "nodejs"，避免 Windows 上
+	// 同一目录被扫出多个互不相干的小工具。
+	InstNodejs Installer = "nodejs"
+	InstOther  Installer = "other"
 )
 
 // ProbeSafeInstaller 报告安装来源是否属于已知 CLI 生态（可安全执行其二进制
@@ -39,7 +44,7 @@ const (
 // Warp 等）常以 InstOther 出现，执行其二进制可能触发系统权限（TCC）提示。
 func ProbeSafeInstaller(i Installer) bool {
 	switch i {
-	case InstBrew, InstNpm, InstPipx, InstCargo, InstGo, InstPyenv, InstVersioned, InstRustup:
+	case InstBrew, InstNpm, InstPipx, InstCargo, InstGo, InstPyenv, InstVersioned, InstRustup, InstNodejs:
 		return true
 	}
 	return false
@@ -65,10 +70,15 @@ type DataDir struct {
 // SubEntry is one direct child (file or dir) of a cleanable path, used to
 // render one level of breakdown in the UI (e.g. ~/.npm -> _cacache, _npx).
 // ID is stable across scans: "<parent cleanable ID>::<sub path>".
+// Kind is the child's precise type: usually inherited from the parent, but
+// distinguishable children get their own (e.g. ~/.npm/_logs is "logs", not
+// "cache"). The cleaner stores this kind on trash items so the trash list
+// classifies each moved path accurately.
 type SubEntry struct {
 	Path  string `json:"path"`
 	Bytes int64  `json:"bytes"`
 	ID    string `json:"id"`
+	Kind  string `json:"kind"`
 }
 
 // Cleanable is one deletable item.
@@ -98,6 +108,7 @@ type Tool struct {
 	UpdatedAt   string      `json:"updatedAt"`   // RFC3339 mtime of newest install file
 	Homepage    string      `json:"homepage"`    // official website (curated metadata)
 	Description string      `json:"description"` // one-line summary (curated metadata)
+	Family      string      `json:"family,omitempty"` // 家族合并根名（如 "nodejs"）；空 = 普通单工具。前端据此把 aliases 展示为「包含工具」而非「别名」。
 	Binaries    []Binary    `json:"binaries"`
 	DataDirs    []DataDir   `json:"dataDirs"`
 	Cleanables  []Cleanable `json:"cleanables"`

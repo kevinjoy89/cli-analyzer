@@ -30,6 +30,8 @@ type toolBuilder struct {
 	updatedAt   string
 	homepage    string
 	description string
+	// family 是工具家族合并根名（"nodejs"）；普通单工具为空。
+	family string
 }
 
 func (b *toolBuilder) addMeasure(p string) {
@@ -133,6 +135,19 @@ func attribute(tools map[string]*toolBuilder, order []string, ruleTable *rules.T
 			tb.homepage = m.Homepage
 			tb.description = i18n.T(m.Description)
 		}
+		// 规则表别名（claude→claude-code、pip→pip3、hf…）并入展示字段：
+		// 此前 aliases 只含二进制名推断值，真正的别名从未进入 JSON。
+		// 家族合并工具（nodejs）除外——其别名即实际合并进来的命令，curated
+		// 别名只是家族清单，并入会把未安装的 corepack/node-gyp 也算进「包含工具」。
+		if tb.family == "" {
+			if cur := ruleTable.Lookup(id); cur != nil {
+				for _, a := range cur.Aliases {
+					if a != id {
+						tb.aliases[a] = true
+					}
+				}
+			}
+		}
 	}
 
 	// ---- global sizing pass ----
@@ -170,11 +185,28 @@ func attribute(tools map[string]*toolBuilder, order []string, ruleTable *rules.T
 				continue
 			}
 			for p, n := range sizer.ChildrenSizes(c.Path) {
-				c.Sub = append(c.Sub, SubEntry{Path: p, Bytes: n, ID: c.ID + "::" + p})
+				c.Sub = append(c.Sub, SubEntry{
+					Path: p, Bytes: n, ID: c.ID + "::" + p,
+					Kind: subKind(c.Kind, filepath.Base(p)),
+				})
 			}
 			sort.Slice(c.Sub, func(a, b int) bool { return c.Sub[a].Bytes > c.Sub[b].Bytes })
 		}
 	}
+}
+
+// subKind 给可清理项的直接子项一个精确类型，而不是无条件继承父项：
+//
+//	~/.npm/_logs → logs（npm 调试日志，不是缓存）
+//	~/.npm/_cacache → cache（继承父项）
+//
+// 只识别有把握的类别（日志），其余继承父项 —— 不靠猜测扩大分类，宁缺毋滥。
+func subKind(parentKind, name string) string {
+	low := strings.ToLower(name)
+	if low == "_logs" || strings.HasSuffix(low, ".log") {
+		return "logs"
+	}
+	return parentKind
 }
 
 // reAttributeVendors moves binaries that live inside another tool's attributed
@@ -231,9 +263,9 @@ func reAttributeVendors(tools map[string]*toolBuilder, order []string) {
 	}
 	for _, m := range moves {
 		m.to.binaries = append(m.to.binaries, m.b)
-		if m.b.Name != m.to.name {
-			m.to.aliases[m.b.Name] = true
-		}
+		// 寄居二进制（rg/fd 等）只是宿主工具捆绑的依赖，不是它的别名
+		// （opencode/kimi 自带 ripgrep → 别名里不该出现 "rg"）。
+		// 它们仍会出现在该工具的二进制列表中，只是不冒充别名。
 	}
 }
 
@@ -533,6 +565,8 @@ func finalize(tools map[string]*toolBuilder, order []string, opts Options) *Scan
 	totals := Totals{}
 	for _, id := range order {
 		tb := tools[id]
+		// nodejs 合并工具把 node 排到 Binaries[0]，让版本探测取到运行时版本。
+		probeOrder(tb)
 		var cleanSum, userSum int64
 		for _, c := range tb.cleanables {
 			if c.Tier == TierSafe {
@@ -582,6 +616,7 @@ func finalize(tools map[string]*toolBuilder, order []string, opts Options) *Scan
 			Name: tb.name, Aliases: aliases, Installer: string(tb.installer),
 			Version: tb.version, UpdatedAt: tb.updatedAt,
 			Homepage: tb.homepage, Description: tb.description,
+			Family: tb.family,
 			Binaries: tb.binaries, DataDirs: tb.dataDirs, Cleanables: tb.cleanables,
 			Footprint: tb.footprint, Cleanable: cleanSum, User: userSum,
 		})

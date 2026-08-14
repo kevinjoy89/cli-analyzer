@@ -14,6 +14,7 @@ var metaByName = map[string]Meta{
 	"mimocode":      {"https://www.zhipuai.cn", "tool.desc.mimocode"},
 	"opencode":      {"https://opencode.ai", "tool.desc.opencode"},
 	"mavis":         {"", "tool.desc.mavis"},
+	"nodejs":        {"https://nodejs.org", "tool.desc.nodejs"},
 	"npm":           {"https://www.npmjs.com", "tool.desc.npm"},
 	"node":          {"https://nodejs.org", "tool.desc.node"},
 	"bun":           {"https://bun.sh", "tool.desc.bun"},

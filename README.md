@@ -27,7 +27,7 @@ CLI Analyzer scans every CLI tool installed on your machine, attributes its **to
 
 ## Features
 
-- **Detection** — enumerates `$PATH` executables, resolves symlinks, and classifies each by install source (versioned installer / brew formula / npm package / pipx / pyenv shim / go / cargo / other)
+- **Detection** — enumerates `$PATH` executables, resolves symlinks, and classifies each by install source (versioned installer / brew formula / npm package / pipx / pyenv shim / go / cargo / other). The Node.js runtime family (node / npm / npx / corepack / node-gyp) is merged into one `nodejs` entry instead of showing every command in the same install dir as a separate tool (common on Windows)
 - **Attribution** — total footprint = executable + package dir (`Cellar`, `node_modules`, `versions/…`) + platform data dirs (`~/.cache/<name>`, `~/.config/<name>`, `~/.local/share/<name>`, macOS `~/Library/*`, Windows `%APPDATA%`…)
 - **Two-level safety model**
   - **SAFE** (caches, old versions, backups, package-manager caches) — moved into the built-in trash (recoverable) after per-item confirmation
@@ -93,16 +93,18 @@ Example scan output:
 
 ```
 Tool   Cmd   Total   Cleanable(SAFE)   User   Source
-npm    -     10.2 GB  10.2 GB           0 B     npm
-opencode -   8.2 GB   0 B               8.2 GB  other
-uv     -     7.3 GB   7.2 GB            57.0 MB other
-codex  -     2.0 GB   288.7 MB          1.8 GB  other
-pip    -     1.1 GB   1.1 GB            0 B     pip
-go     -     1.0 GB   753.7 MB          282.3 MB go
-pyenv  -     759.8 MB 0 B               759.8 MB pyenv
+nodejs 5     10.5 GB  10.5 GB          89.7 MB nodejs
+opencode -   8.2 GB   0 B              8.2 GB  other
+uv     -     7.3 GB   7.2 GB           57.0 MB other
+codex  -     2.0 GB   288.7 MB         1.8 GB  other
+pip    -     1.1 GB   1.1 GB           0 B     pip
+go     -     1.0 GB   753.7 MB         282.3 MB go
+pyenv  -     759.8 MB 0 B              759.8 MB pyenv
 ...
-Total  -     31.5 GB  19.9 GB           11.7 GB -
+Total  -     31.5 GB  19.9 GB          11.7 GB -
 ```
+
+(The Node.js runtime family — node / npm / npx / corepack / node-gyp — is merged into a single `nodejs` entry; its detail panel lists every bundled command and binary path, and the `~/.npm` cache stays SAFE-cleanable.)
 
 **Safety model**: only SAFE-level items (caches / old versions / backups / package-manager caches) are cleaned; USER-level (config / history / venv) is display-only. Old-version cleanup always keeps the current version (e.g. the symlink target for `claude`).
 

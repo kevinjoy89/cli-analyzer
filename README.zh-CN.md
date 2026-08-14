@@ -27,7 +27,7 @@ CLI Analyzer 扫描系统上安装的 CLI 工具，归因每个工具的总磁�
 
 ## 功能
 
-- **检测**：枚举 `$PATH` 可执行文件，解析符号链接，按真实路径分类到安装源（versioned 安装器 / brew formula / npm 包 / pipx / pyenv shim / go / cargo / 其他）
+- **检测**：枚举 `$PATH` 可执行文件，解析符号链接，按真实路径分类到安装源（versioned 安装器 / brew formula / npm 包 / pipx / pyenv shim / go / cargo / 其他）；Node.js 运行时家族（node / npm / npx / corepack / node-gyp）自动归并为一条 `nodejs`，避免 Windows 上同目录工具各自成行
 - **归因**：每个工具的总占用 = 可执行文件 + 包目录（Cellar、node_modules、versions/…）+ 平台数据目录（`~/.cache/<名>`、`~/.config/<名>`、`~/.local/share/<名>`、macOS `~/Library/*`、Windows `%APPDATA%`…）
 - **两级清理安全模型**
   - **SAFE**（缓存、旧版本、备份、包管理器缓存）—— 逐项确认后先移入内置回收站（可恢复）
@@ -91,7 +91,7 @@ cli-analyzer                         # 打开 GUI
 
 ```
 工具           命令  总占用       可清理(SAFE)  用户数据      来源
-npm          -   10.2 GB   10.2 GB    0 B       npm
+nodejs       5   10.5 GB   10.5 GB    89.7 MB   nodejs
 opencode     -   8.2 GB    0 B        8.2 GB    other
 uv           -   7.3 GB    7.2 GB     57.0 MB   other
 codex        -   2.0 GB    288.7 MB   1.8 GB    other
@@ -101,6 +101,8 @@ pyenv        -   759.8 MB  0 B        759.8 MB  pyenv
 ...
 合计           -   31.5 GB   19.9 GB    11.7 GB   -
 ```
+
+（Node.js 运行时家族 node/npm/npx/corepack/node-gyp 归并为一条 `nodejs`，详情中可查看包含的命令与各自的二进制路径；`~/.npm` 缓存仍按 SAFE 可清理。）
 
 **安全模型**：只有 SAFE 级（缓存/旧版本/备份/包管理器缓存）会被清理；USER 级（配置/历史/venv）仅展示。旧版本清理会自动保留当前版本（如 claude 的软链接目标）。
 

@@ -5,7 +5,7 @@
 ## What Changes
 
 - **非 CLI 排除体系**：新增厂商排除表（路径片段精确匹配 + 纯 CLI 产品例外白名单），统一应用于 exe 发现与数据目录归因两环节；替换现有 `isVendorInstallDir` 的子串匹配
-- **孤儿数据目录**：把后端已存在的 `findUnattributed`（现仅 CLI `--full` 可用）接入 GUI，工具列表底部新增"未归属数据"小节；数据经排除体系过滤后仅以 USER 级展示，只能移入回收站
+- **孤儿数据目录**：把后端已存在的 `findUnattributed`（现仅 CLI `--full` 可用）接入 GUI，工具面板新增"未认领数据"标签页（按数据根分组、支持全选与批量移入回收站）；数据经排除体系过滤后仅以 USER 级展示，只能移入回收站
 - **健康探测**：对扫描出的工具后台探测 `--version`/`-V`/`--help`，填充版本列并提取一句话描述；带超时杀进程、结果缓存、失败降级 `—`；Windows GBK 输出转码
 - **范围收紧**：全应用只管理 CLI 工具及其残留；GUI 应用、其命令行伴侣、其数据目录一律排除
 
@@ -13,7 +13,7 @@
 
 ### New Capabilities
 - `non-cli-exclusion`: 非 CLI（GUI 应用）识别与排除规则——厂商排除表、片段精确匹配、纯 CLI 例外白名单，贯穿 exe 发现与数据目录归因
-- `orphan-data`: 未归属数据目录的发现、过滤、展示与回收站处置（GUI + CLI）
+- `orphan-data`: 未认领数据目录的发现、过滤、展示与回收站处置（GUI + CLI）
 - `tool-probing`: 工具版本/描述探测——命令编排、超时与缓存、失败降级、Windows 编码处理
 
 ### Modified Capabilities

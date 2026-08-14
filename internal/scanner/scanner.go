@@ -27,7 +27,7 @@ func Scan(opts Options) (*ScanResult, error) {
 
 	tools := map[string]*toolBuilder{}
 	order := []string{}
-	addBinary := func(id string, installer Installer, b Binary, currentVer, installRoot string) {
+	addBinary := func(id string, installer Installer, b Binary, currentVer, installRoot, family string) {
 		tb := tools[id]
 		if tb == nil {
 			tb = &toolBuilder{name: id, aliases: map[string]bool{}}
@@ -44,8 +44,17 @@ func Scan(opts Options) (*ScanResult, error) {
 		if tb.currentVer == "" {
 			tb.currentVer = currentVer
 		}
-		if b.Name != id {
-			tb.aliases[b.Name] = true
+		// 家族合并工具的别名用归一化命令名（Windows 上去掉 .exe/.cmd 等扩展名，
+		// 显示 corepack 而非 corepack.cmd）；普通工具保留原始入口名。
+		alias := b.Name
+		if family != "" {
+			alias = normEntryName(b.Name)
+		}
+		if alias != id {
+			tb.aliases[alias] = true
+		}
+		if family != "" {
+			tb.family = family
 		}
 		tb.binaries = append(tb.binaries, b)
 	}
@@ -60,7 +69,7 @@ func Scan(opts Options) (*ScanResult, error) {
 			size = st.Size()
 		}
 		c := classify(real, ex.Name)
-		addBinary(c.ToolID, c.Installer, Binary{Name: ex.Name, Path: ex.Path, Real: real, Size: size}, c.CurrentVersion, c.InstallRoot)
+		addBinary(c.ToolID, c.Installer, Binary{Name: ex.Name, Path: ex.Path, Real: real, Size: size}, c.CurrentVersion, c.InstallRoot, c.Family)
 	}
 
 	// Seed curated tools that have no PATH binary (p10k, puppeteer…).

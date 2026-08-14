@@ -5,8 +5,9 @@ import {Environment, EventsOn, Quit} from '../wailsjs/runtime/runtime';
 import {applyCleanLocally} from './lib/clean';
 import {hb} from './lib/format';
 import {activeLocale, fmtTime, normalizeNavigator, setDict, t} from './lib/i18n';
+import {aliasMeta, kindLabel, orphanRootLabel} from './lib/labels';
 import {computeTrendPaths} from './lib/trends';
-import {Cleanable, Grower, Point, ReminderConfig, ScanResult, Tool, TrendsResult} from './lib/types';
+import {Cleanable, DataDir, Grower, Point, ReminderConfig, ScanResult, Tool, TrendsResult} from './lib/types';
 
 // ---- types mirroring the Go JSON contract ----
 interface CleanReport { dryRun: boolean; deleted: string[]; freedBytes: number; skipped: string[]; errors: string[] }
@@ -116,11 +117,17 @@ function showToast(msg: string, isError = false) {
     (t as unknown as { _t?: number })._t = window.setTimeout(() => { t.className = 'toast hidden'; }, 2800);
 }
 
+// 扫描状态（方案 B+C 结合）：
+// - 「重新扫描」按钮自身变为加载态：灰色中性 + 小转圈 + 「扫描中…」，禁用
+// - 底部状态栏同步显示 转圈 + 「扫描中…」（与扫描用时/遍历错误同区）
 function setScanning(busy: boolean, label = '') {
     const s = el('scanState');
-    s.className = 'scan-state' + (busy ? ' busy' : '');
-    s.textContent = busy ? label : '';
-    (el('rescanBtn') as HTMLButtonElement).disabled = busy;
+    s.className = 'scan-state' + (busy ? ' busy' : ' hidden');
+    s.innerHTML = busy ? `<span class="btn-spin"></span>${esc(label)}` : '';
+    const btn = el('rescanBtn') as HTMLButtonElement;
+    btn.disabled = busy;
+    btn.classList.toggle('scanning', busy);
+    btn.innerHTML = busy ? `<span class="btn-spin"></span>${esc(label)}` : esc(t('menu.rescan'));
 }
 
 // ---- summary ----
@@ -130,6 +137,16 @@ function renderSummary() {
     el('sumCleanable').textContent = hb(result.totals.cleanableBytes);
     el('sumUser').textContent = hb(result.totals.userBytes);
     el('sumTools').textContent = String(result.tools.length);
+    // 未认领数据统计卡：常驻顶部，静态展示占用大小（琥珀色）
+    const orphans = result.unattributed ?? [];
+    const oTotal = orphans.reduce((a, o) => a + (o.bytes || 0), 0);
+    const ost = el('orphanStat');
+    if (orphans.length) {
+        ost.classList.remove('hidden');
+        el('sumOrphan').textContent = hb(oTotal);
+    } else {
+        ost.classList.add('hidden');
+    }
     el('lastScan').textContent = result.scannedAt ? t('ui.lastScan', {time: fmtTime(result.scannedAt)}) : '';
     const status = el('statusInfo');
     status.innerHTML = '';
@@ -175,10 +192,17 @@ function sortTools(tools: Tool[]): Tool[] {
 }
 
 function renderToolList() {
+    renderPanelTabs();
     const list = el('toolList');
     list.innerHTML = '';
     if (!result) {
         list.innerHTML = '<div class="empty">' + esc(t('ui.noData')) + '</div>';
+        return;
+    }
+    // 未认领数据视图：数据清空后自动回到工具视图
+    if (panelView === 'orphans' && !(result.unattributed ?? []).length) panelView = 'tools';
+    if (panelView === 'orphans') {
+        renderOrphanView(list);
         return;
     }
     const q = filterText.toLowerCase();
@@ -203,6 +227,7 @@ function renderToolList() {
             renderToolList();
         };
     });
+    // 未认领数据有独立标签页，不再混排在工具列表里。
     for (const tool of tools) {
         const row = document.createElement('div');
         row.className = 'tool-row' + (tool.name === selected ? ' selected' : '');
@@ -216,52 +241,173 @@ function renderToolList() {
         row.onclick = () => { selected = tool.name; selectedCleanIds.clear(); expandedCleanIds.clear(); renderToolList(); renderDetail(); };
         list.appendChild(row);
     }
-    renderOrphanSection(list);
 }
 
-// ---- unattributed data (orphan) section ----
-let orphanOpen = true;
+// ---- 未认领数据（标签页视图）----
+// 面板顶部 tab：工具 | 未认领数据。未认领数据 = 数据根下未被任何工具认领
+// 的目录（USER 级），唯一处置是移入内置回收站（可恢复），绝不永久删除。
+let panelView: 'tools' | 'orphans' = 'tools';
+let orphanSel = new Set<string>(); // 已勾选的未认领路径
 
-function renderOrphanSection(list: HTMLElement) {
-    const orphans = (result?.unattributed ?? []).filter(o => !filterText || o.path.toLowerCase().includes(filterText.toLowerCase()));
-    // 空态：无孤儿时不显示小节
-    if (!orphans.length) return;
-    const total = orphans.reduce((a, o) => a + (o.bytes || 0), 0);
+// 极简垃圾桶图标（线性描边，与卸载复制按钮风格一致）；状态栏回收站按钮与
+// 未认领数据行共用同一标识，避免 emoji 风格不统一且视觉过重。
+const TRASH_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+// 恢复（撤销回退箭头）图标，回收站行内操作按钮用
+const RESTORE_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>';
 
-    const head = document.createElement('div');
-    head.className = 'tool-row orphan-head';
-    head.innerHTML = `
-        <span class="tool-name">${esc(t('ui.orphanSection'))} (${orphans.length})</span>
-        <span class="num">${hb(total)}</span>
-        <span class="orphan-toggle">${orphanOpen ? esc(t('ui.orphanExpanded')) : esc(t('ui.orphanCollapsed'))}</span>`;
-    head.onclick = () => { orphanOpen = !orphanOpen; renderToolList(); };
-    list.appendChild(head);
+// 类型 → 标签色（方形色块）：未认领数据=蓝、缓存=绿、日志=琥珀，其余灰
+const KIND_TONE: Record<string, string> = {
+    'cache': 'green',
+    'logs': 'amber',
+    'data': 'blue',
+    'download': 'blue',
+    'old-version': 'gray',
+    'backup': 'gray',
+    'toolchain': 'gray',
+    'config': 'gray',
+    'state': 'gray',
+    'install': 'gray',
+};
 
-    if (!orphanOpen) return;
-    const body = document.createElement('div');
-    body.className = 'orphan-body';
-    for (const o of orphans) {
-        const row = document.createElement('div');
-        row.className = 'orphan-item';
-        row.innerHTML = `
-            <span class="path" title="${esc(o.path)}">${esc(o.path)}</span>
-            <span class="num">${hb(o.bytes || 0)}</span>
-            <span class="orphan-root">${esc(o.root || '')}</span>
-            <button class="btn mini" data-orphan="${esc(o.path)}">${esc(t('ui.orphanTrash'))}</button>`;
-        body.appendChild(row);
+// 数据根 / 类型标签的本地化映射见 lib/labels.ts（labels.test.ts 守护两端不漂移）
+
+// 渲染面板顶部的标签控件；无未认领数据时不显示（工具视图即全部内容）
+function renderPanelTabs() {
+    const wrap = el('panelTabs');
+    const orphans = result?.unattributed ?? [];
+    if (!orphans.length) {
+        wrap.innerHTML = '';
+        return;
     }
-    list.appendChild(body);
-    body.querySelectorAll<HTMLButtonElement>('button[data-orphan]').forEach(btn => {
-        btn.onclick = async () => {
-            const p = btn.dataset.orphan as string;
-            try {
-                const rep = JSON.parse(await OrphanTrash([p])) as {trashed?: string[]; errors?: string[]};
-                const hasErr = (rep.errors ?? []).length > 0;
-                showToast((rep.trashed?.length ? t('ui.orphanTrash') + ' ✓' : '') + (hasErr ? t('un.runFailed') : ''), hasErr);
-                refreshTrashInfo(); // 立即刷新右下角回收站占用
-            } catch (e) { showToast(String(e), true); }
+    const tab = (v: 'tools' | 'orphans', label: string) =>
+        `<button class="tab${panelView === v ? ' active' : ''}" data-v="${v}">${esc(label)}</button>`;
+    wrap.innerHTML = tab('tools', t('ui.tabTools')) + tab('orphans', t('ui.tabOrphans'));
+    wrap.querySelectorAll<HTMLButtonElement>('button.tab').forEach(btn => {
+        btn.onclick = () => { panelView = btn.dataset.v as 'tools' | 'orphans'; renderToolList(); };
+    });
+}
+
+function filteredOrphans(): DataDir[] {
+    return (result?.unattributed ?? []).filter(o => !filterText || o.path.toLowerCase().includes(filterText.toLowerCase()));
+}
+
+// 未认领数据视图：工具栏（计数/全选/批量移入）+ 按数据根分组列表
+function renderOrphanView(list: HTMLElement) {
+    const orphans = filteredOrphans();
+    if (!orphans.length) {
+        list.innerHTML = '<div class="empty">' + esc(t(filterText ? 'ui.orphanNoneMatch' : 'ui.orphanEmpty')) + '</div>';
+        return;
+    }
+    const total = orphans.reduce((a, o) => a + (o.bytes || 0), 0);
+    // 按数据根分组，组内按大小降序；组按总大小降序
+    const byRoot = new Map<string, DataDir[]>();
+    for (const o of orphans) {
+        const k = o.root || '';
+        if (!byRoot.has(k)) byRoot.set(k, []);
+        byRoot.get(k)!.push(o);
+    }
+    const groups = [...byRoot.entries()].map(([root, items]) => {
+        items.sort((a, b) => (b.bytes || 0) - (a.bytes || 0));
+        const gTotal = items.reduce((s, o) => s + (o.bytes || 0), 0);
+        // 组标题展示数据根的真实路径（~/.config 等），而非 xdg-config 这类
+        // 技术规范名；roots 缺失时回退为空（仅显示分类标签）
+        const base = result?.roots?.[root]?.[0] ?? '';
+        return {root, items, total: gTotal, base};
+    }).sort((a, b) => b.total - a.total);
+
+    const selected = orphans.filter(o => orphanSel.has(o.path)).length;
+    list.innerHTML = `
+        <div class="otool">
+            <span class="ot">${esc(t('ui.orphanCount', {n: orphans.length, size: hb(total)}))}</span>
+            <label class="selall"><input type="checkbox" id="orphanSelAll" ${selected === orphans.length ? 'checked' : ''}/> ${esc(t('ui.orphanSelectAll'))}</label>
+            <button class="btn mini danger" id="orphanTrashSel" ${selected ? '' : 'disabled'}>${esc(t('ui.orphanMoveToTrash', {n: selected}))}</button>
+        </div>
+        ${groups.map(g => `
+            <div class="ogroup">
+                <span class="og-name">${esc(orphanRootLabel(g.root))}</span>
+                ${g.base ? `<span class="og-root" title="${esc(g.base)}">${esc(g.base)}</span>` : ''}
+                <span class="og-size">${hb(g.total)} · ${g.items.length}</span>
+            </div>
+            ${g.items.map(o => `
+                <div class="oitem">
+                    <input type="checkbox" data-orphan="${esc(o.path)}" ${orphanSel.has(o.path) ? 'checked' : ''}/>
+                    <span class="op" title="${esc(o.path)}">${esc(o.path)}</span>
+                    <span class="os">${hb(o.bytes || 0)}</span>
+                    <button class="otrash" data-trash="${esc(o.path)}" title="${esc(t('ui.orphanTrash'))}">${TRASH_ICON}</button>
+                </div>`).join('')}
+        `).join('')}`;
+
+    // 同步批量按钮与全选状态（不整体重渲染，避免勾选闪烁）
+    const syncBar = () => {
+        const n = filteredOrphans().filter(o => orphanSel.has(o.path)).length;
+        const btn = el('orphanTrashSel') as HTMLButtonElement;
+        btn.textContent = t('ui.orphanMoveToTrash', {n});
+        btn.disabled = n === 0;
+        (el('orphanSelAll') as HTMLInputElement).checked = n === orphans.length;
+    };
+    el('orphanSelAll').onchange = (e) => {
+        const on = (e.target as HTMLInputElement).checked;
+        if (on) for (const o of orphans) orphanSel.add(o.path);
+        else for (const o of orphans) orphanSel.delete(o.path);
+        syncBar();
+    };
+    list.querySelectorAll<HTMLInputElement>('input[data-orphan]').forEach(cb => {
+        cb.onchange = () => {
+            const p = cb.dataset.orphan!;
+            if (cb.checked) orphanSel.add(p); else orphanSel.delete(p);
+            syncBar();
         };
     });
+    // 批量按钮与单条按钮都先走二次确认（showOrphanConfirm）
+    el('orphanTrashSel').onclick = () => showOrphanConfirm(orphans.filter(o => orphanSel.has(o.path)).map(o => o.path));
+    list.querySelectorAll<HTMLButtonElement>('button[data-trash]').forEach(btn => {
+        btn.onclick = () => showOrphanConfirm([btn.dataset.trash!]);
+    });
+}
+
+// 移入内置回收站（可恢复）；成功后本地移除已移入项，后台重扫兜底校准。
+async function trashPaths(paths: string[]) {
+    if (!paths.length) return;
+    try {
+        const rep = JSON.parse(await OrphanTrash(paths)) as {trashed?: string[]; errors?: string[]};
+        const hasErr = (rep.errors ?? []).length > 0;
+        showToast((rep.trashed?.length ? t('ui.orphanTrash') + ' ✓' : '') + (hasErr ? t('un.runFailed') : ''), hasErr);
+        for (const p of rep.trashed ?? []) orphanSel.delete(p);
+        if (result && (rep.trashed ?? []).length) {
+            const gone = new Set(rep.trashed);
+            result.unattributed = (result.unattributed ?? []).filter(o => !gone.has(o.path));
+            renderSummary(); renderToolList();
+        }
+        refreshTrashInfo(); // 立即刷新右下角回收站占用
+    } catch (e) { showToast(String(e), true); }
+}
+
+// 二次确认：展示待移入项（路径 + 大小）与可恢复说明，确认后才真正移入回收站
+function showOrphanConfirm(paths: string[]) {
+    if (!paths.length) return;
+    const items = paths.map(p => {
+        const o = (result?.unattributed ?? []).find(x => x.path === p);
+        return {path: p, bytes: o?.bytes ?? 0};
+    });
+    const total = items.reduce((a, i) => a + i.bytes, 0);
+    el('modalTitle').textContent = t('ui.orphanConfirmTitle', {n: items.length, size: hb(total)});
+    const MAX = 15;
+    const shown = items.slice(0, MAX);
+    const more = items.length - shown.length;
+    el('modalBody').innerHTML = shown.map(i =>
+        `<div class="clean-row">
+            <span class="path" style="flex:1;font-family:var(--mono);font-size:11px;white-space:normal;word-break:break-all">${esc(i.path)}</span>
+            <span class="size" style="font-family:var(--mono);color:var(--muted);white-space:nowrap">${hb(i.bytes)}</span>
+        </div>`).join('')
+        + (more > 0 ? `<div class="sub-more">${esc(t('ui.moreSubitems', {n: more}))}</div>` : '')
+        + `<div class="warn">${esc(t('ui.orphanConfirmNote'))}</div>`;
+    el('modal').classList.remove('hidden');
+    el('modalConfirm').textContent = t('ui.orphanConfirmBtn');
+    el('modalConfirm').onclick = async () => {
+        el('modal').classList.add('hidden');
+        await trashPaths(paths);
+    };
+    el('modalCancel').onclick = () => el('modal').classList.add('hidden');
 }
 
 // ---- detail ----
@@ -285,6 +431,14 @@ function renderDetail() {
     if (sourceName) metaItems.push(`<span class="meta-item">${esc(t('ui.installerSource'))} <b>${esc(sourceName)}</b></span>`);
     if (tool.version) metaItems.push(`<span class="meta-item">${esc(t('ui.version'))} <b>${esc(tool.version)}</b></span>`);
     if (tool.updatedAt) metaItems.push(`<span class="meta-item">${esc(t('ui.updatedAt'))} <b>${fmtTime(tool.updatedAt)}</b></span>`);
+    // 家族合并工具（nodejs 等）：aliases 即其包含的命令，标签用「包含工具」；
+    // 普通工具的 aliases 只是别名（claude→claude-code），仅在小列表时展示——
+    // pyenv 等工具的 shims 会推入几十个命令名（python/pip/pytest…），那既不是
+    // 别名也不是包含工具，展示为「别名」纯属噪音（它们在下方的二进制区逐条可见）
+    const am = aliasMeta(tool);
+    if (am) {
+        metaItems.push(`<span class="meta-item">${esc(t(am.labelKey))} <b>${esc(tool.aliases.join(' · '))}</b></span>`);
+    }
     const metaHtml = (tool.description || tool.homepage || metaItems.length)
         ? `<div class="detail-meta">
             ${tool.description ? `<div class="meta-desc">${esc(tool.description)}</div>` : ''}
@@ -298,7 +452,7 @@ function renderDetail() {
 
     const dataDirs = tool.dataDirs.length
         ? `<div class="detail-list">${tool.dataDirs.map(d =>
-            `<div class="detail-item"><span class="badge ${d.tier}">${d.tier}</span><span class="path" title="${esc(d.path)}">${esc(d.path)}</span><span class="size ${d.tier}">${hb(d.bytes)}</span><span class="keep">${esc(d.kind)}</span></div>`).join('')}</div>`
+            `<div class="detail-item"><span class="badge ${d.tier}">${d.tier}</span><span class="path" title="${esc(d.path)}">${esc(d.path)}</span><span class="size ${d.tier}">${hb(d.bytes)}</span><span class="keep">${esc(kindLabel(d.kind))}</span></div>`).join('')}</div>`
         : '';
 
     const cleanables = tool.cleanables.filter(c => c.tier === 'safe');
@@ -314,7 +468,7 @@ function renderDetail() {
                 <div class="detail-item clean-row">
                     ${toggle}
                     <input type="checkbox" data-id="${esc(c.id)}" ${checked}/>
-                    <span class="badge safe">${esc(c.kind)}</span>
+                    <span class="badge safe">${esc(kindLabel(c.kind))}</span>
                     <span class="path" title="${esc(c.path)}">${esc(c.path)}</span>
                     <span class="size clean">${hb(c.bytes)}</span>
                     <span class="keep">${c.keep ? esc(c.keep) : ''}</span>
@@ -408,9 +562,13 @@ function subRows(c: Cleanable, parentSelected: boolean): string {
         }
         const checked = selectedCleanIds.has(s.id) ? 'checked' : '';
         const disabled = parentSelected ? 'disabled' : '';
+        // 子项类型与父项不同时（如 ~/.npm/_logs → 日志）标注精确类型
+        const kindTag = s.kind && s.kind !== c.kind
+            ? `<span class="sub-kind">${esc(kindLabel(s.kind))}</span>` : '';
         return `<div class="detail-item sub-row">
             <input type="checkbox" class="sub-cb" data-id="${esc(s.id)}" data-parent="${esc(c.id)}" ${checked} ${disabled}/>
             <span class="sub-path" title="${esc(s.path)}">${esc(rel)}</span>
+            ${kindTag}
             <span class="size clean">${hb(s.bytes)}</span>
         </div>`;
     }).join('');
@@ -435,7 +593,8 @@ function selectedItems(t: Tool): PickItem[] {
             continue;
         }
         for (const s of c.sub ?? []) {
-            if (s.id && selectedCleanIds.has(s.id)) out.push({id: s.id, path: s.path, bytes: s.bytes, kind: c.kind});
+            // 子项用精确类型（_logs → 日志），未携带时继承父项
+            if (s.id && selectedCleanIds.has(s.id)) out.push({id: s.id, path: s.path, bytes: s.bytes, kind: s.kind || c.kind});
         }
     }
     return out;
@@ -445,9 +604,10 @@ function selectedItems(t: Tool): PickItem[] {
 function showConfirmModal(items: PickItem[]) {
     const total = items.reduce((a, c) => a + c.bytes, 0);
     el('modalTitle').textContent = t('ui.confirmClean', {n: items.length, size: hb(total)});
+    el('modalConfirm').textContent = t('ui.confirmCleanBtn'); // 未认领确认弹窗可能改过按钮文案，这里复位
     el('modalBody').innerHTML = items.map(c =>
         `<div class="clean-row">
-            <span class="badge safe">${esc(c.kind)}</span>
+            <span class="badge safe">${esc(kindLabel(c.kind))}</span>
             <span class="path" style="flex:1;font-family:var(--mono);font-size:11px;white-space:normal;word-break:break-all">${esc(c.path)}</span>
             <span class="size" style="font-family:var(--mono);color:var(--clean);white-space:nowrap">${hb(c.bytes)}</span>
         </div>`).join('')
@@ -507,21 +667,34 @@ async function refreshTrashList() {
         body.innerHTML = `<div class="warn">${esc(t('ui.trashReadFailed', {err: String(e)}))}</div>`;
         return;
     }
-    if (!trashItems.length) { body.innerHTML = '<div class="empty">' + esc(t('ui.trashEmpty')) + '</div>'; return; }
-    body.innerHTML = trashItems.map(it => `
-        <div class="trash-item">
-            <div class="trash-head">
-                <span class="badge safe">${esc(it.kind)}</span>
-                <span class="trash-tool">${esc(it.tool)}</span>
-                <span class="size clean">${hb(it.bytes)}</span>
-                <span class="trash-exp">${esc(t('ui.trashExp', {time: fmtTime(it.trashedAt), time2: fmtTime(it.expiresAt)}))}</span>
-            </div>
-            <div class="trash-path" title="${esc(it.original)}">${esc(it.original)}</div>
-            <div class="trash-actions">
-                <button class="btn small" data-restore="${esc(it.id)}">${esc(t('ui.restore'))}</button>
-                <button class="btn small danger" data-purge="${esc(it.id)}">${esc(t('ui.purge'))}</button>
-            </div>
-        </div>`).join('');
+    if (!trashItems.length) {
+        body.innerHTML = '<div class="empty">' + esc(t('ui.trashEmpty')) + '</div>';
+        el('trashSummary').textContent = '';
+        return;
+    }
+    // 头部汇总：项数 · 总大小 · 最早到期时间
+    const total = trashItems.reduce((a, it) => a + (it.bytes || 0), 0);
+    const earliest = trashItems.reduce((m, it) => (it.expiresAt < m ? it.expiresAt : m), trashItems[0].expiresAt);
+    el('trashSummary').textContent = t('ui.trashSummary', {n: trashItems.length, size: hb(total), time: fmtTime(earliest)});
+    // 表格行：类型标签（方形色块）｜路径｜大小｜来源·时间｜恢复｜删除
+    body.innerHTML = trashItems.map(it => {
+        // 未认领数据移入回收站时后端以内部标识 "orphan" 记录（稳定 ID，供恢复/到期
+        // 处理），展示层翻译为「未认领数据」，不把内部名暴露给用户。
+        const isOrphan = it.tool === 'orphan';
+        const tone = isOrphan ? 'blue' : (KIND_TONE[it.kind] ?? 'gray');
+        const label = isOrphan ? t('ui.orphanSection') : kindLabel(it.kind);
+        const exp = t('ui.trashExp', {time: fmtTime(it.trashedAt), time2: fmtTime(it.expiresAt)});
+        const meta = isOrphan ? exp : `${esc(it.tool)} · ${exp}`;
+        return `
+        <div class="trash-row">
+            <span class="ktag ${tone}">${esc(label)}</span>
+            <span class="tpath" title="${esc(it.original)}">${esc(it.original)}</span>
+            <span class="tsize">${hb(it.bytes)}</span>
+            <span class="tmeta" title="${esc(meta)}">${meta}</span>
+            <button class="ibtn" data-restore="${esc(it.id)}" title="${esc(t('ui.restore'))}">${RESTORE_ICON}</button>
+            <button class="ibtn danger" data-purge="${esc(it.id)}" title="${esc(t('ui.purge'))}">${TRASH_ICON}</button>
+        </div>`;
+    }).join('');
     body.querySelectorAll<HTMLButtonElement>('[data-restore]').forEach(btn => {
         btn.onclick = async () => {
             const r = JSON.parse(await Restore(btn.dataset.restore!));
@@ -1147,6 +1320,7 @@ async function init() {
             }
             const parsed = typeof payload === 'string' ? JSON.parse(payload) as ScanResult : null;
             result = parsed;
+            orphanSel.clear(); // 新扫描结果：旧勾选失效
             if (parsed && (!selected || !parsed.tools.some(t => t.name === selected))) {
                 selected = parsed.tools[0]?.name ?? null;
             }

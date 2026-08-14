@@ -116,7 +116,13 @@ func clean(result *scanner.ScanResult, ids []string, dryRun bool, permanent bool
 				report.Skipped = append(report.Skipped, si.sub.Path+" ("+reason+")")
 				continue
 			}
-			remove(si.sub.Path, si.sub.Bytes, si.parent.Tool, si.parent.Kind)
+			// 子项用扫描器给出的精确类型（~/.npm/_logs → logs，而非父项的 cache）；
+			// 旧缓存无 Kind 字段时回退父项类型。
+			kind := si.sub.Kind
+			if kind == "" {
+				kind = si.parent.Kind
+			}
+			remove(si.sub.Path, si.sub.Bytes, si.parent.Tool, kind)
 			continue
 		}
 		report.Skipped = append(report.Skipped, id+" (unknown item)")
