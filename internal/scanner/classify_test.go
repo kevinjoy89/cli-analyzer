@@ -190,6 +190,21 @@ func TestClassifyNpmGlobalShim(t *testing.T) {
 	if c := classify(filepath.Join(prefix, "pi.exe"), "pi.exe"); c.ToolID != "pi.exe" || c.Installer != InstOther {
 		t.Errorf("pi.exe → %+v, want InstOther", c)
 	}
+	// 代理 bin 不匹配：corepack 声明 yarn/pnpm 代理 bin，但包名与 shim 名
+	// 无关（CI 的 Node 安装即含 corepack），yarn.cmd 必须保持独立
+	corepackDir := filepath.Join(prefix, "node_modules", "corepack")
+	if err := os.MkdirAll(corepackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(corepackDir, "package.json"),
+		[]byte(`{"name":"corepack","bin":{"yarn":"dist/yarn.js","pnpm":"dist/pnpm.js"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"yarn.cmd", "pnpm.cmd"} {
+		if c := classify(filepath.Join(prefix, name), name); c.ToolID != name || c.Installer != InstOther {
+			t.Errorf("%s → %+v, want standalone (corepack proxy bin must not match)", name, c)
+		}
+	}
 }
 
 // TestNodejsProbeOrder 验证 nodejs 合并工具把 node 排到 Binaries[0]，

@@ -322,7 +322,9 @@ func npmGlobalShim(dir, shimName string) (pkgDir string, ok bool) {
 	if st, err := os.Stat(filepath.Join(nm, shimName)); err == nil && st.IsDir() {
 		return filepath.Join(nm, shimName), true
 	}
-	// 其余形态：bin 名与 shim 名匹配（含作用域包）
+	// 其余形态：bin 名与 shim 名匹配（含作用域包）。要求包名（最后一段）
+	// 以 shim 名为前缀——corepack 这类包会声明 yarn/pnpm/npx 等代理 bin，
+	// 包名与 shim 名无关，不能据此把 shim 归到代理包。
 	entries, err := os.ReadDir(nm)
 	if err != nil {
 		return "", false
@@ -341,18 +343,28 @@ func npmGlobalShim(dir, shimName string) (pkgDir string, ok bool) {
 					continue
 				}
 				pkgDir := filepath.Join(nm, e.Name(), p.Name())
-				if pkgHasBin(pkgDir, shimName) {
+				if shimOwnsPkg(pkgDir, shimName) {
 					return pkgDir, true
 				}
 			}
 			continue
 		}
 		pkgDir := filepath.Join(nm, e.Name())
-		if pkgHasBin(pkgDir, shimName) {
+		if shimOwnsPkg(pkgDir, shimName) {
 			return pkgDir, true
 		}
 	}
 	return "", false
+}
+
+// shimOwnsPkg 报告包目录是否为该 shim 名对应的真实工具：bin 字段命中
+// 且包名最后一段以 shim 名为前缀（opencode-ai / pi-coding-agent 形态；
+// corepack 的 yarn/pnpm 代理 bin 不满足前缀条件）。
+func shimOwnsPkg(pkgDir, shimName string) bool {
+	if !pkgHasBin(pkgDir, shimName) {
+		return false
+	}
+	return strings.HasPrefix(strings.ToLower(filepath.Base(pkgDir)), strings.ToLower(shimName))
 }
 
 // pkgHasBin 报告包目录的 package.json 是否声明了名为 binName 的 bin。
