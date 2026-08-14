@@ -12,7 +12,7 @@
   },
   "info": {
     "productName": "CLI Analyzer",
-    "productVersion": "0.3.7",
+    "productVersion": "0.3.7.1",
     "copyright": "© 2026 liuwei",
     "comments": "Analyze and clean CLI tool disk usage"
   }
