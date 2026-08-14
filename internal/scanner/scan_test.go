@@ -34,9 +34,13 @@ func TestScanNodejsFamilyEndToEnd(t *testing.T) {
 	if len(res.Tools) != 1 {
 		names := make([]string, 0, len(res.Tools))
 		for _, tb := range res.Tools {
-			names = append(names, tb.Name+"(aliases="+strings.Join(tb.Aliases, ",")+")")
+			bins := make([]string, 0, len(tb.Binaries))
+			for _, b := range tb.Binaries {
+				bins = append(bins, b.Path)
+			}
+			names = append(names, tb.Name+"(aliases="+strings.Join(tb.Aliases, ",")+";bins="+strings.Join(bins, ",")+")")
 		}
-		t.Fatalf("want exactly the nodejs tool, got %d tools: %v", len(res.Tools), names)
+		t.Fatalf("PATH=%q; want exactly the nodejs tool, got %d tools: %v", os.Getenv("PATH"), len(res.Tools), names)
 	}
 	tb := res.Tools[0]
 	if tb.Name != "nodejs" || tb.Family != "nodejs" {
