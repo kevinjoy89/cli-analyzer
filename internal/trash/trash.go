@@ -271,7 +271,9 @@ func uniquify(target string) string {
 	}
 }
 
-// writeInfo 写元数据并落盘，保证崩溃后可恢复
+// writeInfo 写元数据并落盘，保证崩溃后可恢复。
+// 注意：必须用可写句柄打开再 Sync——Windows 的 FlushFileBuffers 对只读
+// 句柄返回 ERROR_ACCESS_DENIED（unix fsync 无此限制）。
 func writeInfo(itemDir string, meta Item) error {
 	b, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
@@ -281,7 +283,7 @@ func writeInfo(itemDir string, meta Item) error {
 	if err := os.WriteFile(p, b, 0o644); err != nil {
 		return err
 	}
-	f, err := os.Open(p)
+	f, err := os.OpenFile(p, os.O_RDWR, 0)
 	if err != nil {
 		return err
 	}
