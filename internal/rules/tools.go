@@ -39,6 +39,8 @@ var curated = []Rule{
 		DataDirs: []DataDirRule{
 			dd(platform.XDGData, "opencode", TierUser, "data"),
 			dd(platform.XDGConfig, "opencode", TierUser, "config"),
+			// oh-my-opencode 是 opencode 的插件/主题框架（配置目录），归属 opencode
+			dd(platform.XDGConfig, "oh-my-opencode", TierUser, "config"),
 			// ~/.cache/opencode is NOT cache — it is opencode's plugin/extension
 			// install dir (MCP servers, language servers, skills, package.json
 			// manifest). Deleting it breaks those plugins and loses the manifest,

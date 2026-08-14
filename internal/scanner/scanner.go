@@ -112,7 +112,9 @@ func findUnattributed(tools map[string]*toolBuilder, order []string, sizer *disk
 	claimed := map[string]bool{}
 	for _, id := range order {
 		for n := range tools[id].aliasSet() {
-			claimed[n] = true
+			// 大小写不敏感：Windows 上 PATH 名（claude）与数据目录名（Claude）
+			// 可能大小写不同，map 键必须归一化才不会把真工具目录当孤儿。
+			claimed[strings.ToLower(n)] = true
 		}
 	}
 	// cleanable 规则覆盖的路径也算认领：codex 的 ~/.cache/codex-runtimes 等
@@ -120,6 +122,13 @@ func findUnattributed(tools map[string]*toolBuilder, order []string, sizer *disk
 	for _, id := range order {
 		for _, c := range tools[id].cleanables {
 			claimTopLevel(claimed, c.Path)
+		}
+	}
+	// dataDirs 同样认领：目录名与工具名不同的数据目录
+	// （如 opencode 的 ~/.config/oh-my-opencode）不能被当成孤儿。
+	for _, id := range order {
+		for _, dd := range tools[id].dataDirs {
+			claimTopLevel(claimed, dd.Path)
 		}
 	}
 	var paths []string
@@ -141,18 +150,26 @@ func findUnattributed(tools map[string]*toolBuilder, order []string, sizer *disk
 			continue
 		}
 		for _, e := range entries {
-			if claimed[e.Name()] {
+			name := e.Name()
+			// 仅目录是孤儿候选：.DS_Store 等普通文件、指向文件的符号链接
+			// 一律跳过（它们不是数据目录）。
+			p := filepath.Join(root, name)
+			if !isDirEntry(p, e) {
 				continue
 			}
-			p := filepath.Join(root, e.Name())
+			if claimed[strings.ToLower(name)] {
+				continue
+			}
 			// 非 CLI 排除体系（确定性规则）：本应用自身、结构性 GUI 信号
 			// （macOS 容器 bundle-id / Windows UWP 包族及 Packages 容器）、
+			// 系统/共享结构目录（.mono、configstore、%LocalAppData%\Programs…）、
 			// 非 CLI 厂商排除表（microsoft 等系统目录一并覆盖）。
-			if isSelfDataDir(e.Name()) ||
-				platform.IsContainerBundleDir(e.Name()) ||
-				platform.IsUWPFamilyDir(e.Name()) ||
-				strings.EqualFold(e.Name(), "packages") || // Windows UWP 容器目录
-				platform.ExcludedByVendorData(p, e.Name()) {
+			if isSelfDataDir(name) ||
+				platform.IsContainerBundleDir(name) ||
+				platform.IsUWPFamilyDir(name) ||
+				strings.EqualFold(name, "packages") || // Windows UWP 容器目录
+				platform.IsSystemDataDir(k, name) ||
+				platform.ExcludedByVendorData(p, name) {
 				continue
 			}
 			paths = append(paths, p)
@@ -184,6 +201,20 @@ func goVersion() string {
 	return runtime.Version()
 }
 
+// isDirEntry 报告 ReadDir 条目是否为目录：普通目录直接通过；符号链接
+// 跟随到目录才算（~/.config 下指向外部的链接目录是数据目录），指向文件
+// 的链接（如 .DS_Store 的链接形态）不是。
+func isDirEntry(p string, e os.DirEntry) bool {
+	if e.Type().IsDir() {
+		return true
+	}
+	if e.Type()&os.ModeSymlink == 0 {
+		return false
+	}
+	st, err := os.Stat(p)
+	return err == nil && st.IsDir()
+}
+
 // claimTopLevel 把 path 在任一扫描数据根下的顶层目录名加入 claimed。
 // （cleanable 通常位于某数据根下；无法归属到根时忽略。）
 func claimTopLevel(claimed map[string]bool, path string) {
@@ -200,7 +231,7 @@ func claimTopLevel(claimed map[string]bool, path string) {
 			rel = rel[:i]
 		}
 		if rel != "" {
-			claimed[rel] = true
+			claimed[strings.ToLower(rel)] = true
 		}
 		return
 	}

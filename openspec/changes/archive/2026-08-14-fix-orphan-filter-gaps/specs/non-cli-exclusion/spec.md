@@ -1,10 +1,4 @@
-# non-cli-exclusion Specification
-
-## Purpose
-
-识别并排除非 CLI（GUI 应用及其命令行伴侣、数据目录），确保应用只管理 CLI 工具及其残留。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: 厂商排除表
 
@@ -39,22 +33,6 @@ THEN 该目录下的可执行文件仍作为工具扫描，但数据根下未认
 WHEN 数据根下存在未认领目录 `~/.config/mihomo`（mihomo 核心为独立 CLI 二进制）
 
 THEN 该目录仍为孤儿数据候选（仅 GUI 客户端目录 clash-verge/v2rayN 等被排除）
-
-### Requirement: 纯 CLI 产品例外
-
-厂商模式命中的目录中，属于该厂商独立安装的纯 CLI 产品 SHALL 可通过例外白名单保留；GUI 应用自带的命令行伴侣 MUST NOT 列入例外。判据 MUST 为：该 CLI 是否作为独立产品安装、拥有自己的安装目录、不服务于任何 GUI 应用。
-
-#### Scenario: 例外白名单保留纯 CLI 产品
-
-WHEN 排除表含 `amazon` 且例外列表含 `aws`，PATH 存在 `C:\Program Files\Amazon\AWSCLIV2\aws.exe`
-
-THEN `aws.exe` 仍作为工具扫描
-
-#### Scenario: 命令行伴侣不例外
-
-WHEN 排除表含 `netsarang` 且例外列表为空，PATH 存在 `C:\Program Files (x86)\NetSarang\Xshell 8\xftpcl.exe`
-
-THEN `xftpcl.exe` 不作为工具扫描
 
 ### Requirement: 确定性过滤
 

@@ -65,6 +65,124 @@ var vendorExclusions = []VendorExclusion{
 	{Pattern: "warp"},     // Warp 终端（GUI；其 CLI 为伴侣）
 	{Pattern: "apple"},
 	{"code", nil, true}, // VS Code 数据目录；仅数据上下文（避免拦掉真实 PATH 目录）
+
+	// ---- 高频 GUI 产品扩充（产品级 DataOnly：只影响孤儿过滤，不拦 exe 发现）----
+	// 浏览器/邮件
+	{Pattern: "mozilla", DataOnly: true}, // Firefox/Thunderbird 数据根（%APPDATA%\Mozilla）
+	{Pattern: "firefox", DataOnly: true},
+	{Pattern: "bravesoftware", DataOnly: true},
+	{Pattern: "vivaldi", DataOnly: true},
+	{Pattern: "opera", DataOnly: true},
+	{Pattern: "opera software", DataOnly: true},
+	{Pattern: "thunderbird", DataOnly: true},
+	{Pattern: "foxmail", DataOnly: true},
+	// 聊天/会议/办公
+	{Pattern: "dingtalk", DataOnly: true},
+	{Pattern: "feishu", DataOnly: true},
+	{Pattern: "lark", DataOnly: true},
+	{Pattern: "wecom", DataOnly: true}, // 企业微信
+	{Pattern: "signal", DataOnly: true},
+	{Pattern: "whatsapp", DataOnly: true},
+	{Pattern: "webex", DataOnly: true},
+	{Pattern: "wemeet", DataOnly: true}, // 腾讯会议
+	{Pattern: "wps", DataOnly: true},
+	{Pattern: "kingsoft", DataOnly: true},
+	{Pattern: "onlyoffice", DataOnly: true},
+	// 网盘/下载
+	{Pattern: "baidunetdisk", DataOnly: true},
+	{Pattern: "aliyundrive", DataOnly: true},
+	{Pattern: "quark", DataOnly: true},
+	{Pattern: "xunlei", DataOnly: true},
+	{Pattern: "dropbox", DataOnly: true},
+	{Pattern: "megasync", DataOnly: true},
+	// 音乐/视频/直播
+	{Pattern: "spotify", DataOnly: true},
+	{Pattern: "kugou", DataOnly: true},
+	{Pattern: "kuwo", DataOnly: true},
+	{Pattern: "netease", DataOnly: true},
+	{Pattern: "bilibili", DataOnly: true},
+	{Pattern: "douyin", DataOnly: true},
+	{Pattern: "kuaishou", DataOnly: true},
+	{Pattern: "iqiyi", DataOnly: true},
+	{Pattern: "youku", DataOnly: true},
+	{Pattern: "potplayer", DataOnly: true},
+	{Pattern: "vlc", DataOnly: true},
+	{Pattern: "kodi", DataOnly: true},
+	{Pattern: "obs studio", DataOnly: true},
+	{Pattern: "obs-studio", DataOnly: true},
+	{Pattern: "streamlabs", DataOnly: true},
+	// 编辑器/桌面工具（含 macOS XDG 实测漏网）
+	{Pattern: "iterm2", DataOnly: true},
+	{Pattern: "raycast", DataOnly: true},
+	{Pattern: "alfred", DataOnly: true},
+	{Pattern: "karabiner", DataOnly: true},
+	{Pattern: "joplin", DataOnly: true},
+	{Pattern: "joplin-desktop", DataOnly: true},
+	{Pattern: "axure", DataOnly: true},
+	{Pattern: "geany", DataOnly: true},
+	{Pattern: "notepad", DataOnly: true},
+	{Pattern: "jgit", DataOnly: true}, // Eclipse EGit（GUI 生态）
+	// 游戏平台
+	{Pattern: "epic games", DataOnly: true},
+	{Pattern: "battlenet", DataOnly: true},
+	{Pattern: "riot", DataOnly: true},
+	{Pattern: "ubisoft", DataOnly: true},
+	{Pattern: "gog", DataOnly: true},
+	{Pattern: "roblox", DataOnly: true},
+	{Pattern: "minecraft", DataOnly: true},
+	{Pattern: "unity", DataOnly: true},
+	{Pattern: "blender", DataOnly: true},
+	// VPN/代理 GUI 客户端（clash/v2ray/mihomo 等核心 CLI 本体不拦）
+	{Pattern: "nordvpn", DataOnly: true},
+	{Pattern: "expressvpn", DataOnly: true},
+	{Pattern: "surfshark", DataOnly: true},
+	{Pattern: "protonvpn", DataOnly: true},
+	{Pattern: "clash-verge", DataOnly: true},
+	{Pattern: "clash verge", DataOnly: true},
+	{Pattern: "v2rayn", DataOnly: true},
+	{Pattern: "v2ray-n", DataOnly: true},
+	// 密码管理
+	{Pattern: "1password", DataOnly: true},
+	{Pattern: "bitwarden", DataOnly: true},
+	{Pattern: "lastpass", DataOnly: true},
+	// 输入法/安全
+	{Pattern: "sogou", DataOnly: true},
+	{Pattern: "iflytek", DataOnly: true},
+	{Pattern: "huorong", DataOnly: true},
+	{"360", nil, true},
+	// 笔记/阅读
+	{Pattern: "calibre", DataOnly: true},
+	{Pattern: "anki", DataOnly: true},
+	{Pattern: "evernote", DataOnly: true},
+
+	// ---- 驱动/硬件厂商（双向拦：目录下为系统组件，不应作为工具扫描或探测）----
+	{Pattern: "nvidia"},
+	{Pattern: "nvidia corporation"}, // %ProgramFiles%\NVIDIA Corporation\（含空格目录名）
+	{Pattern: "intel"},
+	{Pattern: "realtek"},
+	{Pattern: "logitech"},
+	{Pattern: "razer"},
+	{Pattern: "samsung"},
+	{Pattern: "huawei"},
+	{Pattern: "xiaomi"},
+	{Pattern: "lenovo"},
+	{Pattern: "canon"},
+	{Pattern: "epson"},
+	{Pattern: "brother"},
+	{Pattern: "synaptics"},
+	{Pattern: "elgato"},
+	{Pattern: "corsair"},
+	{Pattern: "steelseries"},
+	// 短厂商名（易与用户目录/真实 PATH 目录冲突 → 仅数据语境）
+	{Pattern: "amd", DataOnly: true},
+	{Pattern: "hp", DataOnly: true},
+	{Pattern: "dell", DataOnly: true},
+	{Pattern: "asus", DataOnly: true},
+	{Pattern: "acer", DataOnly: true},
+	{Pattern: "msi", DataOnly: true},
+	{Pattern: "baidu", DataOnly: true},
+	// 微信开发者工具数据根等中文产品名
+	{Pattern: "网易", DataOnly: true},
 }
 
 // ExcludedByVendor 报告 (path, name) 是否被非 CLI 排除表拦下（exe 发现语境，
