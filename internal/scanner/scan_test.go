@@ -12,6 +12,10 @@ import (
 // 同一目录的 node / npm.cmd / npx.cmd / corepack.cmd → 单一 nodejs 工具，
 // 别名归一化（剥 .cmd 等扩展名）、family 字段、主二进制 node 排首位
 // （probeOrder，版本探测取运行时版本）。
+//
+// 注意：PathDirs 会追加 augmentUserDirs 的固定目录（/usr/local/bin、
+// ~/.local/bin 等，GUI 启动 PATH 补齐的产品设计），故不断言工具总数，
+// 只断言 nodejs 工具的合并契约。
 func TestScanNodejsFamilyEndToEnd(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		// 该用例以 unix 可执行位与无扩展名 node 为前置（Windows 需 .exe +
@@ -31,24 +35,39 @@ func TestScanNodejsFamilyEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Tools) != 1 {
-		names := make([]string, 0, len(res.Tools))
-		for _, tb := range res.Tools {
-			bins := make([]string, 0, len(tb.Binaries))
-			for _, b := range tb.Binaries {
-				bins = append(bins, b.Path)
-			}
-			names = append(names, tb.Name+"(aliases="+strings.Join(tb.Aliases, ",")+";bins="+strings.Join(bins, ",")+")")
+	var tb *Tool
+	for i := range res.Tools {
+		if res.Tools[i].Name == "nodejs" {
+			tb = &res.Tools[i]
+			break
 		}
-		t.Fatalf("PATH=%q; want exactly the nodejs tool, got %d tools: %v", os.Getenv("PATH"), len(res.Tools), names)
 	}
-	tb := res.Tools[0]
-	if tb.Name != "nodejs" || tb.Family != "nodejs" {
-		t.Fatalf("tool = %q (family %q), want nodejs/nodejs", tb.Name, tb.Family)
+	if tb == nil {
+		names := make([]string, 0, len(res.Tools))
+		for _, x := range res.Tools {
+			names = append(names, x.Name)
+		}
+		t.Fatalf("nodejs tool not found; got: %v", names)
 	}
+	if tb.Family != "nodejs" {
+		t.Fatalf("family = %q, want nodejs", tb.Family)
+	}
+	// 家族合并：PATH 注入的 tempdir 四个命令全部归入 nodejs
+	wantBins := map[string]bool{}
+	for _, name := range []string{"node", "npm.cmd", "npx.cmd", "corepack.cmd"} {
+		wantBins[filepath.Join(dir, name)] = true
+	}
+	for _, b := range tb.Binaries {
+		delete(wantBins, b.Path)
+	}
+	if len(wantBins) != 0 {
+		t.Errorf("tempdir binaries missing from nodejs: %v (got %d bins)", wantBins, len(tb.Binaries))
+	}
+	// 主二进制 node 排首位（probeOrder）
 	if len(tb.Binaries) == 0 || tb.Binaries[0].Name != "node" {
 		t.Errorf("binaries[0] = %+v, want node first (probe order)", tb.Binaries)
 	}
+	// 别名归一化：家族别名剥扩展名
 	wantAliases := map[string]bool{"node": true, "npm": true, "npx": true, "corepack": true}
 	for _, a := range tb.Aliases {
 		if strings.ContainsAny(a, ".") {

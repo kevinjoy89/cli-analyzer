@@ -19,6 +19,9 @@ func TestClassifyVersioned(t *testing.T) {
 
 func TestClassifyBrew(t *testing.T) {
 	// Requires a brew prefix on the test machine; fall back to HOMEBREW_PREFIX.
+	if brewPrefix() == "" {
+		t.Skip("no brew prefix on this machine")
+	}
 	c := classify(brewPrefix()+"/Cellar/gh/2.5.0/bin/gh", "gh")
 	if c.ToolID != "gh" || c.Installer != InstBrew || c.CurrentVersion != "2.5.0" {
 		t.Errorf("brew: %+v", c)
@@ -85,16 +88,23 @@ func TestClassifyNodejsFamily(t *testing.T) {
 	if c2.ToolID != "git.exe" || c2.Installer != InstOther || c2.Family != "" {
 		t.Errorf("git.exe → %+v, want git.exe/%s family empty", c2, InstOther)
 	}
-	// brew 公式 node 保持原名（已按公式合并；改名会破坏 brew uninstall node），
-	// 且不是家族合并，family 为空
-	c3 := classify(brewPrefix()+"/Cellar/node/22.14.0/bin/node", "node")
-	if c3.ToolID != "node" || c3.Installer != InstBrew || c3.Family != "" {
-		t.Errorf("brew node → %+v, want node/%s family empty", c3, InstBrew)
-	}
 	// yarn/pnpm 是独立包管理器，不属于 nodejs 家族
 	c4 := classify(filepath.Join(`C:\Program Files\nodejs`, "yarn.cmd"), "yarn.cmd")
 	if c4.ToolID != "yarn.cmd" || c4.Installer != InstOther {
 		t.Errorf("yarn.cmd → %+v, want standalone", c4)
+	}
+}
+
+// TestNodejsFamilyBrewStaysIndependent 验证 brew 公式 node 保持原名（已按公式
+// 合并；改名会破坏 brew uninstall node），且不参与家族合并。依赖机器上有 brew
+// prefix（macOS/CI ubuntu 有 linuxbrew），无 brew 环境跳过。
+func TestNodejsFamilyBrewStaysIndependent(t *testing.T) {
+	if brewPrefix() == "" {
+		t.Skip("no brew prefix on this machine")
+	}
+	c := classify(brewPrefix()+"/Cellar/node/22.14.0/bin/node", "node")
+	if c.ToolID != "node" || c.Installer != InstBrew || c.Family != "" {
+		t.Errorf("brew node → %+v, want node/%s family empty", c, InstBrew)
 	}
 }
 
