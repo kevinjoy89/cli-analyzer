@@ -248,12 +248,12 @@ func TestListEmptySerializesAsArray(t *testing.T) {
 
 func TestRefineKind(t *testing.T) {
 	cases := []struct{ kind, original, want string }{
-		{"cache", "/Users/wei/.npm/_logs", "logs"},   // 修复前旧条目：日志误记成缓存
+		{"cache", "/Users/wei/.npm/_logs", "logs"}, // 修复前旧条目：日志误记成缓存
 		{"cache", "/Users/wei/.npm/debug-0.log", "logs"},
-		{"cache", "/Users/wei/.npm/_cacache", "cache"}, // 真缓存不动
-		{"logs", "/Users/wei/.npm/_logs", "logs"},      // 已是精确类型不动
+		{"cache", "/Users/wei/.npm/_cacache", "cache"},           // 真缓存不动
+		{"logs", "/Users/wei/.npm/_logs", "logs"},                // 已是精确类型不动
 		{"download", "/Users/wei/x/downloads/a.log", "download"}, // 非 cache 类型不干预
-		{"cache", "/Users/wei/foo/catalog", "cache"},   // catalog 不是日志
+		{"cache", "/Users/wei/foo/catalog", "cache"},             // catalog 不是日志
 	}
 	for _, c := range cases {
 		if got := refineKind(c.kind, c.original); got != c.want {

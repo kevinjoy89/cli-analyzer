@@ -104,10 +104,10 @@ type Tool struct {
 	Name        string      `json:"name"`
 	Aliases     []string    `json:"aliases"`
 	Installer   string      `json:"installer"`
-	Version     string      `json:"version"`     // current version, when known
-	UpdatedAt   string      `json:"updatedAt"`   // RFC3339 mtime of newest install file
-	Homepage    string      `json:"homepage"`    // official website (curated metadata)
-	Description string      `json:"description"` // one-line summary (curated metadata)
+	Version     string      `json:"version"`          // current version, when known
+	UpdatedAt   string      `json:"updatedAt"`        // RFC3339 mtime of newest install file
+	Homepage    string      `json:"homepage"`         // official website (curated metadata)
+	Description string      `json:"description"`      // one-line summary (curated metadata)
 	Family      string      `json:"family,omitempty"` // 家族合并根名（如 "nodejs"）；空 = 普通单工具。前端据此把 aliases 展示为「包含工具」而非「别名」。
 	Binaries    []Binary    `json:"binaries"`
 	DataDirs    []DataDir   `json:"dataDirs"`

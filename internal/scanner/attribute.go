@@ -616,7 +616,7 @@ func finalize(tools map[string]*toolBuilder, order []string, opts Options) *Scan
 			Name: tb.name, Aliases: aliases, Installer: string(tb.installer),
 			Version: tb.version, UpdatedAt: tb.updatedAt,
 			Homepage: tb.homepage, Description: tb.description,
-			Family: tb.family,
+			Family:   tb.family,
 			Binaries: tb.binaries, DataDirs: tb.dataDirs, Cleanables: tb.cleanables,
 			Footprint: tb.footprint, Cleanable: cleanSum, User: userSum,
 		})

@@ -131,15 +131,15 @@ func TestUnder(t *testing.T) {
 // TestSubKind 验证子项精确分类：日志类子项不继承父项 cache 类型。
 func TestSubKind(t *testing.T) {
 	cases := []struct{ parent, name, want string }{
-		{"cache", "_logs", "logs"},          // npm 调试日志
-		{"cache", "debug-0.log", "logs"},    // *.log 文件
+		{"cache", "_logs", "logs"},       // npm 调试日志
+		{"cache", "debug-0.log", "logs"}, // *.log 文件
 		{"cache", "npm-debug.log", "logs"},
-		{"cache", "_cacache", "cache"},      // 其余继承父项
+		{"cache", "_cacache", "cache"}, // 其余继承父项
 		{"cache", "_npx", "cache"},
-		{"cache", "_locks", "cache"},        // 不靠猜测扩大分类
+		{"cache", "_locks", "cache"}, // 不靠猜测扩大分类
 		{"cache", "anonymous-cli-metrics.json", "cache"},
-		{"download", "_logs", "logs"},       // 日志识别与父项类型无关
-		{"cache", "catalog", "cache"},       // 不能把 catalog 误判为日志
+		{"download", "_logs", "logs"}, // 日志识别与父项类型无关
+		{"cache", "catalog", "cache"}, // 不能把 catalog 误判为日志
 	}
 	for _, c := range cases {
 		if got := subKind(c.parent, c.name); got != c.want {
