@@ -247,9 +247,10 @@ func TestPathSplitPlatformContract(t *testing.T) {
 		}
 		return
 	}
-	// unix：反斜杠保留在段内（合法文件名字符）
+	// unix：反斜杠保留在段内（合法文件名字符）。
+	// 注意 strings.Split 在路径前导 / 处产生空段：["", home, u, tools, a\b, versions, 2.0]
 	got := splitPath(`/home/u/tools/a\b/versions/2.0`)
-	if got[3] != `a\b` || got[4] != "versions" {
+	if got[4] != `a\b` || got[5] != "versions" {
 		t.Errorf("unix splitPath must keep backslash inside segment: %v", got)
 	}
 	// unix：反斜杠不参与 "toolchains" 段匹配
