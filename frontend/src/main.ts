@@ -541,9 +541,9 @@ function esc(s: string): string {
 }
 
 // One level of size breakdown for a cleanable (its direct children), rendered
-// as indented rows below the checkbox row. Non-empty children are individually
-// selectable; when the parent (whole dir) is checked they are disabled. Capped
-// to keep wide dirs readable.
+// as indented rows below the checkbox row. Children with an id are individually
+// selectable (0 字节子项也可勾选，清理空文件/空目录）；当父项（整目录）被
+// 勾选时子项禁用。Capped to keep wide dirs readable.
 const SUB_CAP = 20;
 function subRows(c: Cleanable, parentSelected: boolean): string {
     const sub = c.sub ?? [];
@@ -553,17 +553,19 @@ function subRows(c: Cleanable, parentSelected: boolean): string {
     const base = c.path.endsWith('/') ? c.path : c.path + '/';
     const rows = shown.map(s => {
         const rel = s.path.startsWith(base) ? s.path.slice(base.length) : s.path;
-        const selectable = !!(s.id && s.bytes > 0);
+        const selectable = !!s.id;
         if (!selectable) {
             return `<div class="detail-item sub-row">
                 <span class="sub-path" title="${esc(s.path)}">${esc(rel)}</span>
-                <span class="size muted">0 B</span>
+                <span class="size muted">${hb(s.bytes)}</span>
             </div>`;
         }
         const checked = selectedCleanIds.has(s.id) ? 'checked' : '';
         const disabled = parentSelected ? 'disabled' : '';
-        // 子项类型与父项不同时（如 ~/.npm/_logs → 日志）标注精确类型
-        const kindTag = s.kind && s.kind !== c.kind
+        // 子项类型与父项不同时（如 ~/.npm/_logs → 日志）标注精确类型；
+        // logs 类（_logs/*.log 是缓存目录的组成部分）不额外贴「日志」标签，
+        // 避免在安全清理项里看起来像独立类别
+        const kindTag = s.kind && s.kind !== c.kind && s.kind !== 'logs'
             ? `<span class="sub-kind">${esc(kindLabel(s.kind))}</span>` : '';
         return `<div class="detail-item sub-row">
             <input type="checkbox" class="sub-cb" data-id="${esc(s.id)}" data-parent="${esc(c.id)}" ${checked} ${disabled}/>

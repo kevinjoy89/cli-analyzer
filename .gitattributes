@@ -4,3 +4,7 @@ frontend/wailsjs/** linguist-generated=true
 
 # Wails Windows 安装器模板（NSIS，wails build 自动使用，非手写逻辑）
 build/windows/installer/** linguist-generated=true
+
+# Go 文件统一 LF：gofmt 需要 LF（CRLF 会让 gofmt -l 全库误报），
+# 且保证 Windows/Unix 开发者与 CI 检出结果一致
+*.go text eol=lf

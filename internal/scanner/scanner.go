@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"cli-analyzer/internal/disk"
@@ -163,13 +164,17 @@ func findUnattributed(tools map[string]*toolBuilder, order []string, sizer *disk
 			// 非 CLI 排除体系（确定性规则）：本应用自身、结构性 GUI 信号
 			// （macOS 容器 bundle-id / Windows UWP 包族及 Packages 容器）、
 			// 系统/共享结构目录（.mono、configstore、%LocalAppData%\Programs…）、
-			// 非 CLI 厂商排除表（microsoft 等系统目录一并覆盖）。
+			// 应用更新器目录（<App>-updater）、Windows 已安装应用交叉验证
+			// （注册表卸载项/开始菜单快捷方式）、非 CLI 厂商排除表
+			// （microsoft 等系统目录一并覆盖）。
 			if isSelfDataDir(name) ||
 				platform.IsContainerBundleDir(name) ||
 				platform.IsUWPFamilyDir(name) ||
 				strings.EqualFold(name, "packages") || // Windows UWP 容器目录
 				platform.IsSystemDataDir(k, name) ||
-				platform.ExcludedByVendorData(p, name) {
+				platform.IsUpdaterDir(name) ||
+				platform.ExcludedByVendorData(p, name) ||
+				platform.IsInstalledAppDataDir(name) {
 				continue
 			}
 			paths = append(paths, p)
@@ -189,9 +194,31 @@ func findUnattributed(tools map[string]*toolBuilder, order []string, sizer *disk
 	return out
 }
 
-// isSelfDataDir 报告目录名是否为应用自身（数据/缓存根下的 cli-analyzer）。
+// isSelfDataDir 报告目录名是否为应用自身：数据/缓存根下的 cli-analyzer、
+// 应用产品名（CLI Analyzer / CLI Analyzer.exe——exe 可能被复制或改名运行，
+// 便携包 exe 名为 cli-analyzer.exe 时产品名目录仍应视为自身），以及与本
+// 应用可执行文件同名的目录。
 func isSelfDataDir(name string) bool {
-	return strings.EqualFold(name, "cli-analyzer")
+	switch strings.ToLower(name) {
+	case "cli-analyzer", "cli analyzer", "cli analyzer.exe":
+		return true
+	}
+	full, base := selfExeNames()
+	return full != "" && (strings.EqualFold(name, full) || strings.EqualFold(name, base))
+}
+
+var selfExeOnce sync.Once
+var selfExeFull, selfExeBase string
+
+// selfExeNames 返回运行中可执行文件的基名（含扩展名）与去扩展名两种形态。
+func selfExeNames() (full, base string) {
+	selfExeOnce.Do(func() {
+		if p, err := os.Executable(); err == nil {
+			selfExeFull = filepath.Base(p)
+			selfExeBase = strings.TrimSuffix(selfExeFull, filepath.Ext(selfExeFull))
+		}
+	})
+	return selfExeFull, selfExeBase
 }
 
 func goVersion() string {

@@ -3,6 +3,7 @@ package scanner
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -63,7 +64,7 @@ func TestClassifyGoCargoOther(t *testing.T) {
 // Windows 安装目录里的 node.exe / npm.cmd / npx.cmd / corepack.cmd / node-gyp.cmd
 // 各自独立成行的问题 → 全部归并为一条 "nodejs"。
 func TestClassifyNodejsFamily(t *testing.T) {
-	for _, name := range []string{"node.exe", "npm.cmd", "npx.cmd", "corepack.cmd", "node-gyp.cmd", "npm"} {
+	for _, name := range []string{"node.exe", "npm.cmd", "npx.cmd", "corepack.cmd", "node-gyp.cmd", "npm", "install_tools.bat", "nodevars.bat"} {
 		c := classify(filepath.Join(`C:\Program Files\nodejs`, name), name)
 		if c.ToolID != "nodejs" || c.Installer != InstNodejs || c.Family != "nodejs" {
 			t.Errorf("%s → %+v, want nodejs/%s family=nodejs", name, c, InstNodejs)
@@ -83,10 +84,11 @@ func TestClassifyNodejsFamily(t *testing.T) {
 			t.Errorf("fnm %s → %+v, want nodejs/%s family=nodejs", pkg, c, InstNodejs)
 		}
 	}
-	// 非家族工具不受影响：Windows 保持原名（含扩展名），family 为空
+	// Git 家族工具不并入 nodejs：git.exe 归入 git 家族（非 nodejs），
+	// 保持 family=git；yarn/pnpm 是独立包管理器，不属于任何家族。
 	c2 := classify(`C:\Program Files\Git\cmd\git.exe`, "git.exe")
-	if c2.ToolID != "git.exe" || c2.Installer != InstOther || c2.Family != "" {
-		t.Errorf("git.exe → %+v, want git.exe/%s family empty", c2, InstOther)
+	if c2.ToolID != "git" || c2.Family != "git" {
+		t.Errorf("git.exe → %+v, want git family", c2)
 	}
 	// yarn/pnpm 是独立包管理器，不属于 nodejs 家族
 	c4 := classify(filepath.Join(`C:\Program Files\nodejs`, "yarn.cmd"), "yarn.cmd")
@@ -108,8 +110,91 @@ func TestNodejsFamilyBrewStaysIndependent(t *testing.T) {
 	}
 }
 
+// TestClassifyGitFamily 验证 Git 家族合并：Git for Windows cmd/ 目录中的
+// git.exe/git-lfs.exe/scalar.exe/tig.exe/start-ssh-agent.cmd 等归并为一条
+// "git"；gh/hub 是独立产品不合并；brew 公式 git-lfs 保持独立。
+func TestClassifyGitFamily(t *testing.T) {
+	dir := t.TempDir()
+	// 目录内放 git.exe 标记（gitInstallRoot 判定安装根）
+	if err := os.WriteFile(filepath.Join(dir, "git.exe"), []byte("not-a-real-pe"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"git.exe", "git-lfs.exe", "scalar.exe", "tig.exe",
+		"git-receive-pack.exe", "git-upload-pack.exe", "git-upload-archive.exe",
+		"start-ssh-agent.cmd", "start-ssh-pageant.cmd",
+	} {
+		c := classify(filepath.Join(dir, name), name)
+		if c.ToolID != "git" || c.Family != "git" {
+			t.Errorf("%s → %+v, want git/git family", name, c)
+		}
+		if c.InstallRoot != dir {
+			t.Errorf("%s InstallRoot = %q, want %q", name, c.InstallRoot, dir)
+		}
+	}
+	// 非家族：gh/hub 是独立 CLI 产品
+	for _, name := range []string{"gh.exe", "hub.exe"} {
+		if c := classify(filepath.Join(dir, name), name); c.ToolID != name || c.Family != "" {
+			t.Errorf("%s → %+v, want independent tool", name, c)
+		}
+	}
+	// 无 git.exe 标记的目录：家族命中但安装根为空（按文件计大小）
+	empty := t.TempDir()
+	if c := classify(filepath.Join(empty, "tig.exe"), "tig.exe"); c.Family != "git" || c.InstallRoot != "" {
+		t.Errorf("tig without git marker → %+v, want family git + empty install root", c)
+	}
+	// brew 公式 git-lfs 保持独立公式身份（brew 分支优先于家族）
+	if brewPrefix() != "" {
+		c := classify(brewPrefix()+"/Cellar/git-lfs/3.7.1/bin/git-lfs", "git-lfs")
+		if c.ToolID != "git-lfs" || c.Family != "" {
+			t.Errorf("brew git-lfs → %+v, want independent formula", c)
+		}
+	}
+}
+
+// TestClassifyNpmGlobalShim 验证 npm 全局 shim（Windows %APPDATA%\npm 根部
+// 的 <name>.cmd）解析为对应的 npm 包工具：pi → @earendil-works/pi-coding-agent
+// （bin=pi）、opencode → opencode-ai（bin=opencode）；无法解析时保持 InstOther。
+func TestClassifyNpmGlobalShim(t *testing.T) {
+	prefix := t.TempDir()
+	mkPkg := func(rel, bin string) string {
+		pkgDir := filepath.Join(prefix, "node_modules", rel)
+		if err := os.MkdirAll(pkgDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		manifest := "{\"name\":\"" + filepath.Base(rel) + "\",\"bin\":{\"" + bin + "\":\"dist/cli.js\"}}"
+		if err := os.WriteFile(filepath.Join(pkgDir, "package.json"), []byte(manifest), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return pkgDir
+	}
+	piDir := mkPkg(filepath.Join("@earendil-works", "pi-coding-agent"), "pi")
+	ocDir := mkPkg("opencode-ai", "opencode")
+
+	// 作用域包 shim：pi.cmd → pi
+	c := classify(filepath.Join(prefix, "pi.cmd"), "pi.cmd")
+	if c.ToolID != "pi" || c.Installer != InstNpm || c.InstallRoot != piDir || c.Family != "" {
+		t.Errorf("pi.cmd → %+v, want pi/%s root=%s", c, InstNpm, piDir)
+	}
+	// 普通包 shim：opencode.cmd → opencode（bin 名而非包名 opencode-ai）
+	c = classify(filepath.Join(prefix, "opencode.cmd"), "opencode.cmd")
+	if c.ToolID != "opencode" || c.Installer != InstNpm || c.InstallRoot != ocDir {
+		t.Errorf("opencode.cmd → %+v, want opencode/%s root=%s", c, InstNpm, ocDir)
+	}
+	// 无 node_modules 的目录：保持 InstOther（原行为）
+	plain := t.TempDir()
+	if c := classify(filepath.Join(plain, "mytool.cmd"), "mytool.cmd"); c.ToolID != "mytool.cmd" || c.Installer != InstOther {
+		t.Errorf("mytool.cmd → %+v, want InstOther", c)
+	}
+	// 非 shim 形态（.exe 直接放根部）：不触发 npm 全局解析
+	if c := classify(filepath.Join(prefix, "pi.exe"), "pi.exe"); c.ToolID != "pi.exe" || c.Installer != InstOther {
+		t.Errorf("pi.exe → %+v, want InstOther", c)
+	}
+}
+
 // TestNodejsProbeOrder 验证 nodejs 合并工具把 node 排到 Binaries[0]，
 // 让版本探测（--version）取到运行时版本而不是 corepack/npm。
+// git 合并工具同理把 git 排到 Binaries[0]（而非 git-lfs/tig）。
 func TestNodejsProbeOrder(t *testing.T) {
 	tb := &toolBuilder{name: "nodejs", binaries: []Binary{
 		{Name: "npx.cmd"}, {Name: "node.exe"}, {Name: "npm.cmd"},
@@ -124,17 +209,52 @@ func TestNodejsProbeOrder(t *testing.T) {
 	if other.binaries[0].Name != "gh" {
 		t.Errorf("non-nodejs tool must not be reordered")
 	}
+	// git 家族：git 排到最前
+	git := &toolBuilder{name: "git", binaries: []Binary{
+		{Name: "git-lfs.exe"}, {Name: "start-ssh-agent.cmd"}, {Name: "git.exe"},
+	}}
+	probeOrder(git)
+	if git.binaries[0].Name != "git.exe" {
+		t.Errorf("git binaries[0] = %q, want git.exe", git.binaries[0].Name)
+	}
 }
 
 func TestUnder(t *testing.T) {
-	if !under("/a/b/c", "/a/b") {
-		t.Error("/a/b/c should be under /a/b")
+	// 用本机分隔符构造路径，Windows 与 unix 通用
+	a := filepath.Join("a", "b")
+	if !under(filepath.Join(a, "c"), a) {
+		t.Error(filepath.Join(a, "c") + " should be under " + a)
 	}
-	if !under("/a/b", "/a/b") {
-		t.Error("/a/b should be under /a/b")
+	if !under(a, a) {
+		t.Error(a + " should be under itself")
 	}
-	if under("/a/bc", "/a/b") {
-		t.Error("/a/bc should NOT be under /a/b")
+	if under(filepath.Join("a", "bc"), a) {
+		t.Error(filepath.Join("a", "bc") + " should NOT be under " + a)
+	}
+}
+
+// TestPathSplitPlatformContract 固化分隔符处理的平台契约：Windows 上反斜杠
+// 是分隔符；unix 上反斜杠是合法文件名字符，必须保留在段内（防止回归把
+// unix 上含反斜杠的真实目录名错误切分）。
+func TestPathSplitPlatformContract(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		got := splitPath(`C:\tools\versions\2.0\bin`)
+		if len(got) != 5 || got[0] != "C:" || got[4] != "bin" {
+			t.Errorf("windows splitPath = %v, want [C: tools versions 2.0 bin]", got)
+		}
+		if v, ok := toolchainVersion(`C:\Users\u\.rustup\toolchains\stable\bin\cargo`); !ok || v != "stable" {
+			t.Errorf("windows toolchainVersion = %q, %v; want stable", v, ok)
+		}
+		return
+	}
+	// unix：反斜杠保留在段内（合法文件名字符）
+	got := splitPath(`/home/u/tools/a\b/versions/2.0`)
+	if got[3] != `a\b` || got[4] != "versions" {
+		t.Errorf("unix splitPath must keep backslash inside segment: %v", got)
+	}
+	// unix：反斜杠不参与 "toolchains" 段匹配
+	if _, ok := toolchainVersion(`/home/u/.rustup/toolchains\stable/bin/cargo`); ok {
+		t.Error("unix toolchainVersion must not split on backslash")
 	}
 }
 

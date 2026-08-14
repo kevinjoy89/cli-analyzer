@@ -3,6 +3,7 @@ package rules
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"cli-analyzer/internal/platform"
@@ -29,6 +30,11 @@ func TestGenericDataDirs(t *testing.T) {
 }
 
 func TestResolveCleanableGlob(t *testing.T) {
+	// p10k 缓存规则锚定 XDG cache 根：unix 语义，Windows 上该根不存在
+	// （数据根为 %APPDATA%/%LOCALAPPDATA%），glob 无可解析目标。
+	if runtime.GOOS == "windows" {
+		t.Skip("XDG cache root does not apply on Windows")
+	}
 	td := t.TempDir()
 	t.Setenv("XDG_CACHE_HOME", td)
 	// create p10k-style entries

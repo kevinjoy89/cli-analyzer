@@ -10,6 +10,10 @@ import (
 
 // guiImportDLLs 是 GUI 程序的强信号导入库：纯控制台工具不会直接链接它们
 // （shell32/ole32 等会被命令行工具用于路径/COM 操作，故不在此列）。
+// 注意：user32.dll 单库命中不是充分信号——Git for Windows 的控制台工具
+// （git.exe/git-lfs/scalar/tig 等）为控制台与错误处理也会链接 user32.dll。
+// 因此 importsGUI 的判据是命中 ≥2 个 GUI 导入库：真正 CUI 伪装的 GUI 应用
+// （Xshell 类）会导入完整 Win32 界面栈（user32+gdi32+comctl32…）。
 var guiImportDLLs = map[string]bool{
 	"user32.dll":   true,
 	"gdi32.dll":    true,
@@ -73,6 +77,9 @@ func importsGUI(f *os.File, peOff, optOff int64, optSize int, numSec uint16) boo
 	}
 
 	// Walk import descriptors (20 bytes each) until an all-zero entry.
+	// 统计命中数而非提前返回：单个 GUI 库（如 user32）可能是控制台工具的
+	// 合法导入（Git for Windows），≥2 个才判定为 GUI 应用。
+	var guiHits int
 	for off := int64(0); off < impSize && off < 0x4000; off += 20 {
 		fo := rvaToOff(impRVA + off)
 		if fo < 0 {
@@ -106,8 +113,8 @@ func importsGUI(f *os.File, peOff, optOff int64, optSize int, numSec uint16) boo
 		}
 		name := strings.ToLower(strings.TrimRight(string(buf[:]), "\x00"))
 		if guiImportDLLs[name] {
-			return true
+			guiHits++
 		}
 	}
-	return false
+	return guiHits >= 2
 }

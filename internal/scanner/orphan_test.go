@@ -3,6 +3,7 @@ package scanner
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"cli-analyzer/internal/disk"
@@ -11,6 +12,8 @@ import (
 // isolateXDGRoots 把所有 XDG 根指向 base 下的临时子目录并隔离 HOME。
 // 不能只依赖 HOME 回退：runner/shell 可能预置 XDG_*_HOME 环境变量，
 // xdgOr 优先 env，会导致测试遍历真实数据根。
+// Windows 上 XDG 根不适用（rootFor 返回 ""），孤儿遍历改走
+// %APPDATA%/%LOCALAPPDATA%——一并隔离，避免触达真实用户目录。
 func isolateXDGRoots(t *testing.T, base string) (cacheRoot, dataRoot, cfgRoot string) {
 	t.Helper()
 	cacheRoot = filepath.Join(base, "cache")
@@ -25,12 +28,50 @@ func isolateXDGRoots(t *testing.T, base string) (cacheRoot, dataRoot, cfgRoot st
 	t.Setenv("XDG_DATA_HOME", dataRoot)
 	t.Setenv("XDG_CONFIG_HOME", cfgRoot)
 	t.Setenv("HOME", base)
+	t.Setenv("APPDATA", filepath.Join(base, "appdata"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(base, "localappdata"))
+	for _, r := range []string{filepath.Join(base, "appdata"), filepath.Join(base, "localappdata")} {
+		if err := os.MkdirAll(r, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
 	return
+}
+
+// orphanRoot 返回当前平台被 findUnattributed 实际遍历、且已隔离到 base 的
+// 数据根：unix 用 XDG config，Windows 用 %APPDATA%（并隔离 LOCALAPPDATA）。
+func orphanRoot(t *testing.T, base string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		appdata := filepath.Join(base, "appdata")
+		localappdata := filepath.Join(base, "localappdata")
+		for _, r := range []string{appdata, localappdata} {
+			if err := os.MkdirAll(r, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Setenv("APPDATA", appdata)
+		t.Setenv("LOCALAPPDATA", localappdata)
+		return appdata
+	}
+	_, _, cfg := isolateXDGRoots(t, base)
+	return cfg
+}
+
+// skipOnWindows 标记 XDG 根语义用例：findUnattributed 的 XDG 根在 Windows
+// 不适用（rootFor 返回 ""），这些用例验证的是 unix 布局；Windows 孤儿语义
+// 由 platform 层测试（systemdirs/vendorexclusion/installedapp）覆盖。
+func skipOnWindows(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("XDG 数据根在 Windows 不适用；Windows 孤儿语义由 platform 层测试覆盖")
+	}
 }
 
 // TestFindUnattributedFilter verifies the non-CLI exclusion system inside
 // findUnattributed: self dirs, structural GUI signals, vendor table.
 func TestFindUnattributedFilter(t *testing.T) {
+	skipOnWindows(t)
 	base := t.TempDir()
 	cacheRoot := filepath.Join(base, "cache")
 	dataRoot := filepath.Join(base, "data")
@@ -96,6 +137,7 @@ func TestFindUnattributedFilter(t *testing.T) {
 // .DS_Store 等普通文件、指向文件的符号链接跳过；指向目录的符号链接
 // 仍是合法孤儿候选。
 func TestFindUnattributedSkipsFilesAndSymlinks(t *testing.T) {
+	skipOnWindows(t)
 	base := t.TempDir()
 	_, _, cfgRoot := isolateXDGRoots(t, base)
 
@@ -140,6 +182,7 @@ func TestFindUnattributedSkipsFilesAndSymlinks(t *testing.T) {
 // Windows 上 PATH 名（claude）与数据目录名（Claude）大小写不同时，
 // 目录仍被工具认领，不列为孤儿。
 func TestFindUnattributedCaseInsensitiveClaim(t *testing.T) {
+	skipOnWindows(t)
 	base := t.TempDir()
 	_, dataRoot, _ := isolateXDGRoots(t, base)
 	if err := os.MkdirAll(filepath.Join(dataRoot, "Claude"), 0o755); err != nil {
@@ -159,6 +202,7 @@ func TestFindUnattributedCaseInsensitiveClaim(t *testing.T) {
 // TestFindUnattributedClaimsDataDirs 验证 dataDirs 顶层目录名与工具名不同
 // 时（opencode 的 ~/.config/oh-my-opencode）仍被认领，不列为孤儿。
 func TestFindUnattributedClaimsDataDirs(t *testing.T) {
+	skipOnWindows(t)
 	base := t.TempDir()
 	_, _, cfgRoot := isolateXDGRoots(t, base)
 	if err := os.MkdirAll(filepath.Join(cfgRoot, "oh-my-opencode", "inner"), 0o755); err != nil {
@@ -179,6 +223,7 @@ func TestFindUnattributedClaimsDataDirs(t *testing.T) {
 // TestFindUnattributedSystemAndVendorDirs 验证系统/共享结构目录与新扩充的
 // 排除表条目不列为孤儿（.mono、configstore、man、iterm2、raycast 等）。
 func TestFindUnattributedSystemAndVendorDirs(t *testing.T) {
+	skipOnWindows(t)
 	base := t.TempDir()
 	_, dataRoot, cfgRoot := isolateXDGRoots(t, base)
 
@@ -211,5 +256,58 @@ func TestFindUnattributedSystemAndVendorDirs(t *testing.T) {
 	}
 	if got[0].Path != filepath.Join(cfgRoot, "dead-cli-tool") {
 		t.Errorf("orphan = %q, want dead-cli-tool", got[0].Path)
+	}
+}
+
+// TestFindUnattributedUpdaterDirs 验证 <App>-updater 结构规则：GUI 应用
+// 自动更新暂存目录（tabby-updater/termius-updater 等）不列为孤儿。
+// 跨平台运行：unix 走 XDG config 根，Windows 走隔离的 %APPDATA%。
+func TestFindUnattributedUpdaterDirs(t *testing.T) {
+	base := t.TempDir()
+	root := orphanRoot(t, base)
+	mk := func(name string) {
+		if err := os.MkdirAll(filepath.Join(root, name, "inner"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, name, "inner", "x"), make([]byte, 1024), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("tabby-updater")
+	mk("termius-updater")
+	mk("dead-cli-tool")
+
+	got := findUnattributed(map[string]*toolBuilder{}, nil, &disk.Sizer{})
+	if len(got) != 1 || filepath.Base(got[0].Path) != "dead-cli-tool" {
+		t.Fatalf("expected only dead-cli-tool orphan, got %d: %+v", len(got), got)
+	}
+}
+
+// TestIsSelfDataDir 验证自身目录判定：cli-analyzer 恒为自身；运行中
+// 可执行文件基名（含/不含扩展名）也视为自身（Wails 产品名 CLI Analyzer
+// 的 exe 出现在数据根顶层时不算孤儿）。
+func TestIsSelfDataDir(t *testing.T) {
+	if !isSelfDataDir("cli-analyzer") {
+		t.Error("cli-analyzer must be self data dir")
+	}
+	// 应用产品名形态（便携包 exe 名为 cli-analyzer.exe 时也命中）
+	if !isSelfDataDir("CLI Analyzer") {
+		t.Error("product name must be self data dir")
+	}
+	if !isSelfDataDir("CLI Analyzer.exe") {
+		t.Error("product exe name must be self data dir")
+	}
+	if isSelfDataDir("dead-cli-tool") {
+		t.Error("unrelated dir must not be self")
+	}
+	full, base := selfExeNames()
+	if full == "" {
+		return // os.Executable 不可用时跳过自身名断言
+	}
+	if !isSelfDataDir(full) {
+		t.Errorf("running exe name %q must be self data dir", full)
+	}
+	if base != "" && !isSelfDataDir(base) {
+		t.Errorf("running exe base %q must be self data dir", base)
 	}
 }

@@ -3,9 +3,11 @@ package uninstall
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
+	"cli-analyzer/internal/platform"
 	"cli-analyzer/internal/scanner"
 	"cli-analyzer/internal/trash"
 )
@@ -16,6 +18,7 @@ func fakeRoots(t *testing.T) {
 	home := t.TempDir()
 	for k, v := range map[string]string{
 		"HOME":            home,
+		"USERPROFILE":     home, // Windows：os.UserHomeDir 优先 USERPROFILE
 		"XDG_DATA_HOME":   filepath.Join(home, "xdg-data"),
 		"XDG_CONFIG_HOME": filepath.Join(home, "xdg-config"),
 		"XDG_CACHE_HOME":  filepath.Join(home, "xdg-cache"),
@@ -25,6 +28,15 @@ func fakeRoots(t *testing.T) {
 	} {
 		t.Setenv(k, v)
 	}
+}
+
+// configRoot 返回当前平台生效的 config 数据根：unix 用 XDG config，
+// Windows 用 %APPDATA%（generic 规则在 Windows 上映射到 AppData）。
+func configRoot() string {
+	if r := platform.Root(platform.XDGConfig); r != "" {
+		return r
+	}
+	return platform.Root(platform.AppData)
 }
 
 func mkdir(t *testing.T, p string) {
@@ -84,9 +96,8 @@ func TestOfficialCommand(t *testing.T) {
 
 func TestResiduesRulesSource(t *testing.T) {
 	fakeRoots(t)
-	home := os.Getenv("HOME")
-	cfgDir := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "mytool")
-	dotDir := filepath.Join(home, ".mytool")
+	cfgDir := filepath.Join(configRoot(), "mytool")
+	dotDir := filepath.Join(platform.HomeDir(), ".mytool")
 	mkdir(t, cfgDir) // 存在 → 应检出
 	mkdir(t, dotDir) // 存在 → 应检出
 
@@ -108,7 +119,7 @@ func TestResiduesRulesSource(t *testing.T) {
 
 func TestResiduesExcludesMissing(t *testing.T) {
 	fakeRoots(t)
-	mkdir(t, filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "mytool"))
+	mkdir(t, filepath.Join(configRoot(), "mytool"))
 	// 其他源目录不存在 → 不应出现在残留中
 	res := Residues("mytool", nil)
 	for _, r := range res {
@@ -141,7 +152,7 @@ func TestResiduesSnapshotSource(t *testing.T) {
 func TestTrashResiduesMovesToTrash(t *testing.T) {
 	fakeRoots(t)
 	// 回收站根与待删目录同文件系统（都在临时区）
-	cfgDir := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "mytool")
+	cfgDir := filepath.Join(configRoot(), "mytool")
 	mkdir(t, cfgDir)
 	res := Residues("mytool", nil)
 	if len(res) == 0 {
@@ -179,8 +190,12 @@ func TestResiduesEmptyIsNotNil(t *testing.T) {
 }
 
 // ResolveCommand 应在（增强的）PATH 目录中找到命令：模拟 GUI 最小 PATH，
-// 命令只存在于 ~/.local/bin（增强目录）。
+// 命令只存在于 ~/.local/bin（增强目录）。仅 unix：Windows 的 PATH 增强是
+// 无操作（path_augment_windows.go）。
 func TestResolveCommandViaAugmentedPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("user-dir PATH augmentation is unix-only")
+	}
 	home := t.TempDir()
 	localBin := filepath.Join(home, ".local", "bin")
 	mkdir(t, localBin)

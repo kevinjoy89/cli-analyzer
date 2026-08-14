@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -238,6 +239,14 @@ func reAttributeVendors(tools map[string]*toolBuilder, order []string) {
 		tb := tools[id]
 		kept := tb.binaries[:0]
 		for _, b := range tb.binaries {
+			// npm 全局包（InstNpm + installRoot，如 pi → @earendil-works/
+			// pi-coding-agent）是真实工具，不是宿主工具捆绑的依赖——即使其
+			// shim 位于其他工具的数据目录（nodejs 的 %APPDATA%\npm）也保留
+			// 在自己的工具下，避免被吞成空壳行。
+			if tb.installer == InstNpm && tb.installRoot != "" {
+				kept = append(kept, b)
+				continue
+			}
 			var target *toolBuilder
 			for _, o := range all {
 				if o.tb == tb {
@@ -512,8 +521,15 @@ func sumMaximal(paths []string, sizes map[string]int64) int64 {
 }
 
 // toolchainVersion extracts the toolchain name from a rustup real path.
+// Windows 上同时识别反斜杠分隔；unix 上保持仅正斜杠（反斜杠是 unix 合法
+// 文件名字符，不能当分隔符切，行为与原实现逐位一致）。
 func toolchainVersion(real string) (string, bool) {
-	segs := strings.Split(real, "/")
+	var segs []string
+	if runtime.GOOS == "windows" {
+		segs = strings.FieldsFunc(real, func(r rune) bool { return r == '/' || r == '\\' })
+	} else {
+		segs = strings.Split(real, "/")
+	}
 	for i := range segs {
 		if segs[i] == "toolchains" && i+1 < len(segs) {
 			return segs[i+1], true

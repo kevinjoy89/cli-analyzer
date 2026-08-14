@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -264,6 +265,11 @@ func TestVerifyChecksum(t *testing.T) {
 // ---- dpkg probe ----
 
 func TestProbeDPKGManaged(t *testing.T) {
+	// dpkg 探测是 unix 语义：fake dpkg 是 shell 脚本，Windows 无法执行
+	// （无 sh 解释器），探测恒为 false。
+	if runtime.GOOS == "windows" {
+		t.Skip("dpkg probing is unix-only")
+	}
 	dir := t.TempDir()
 	exe := filepath.Join(dir, "fake-cli")
 	if err := os.WriteFile(exe, []byte("#!/bin/sh\necho fake\n"), 0o755); err != nil {

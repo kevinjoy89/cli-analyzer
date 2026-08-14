@@ -11,14 +11,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Go tests + build on the two primary platforms. The frontend must be built
-  # first because main.go embeds frontend/dist (which is git-ignored), so it
-  # does not exist in a fresh checkout.
+  # Go tests + build on the primary platforms (Windows included: it is a
+  # first-class dev platform for this app and its Wails GUI). The frontend must
+  # be built first because main.go embeds frontend/dist (which is git-ignored),
+  # so it does not exist in a fresh checkout.
   test:
     name: Test (${{ matrix.os }})
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7

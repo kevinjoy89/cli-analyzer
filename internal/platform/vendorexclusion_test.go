@@ -8,7 +8,7 @@ import (
 // TestVendorExclusionsDataOnly 验证 DataOnly 模式仅拦截数据目录归因
 // （孤儿过滤），不拦截 exe 发现——短名/产品名可能是真实 PATH 目录。
 func TestVendorExclusionsDataOnly(t *testing.T) {
-	dataOnlyEntries := []string{"iterm2", "raycast", "mozilla", "code", "amd", "360"}
+	dataOnlyEntries := []string{"iterm2", "raycast", "mozilla", "code", "amd", "360", "tabby", "rufus", "iobit", "awesun"}
 	for _, pat := range dataOnlyEntries {
 		p := filepath.Join("/Users/wei/.config", pat)
 		if !ExcludedByVendorData(p, "whatever") {
@@ -44,6 +44,27 @@ func TestVendorExclusionsExpanded(t *testing.T) {
 		{`C:\Users\wei\AppData\Roaming\Epic Games`, "Epic Games"},
 		{`C:\Users\wei\AppData\Roaming\clash-verge`, "clash-verge"},
 		{`C:\Users\wei\AppData\Roaming\v2rayN`, "v2rayN"},
+		// 2026-08 Windows 实机孤儿扫描补充条目
+		{`C:\Users\wei\AppData\Roaming\AweSun`, "AweSun"},
+		{`C:\Users\wei\AppData\Roaming\Oray`, "Oray"},
+		{`C:\Users\wei\AppData\Roaming\IObit`, "IObit"},
+		{`C:\Users\wei\AppData\Roaming\NeatDM`, "NeatDM"},
+		{`C:\Users\wei\AppData\Roaming\NotepadNext`, "NotepadNext"},
+		{`C:\Users\wei\AppData\Roaming\PotPlayerMini64`, "PotPlayerMini64"},
+		{`C:\Users\wei\AppData\Roaming\QQEX`, "QQEX"},
+		{`C:\Users\wei\AppData\Roaming\Qarmin`, "Qarmin"},
+		{`C:\Users\wei\AppData\Roaming\The Quark Authors`, "The Quark Authors"},
+		{`C:\Users\wei\AppData\Roaming\XnViewMP`, "XnViewMP"},
+		{`C:\Users\wei\AppData\Roaming\utForpc`, "utForpc"},
+		{`C:\Users\wei\AppData\Roaming\tabby`, "tabby"},
+		{`C:\Users\wei\AppData\Roaming\Termius`, "Termius"},
+		{`C:\Users\wei\AppData\Roaming\HD Tune Pro`, "HD Tune Pro"},
+		{`C:\Users\wei\AppData\Local\GameViewer`, "GameViewer"},
+		{`C:\Users\wei\AppData\Local\PixPin`, "PixPin"},
+		{`C:\Users\wei\AppData\Local\Rufus`, "Rufus"},
+		{`C:\Users\wei\AppData\Local\flutter_webview_windows`, "flutter_webview_windows"},
+		{`C:\Users\wei\AppData\Roaming\Atlassian`, "Atlassian"},
+		{`C:\Users\wei\AppData\Local\Atlassian`, "Atlassian"},
 	}
 	for _, c := range dataOnlyCases {
 		if !ExcludedByVendorData(c.path, c.name) {

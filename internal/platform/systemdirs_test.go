@@ -20,6 +20,10 @@ func TestIsSystemDataDir(t *testing.T) {
 		{XDGData, ".isolated-storage", true},
 		{XDGData, "man", true},
 		{XDGConfig, "man", true},
+		// Go 工具链构建缓存（跨平台共享基础设施）
+		{XDGCache, "go-build", true},
+		{LocalAppData, "go-build", true},
+		{AppData, "go-build", true},
 		// Windows 结构目录仅 LocalAppData
 		{LocalAppData, "Programs", true},
 		{LocalAppData, "Temp", true},
@@ -27,6 +31,12 @@ func TestIsSystemDataDir(t *testing.T) {
 		{LocalAppData, "D3DSCache", true},
 		{LocalAppData, "lxss", true},
 		{LocalAppData, "Comms", true},
+		{LocalAppData, "ConnectedDevicesPlatform", true},
+		{LocalAppData, "PlaceholderTileLogoFolder", true},
+		{LocalAppData, "SquirrelTemp", true},
+		// Windows 语音访问组件：跨平台表，AppData（Roaming）根同样排除
+		{AppData, "VoiceAccess", true},
+		{LocalAppData, "voiceaccess", true},
 		// 非 LocalAppData 下的同名目录不受影响
 		{AppData, "Programs", false},
 		{XDGData, "Temp", false},
@@ -38,6 +48,29 @@ func TestIsSystemDataDir(t *testing.T) {
 	for _, c := range cases {
 		if got := IsSystemDataDir(c.root, c.name); got != c.want {
 			t.Errorf("IsSystemDataDir(%s, %q) = %v, want %v", c.root, c.name, got, c.want)
+		}
+	}
+}
+
+// TestIsUpdaterDir 验证应用更新器目录结构规则：小写 "-updater" 后缀命中
+// （Squirrel/electron-updater 约定 <App>-updater），普通目录不受影响。
+func TestIsUpdaterDir(t *testing.T) {
+	cases := []struct {
+		name string
+		want bool
+	}{
+		{"tabby-updater", true},
+		{"termius-updater", true},
+		{"qmlauncher-updater", true},
+		{"Tabby-Updater", true}, // 大小写不敏感
+		{"tabby", false},
+		{"updater", false}, // 无 "-" 前缀
+		{"dead-cli-tool", false},
+		{"flutter_webview_windows", false},
+	}
+	for _, c := range cases {
+		if got := IsUpdaterDir(c.name); got != c.want {
+			t.Errorf("IsUpdaterDir(%q) = %v, want %v", c.name, got, c.want)
 		}
 	}
 }

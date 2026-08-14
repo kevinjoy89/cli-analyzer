@@ -16,9 +16,14 @@ func setupUninstallEnv(t *testing.T, tools []scanner.Tool) {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // Windows：os.UserHomeDir 优先 USERPROFILE
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "xdg-cache"))
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "xdg-data"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "xdg-config"))
+	// Windows：CacheRoot 回退到 %LocalAppData%\cli-analyzer，一并隔离，
+	// 避免测试读写真实缓存
+	t.Setenv("LOCALAPPDATA", filepath.Join(home, "local-appdata"))
+	t.Setenv("APPDATA", filepath.Join(home, "appdata"))
 	res := &scanner.ScanResult{Tools: tools, Totals: scanner.Totals{}}
 	b, _ := json.Marshal(res)
 	p := filepath.Join(platform.CacheRoot(), "last-scan.json")

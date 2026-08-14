@@ -155,6 +155,40 @@ var vendorExclusions = []VendorExclusion{
 	{Pattern: "anki", DataOnly: true},
 	{Pattern: "evernote", DataOnly: true},
 
+	// ---- Windows 实测漏网 GUI 产品（2026-08 Windows 实机孤儿扫描补充）----
+	// 远程/远控
+	{Pattern: "awesun", DataOnly: true},   // 向日葵远程（AweSun）
+	{Pattern: "sunlogin", DataOnly: true}, // 向日葵远程（经典名）
+	{Pattern: "oray", DataOnly: true},     // 贝锐 Oray（向日葵厂商）
+	// 系统/工具
+	{Pattern: "iobit", DataOnly: true},
+	{Pattern: "rufus", DataOnly: true}, // GUI USB 工具
+	{Pattern: "hd tune pro", DataOnly: true},
+	{Pattern: "hdtunepro", DataOnly: true},
+	{Pattern: "qarmin", DataOnly: true}, // Qarmin（GUI 文件管理器）
+	{Pattern: "neatdm", DataOnly: true}, // Neat Download Manager
+	{Pattern: "neat download manager", DataOnly: true},
+	{Pattern: "utforpc", DataOnly: true}, // uTorrent for PC
+	{Pattern: "utorrent", DataOnly: true},
+	// 编辑器/媒体/传输
+	{Pattern: "notepadnext", DataOnly: true}, // Notepad Next（GUI 编辑器）
+	{Pattern: "notepad next", DataOnly: true},
+	{Pattern: "potplayermini64", DataOnly: true}, // PotPlayer
+	{Pattern: "daum", DataOnly: true},            // PotPlayer 厂商
+	{Pattern: "xnviewmp", DataOnly: true},        // XnView MP
+	{Pattern: "xnview", DataOnly: true},
+	{Pattern: "pixpin", DataOnly: true}, // PixPin（GUI 截图工具）
+	{Pattern: "localsend", DataOnly: true},
+	{Pattern: "peazip", DataOnly: true},
+	{Pattern: "tabby", DataOnly: true},   // Tabby 终端（GUI；其 CLI 为伴侣）
+	{Pattern: "termius", DataOnly: true}, // Termius（GUI SSH 客户端）
+	// 厂商/平台目录
+	{Pattern: "qqex", DataOnly: true},                    // 腾讯 QQ 组件
+	{Pattern: "gameviewer", DataOnly: true},              // 网易 GameViewer 远程
+	{Pattern: "the quark authors", DataOnly: true},       // 夸克浏览器/网盘
+	{Pattern: "flutter_webview_windows", DataOnly: true}, // Flutter 桌面 WebView 运行时
+	{Pattern: "atlassian", DataOnly: true},               // Atlassian（Sourcetree/Jira 桌面端）
+
 	// ---- 驱动/硬件厂商（双向拦：目录下为系统组件，不应作为工具扫描或探测）----
 	{Pattern: "nvidia"},
 	{Pattern: "nvidia corporation"}, // %ProgramFiles%\NVIDIA Corporation\（含空格目录名）

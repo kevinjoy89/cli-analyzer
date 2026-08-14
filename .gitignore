@@ -1,6 +1,8 @@
 # 构建产物
 build/bin
 build/.metadata_never_index
+# NSIS 构建时下载的 WebView2 引导程序等临时文件
+build/windows/installer/tmp
 bin
 dist
 frontend/dist

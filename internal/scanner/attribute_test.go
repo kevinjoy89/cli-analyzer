@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -40,6 +41,31 @@ func TestAttributeSkipsFamilyCuratedAliases(t *testing.T) {
 	attribute(tools, []string{"nodejs"}, tbl, Options{}, &disk.Sizer{})
 	if len(tools["nodejs"].aliases) != 0 {
 		t.Errorf("family tool must not merge curated aliases: %v", tools["nodejs"].aliases)
+	}
+}
+
+// TestReAttributeKeepsNpmGlobal 验证 npm 全局包工具（pi/opencode 等，InstNpm +
+// installRoot）的 shim 二进制不被 reAttributeVendors 挪进宿主工具
+// （nodejs 的 %APPDATA%\npm 数据目录）——否则会变成空壳行。
+func TestReAttributeKeepsNpmGlobal(t *testing.T) {
+	npmDir := filepath.Join(t.TempDir(), "npm")
+	pkgDir := filepath.Join(npmDir, "node_modules", "@earendil-works", "pi-coding-agent")
+	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	nodejs := &toolBuilder{name: "nodejs", installer: InstNodejs,
+		dataDirs: []DataDir{{Path: npmDir}}}
+	pi := &toolBuilder{name: "pi", installer: InstNpm, installRoot: pkgDir,
+		binaries: []Binary{{Name: "pi.cmd", Real: filepath.Join(npmDir, "pi.cmd")}}}
+	tools := map[string]*toolBuilder{"nodejs": nodejs, "pi": pi}
+
+	reAttributeVendors(tools, []string{"nodejs", "pi"})
+
+	if len(pi.binaries) != 1 {
+		t.Errorf("pi lost its shim binary: %+v", pi.binaries)
+	}
+	if len(nodejs.binaries) != 0 {
+		t.Errorf("nodejs must not swallow npm global shim: %+v", nodejs.binaries)
 	}
 }
 

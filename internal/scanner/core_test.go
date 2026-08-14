@@ -13,8 +13,13 @@ import (
 // ---- pure helpers ----
 
 func TestSumMaximal(t *testing.T) {
-	sizes := map[string]int64{"/a": 10, "/a/b": 6, "/a/b/c": 2, "/x": 7}
-	paths := []string{"/a", "/a/b", "/a/b/c", "/x"}
+	// 用本机分隔符构造路径，Windows 与 unix 通用
+	a := filepath.Join("a")
+	ab := filepath.Join("a", "b")
+	abc := filepath.Join("a", "b", "c")
+	x := filepath.Join("x")
+	sizes := map[string]int64{a: 10, ab: 6, abc: 2, x: 7}
+	paths := []string{a, ab, abc, x}
 	// "/a/b" and "/a/b/c" are children of "/a"; only maximal paths count.
 	if got := sumMaximal(paths, sizes); got != 17 {
 		t.Errorf("sumMaximal = %d, want 17", got)
@@ -24,11 +29,12 @@ func TestSumMaximal(t *testing.T) {
 func TestFootprintOf(t *testing.T) {
 	// A binary inside a measured dir is covered by it; a standalone binary is
 	// added to the footprint.
-	tb := &toolBuilder{measure: []string{"/opt/tool"}, binaries: []Binary{
-		{Real: "/opt/tool/bin/x", Size: 100}, // inside → not added
-		{Real: "/usr/bin/free", Size: 50},    // outside → added
+	tool := filepath.Join("opt", "tool")
+	tb := &toolBuilder{measure: []string{tool}, binaries: []Binary{
+		{Real: filepath.Join(tool, "bin", "x"), Size: 100},    // inside → not added
+		{Real: filepath.Join("usr", "bin", "free"), Size: 50}, // outside → added
 	}}
-	sizes := map[string]int64{"/opt/tool": 1000}
+	sizes := map[string]int64{tool: 1000}
 	if got := footprintOf(tb, sizes); got != 1050 {
 		t.Errorf("footprintOf = %d, want 1050", got)
 	}
@@ -118,7 +124,8 @@ func TestDeriveOldVersionsVersioned(t *testing.T) {
 
 func TestDeriveOldVersionsPyenv(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home) // isolate pyenv root
+	t.Setenv("HOME", home)        // isolate pyenv root (unix)
+	t.Setenv("USERPROFILE", home) // Windows：os.UserHomeDir 优先 USERPROFILE
 	versions := filepath.Join(home, ".pyenv", "versions")
 	for _, v := range []string{"3.12.0", "3.11.5"} {
 		os.MkdirAll(filepath.Join(versions, v), 0o755)
@@ -138,7 +145,8 @@ func TestDeriveOldVersionsPyenv(t *testing.T) {
 
 func TestDeriveOldVersionsRustup(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home) // isolate rustup root
+	t.Setenv("HOME", home)        // isolate rustup root (unix)
+	t.Setenv("USERPROFILE", home) // Windows：os.UserHomeDir 优先 USERPROFILE
 	toolchains := filepath.Join(home, ".rustup", "toolchains")
 	for _, v := range []string{"stable", "nightly"} {
 		os.MkdirAll(filepath.Join(toolchains, v, "bin"), 0o755)
@@ -191,6 +199,9 @@ func TestFinalize(t *testing.T) {
 
 func TestCacheRoundTrip(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(t.TempDir(), "cache"))
+	// Windows：XDG 根不适用，CacheRoot 回退到 %LocalAppData%\cli-analyzer，
+	// 一并隔离，避免测试读写真实缓存。
+	t.Setenv("LOCALAPPDATA", filepath.Join(t.TempDir(), "localappdata"))
 	res := &ScanResult{ScannedAt: Now(), Tools: []Tool{{Name: "npm"}}}
 
 	if err := SaveCache(res); err != nil {

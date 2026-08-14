@@ -48,7 +48,7 @@ THEN 该目录不进入孤儿数据列表（Application Support 仅用于已认�
 
 ### Requirement: 排除体系应用于孤儿数据
 
-孤儿数据候选 MUST 经过非 CLI 排除体系过滤：系统/OS 目录、本应用自身（回收站根、cli-analyzer 数据）、结构性 GUI 信号目录、系统/共享结构目录（跨平台共享运行时目录如 `.mono`/`configstore`/`man`，Windows 系统组件目录如 `%LOCALAPPDATA%\Programs`/`Temp`/`CrashDumps`）、命中厂商排除表的目录 MUST NOT 列为孤儿数据。
+孤儿数据候选 MUST 经过非 CLI 排除体系过滤：系统/OS 目录、本应用自身目录（含本应用可执行文件同名目录——Wails 产品名 `CLI Analyzer` 的 exe 出现在数据根顶层时同样视为自身）、结构性 GUI 信号目录、系统/共享结构目录（跨平台共享运行时目录如 `.mono`/`configstore`/`go-build`/`man`，Windows 系统组件目录如 `%LOCALAPPDATA%\Programs`/`Temp`/`CrashDumps`/`ConnectedDevicesPlatform`/`PlaceholderTileLogoFolder`、`%APPDATA%\VoiceAccess`）、应用更新器目录（`<App>-updater` 形态）、Windows 已安装应用交叉验证（注册表卸载项 DisplayName / 开始菜单快捷方式名匹配）、命中厂商排除表的目录 MUST NOT 列为孤儿数据。
 
 #### Scenario: 系统目录排除
 
@@ -64,7 +64,7 @@ THEN 不列为孤儿数据（共享基础设施，非任何工具的数据残留
 
 #### Scenario: Windows 系统组件目录排除
 
-WHEN `%LOCALAPPDATA%` 下存在 `Programs`（GUI 应用安装根）、`Temp`、`CrashDumps`、`D3DSCache`、`lxss`、`Comms`
+WHEN `%LOCALAPPDATA%` 下存在 `Programs`（GUI 应用安装根）、`Temp`、`CrashDumps`、`D3DSCache`、`lxss`、`Comms`、`ConnectedDevicesPlatform`、`PlaceholderTileLogoFolder`，或 `%APPDATA%` 下存在 `VoiceAccess`
 
 THEN 不列为孤儿数据
 
@@ -79,6 +79,24 @@ THEN 不列为孤儿数据
 WHEN 数据根下存在 `~/.config/iterm2`、`~/.config/raycast`、`%APPDATA%\Mozilla`、`%APPDATA%\dingtalk` 且排除表含对应产品模式
 
 THEN 不列为孤儿数据（已安装 GUI 应用的数据目录）
+
+#### Scenario: 更新器目录排除
+
+WHEN 数据根下存在未认领目录 `%LOCALAPPDATA%\tabby-updater`、`%LOCALAPPDATA%\termius-updater`（GUI 应用自动更新暂存）
+
+THEN 不列为孤儿数据
+
+#### Scenario: 已安装应用数据目录排除
+
+WHEN Windows 上未认领目录 `%APPDATA%\PeaZip` 与已安装应用 DisplayName `PeaZip 11.0.0 (WIN64)` 前缀匹配
+
+THEN 不列为孤儿数据
+
+#### Scenario: 本应用可执行文件同名目录排除
+
+WHEN 数据根下存在未认领目录 `%APPDATA%\CLI Analyzer.exe`（本应用可执行文件基名）
+
+THEN 不列为孤儿数据（自身目录）
 
 ### Requirement: 孤儿数据展示与处置
 
