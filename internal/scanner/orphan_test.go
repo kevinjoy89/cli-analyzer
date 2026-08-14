@@ -8,6 +8,26 @@ import (
 	"cli-analyzer/internal/disk"
 )
 
+// isolateXDGRoots 把所有 XDG 根指向 base 下的临时子目录并隔离 HOME。
+// 不能只依赖 HOME 回退：runner/shell 可能预置 XDG_*_HOME 环境变量，
+// xdgOr 优先 env，会导致测试遍历真实数据根。
+func isolateXDGRoots(t *testing.T, base string) (cacheRoot, dataRoot, cfgRoot string) {
+	t.Helper()
+	cacheRoot = filepath.Join(base, "cache")
+	dataRoot = filepath.Join(base, "data")
+	cfgRoot = filepath.Join(base, "config")
+	for _, r := range []string{cacheRoot, dataRoot, cfgRoot} {
+		if err := os.MkdirAll(r, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("XDG_CACHE_HOME", cacheRoot)
+	t.Setenv("XDG_DATA_HOME", dataRoot)
+	t.Setenv("XDG_CONFIG_HOME", cfgRoot)
+	t.Setenv("HOME", base)
+	return
+}
+
 // TestFindUnattributedFilter verifies the non-CLI exclusion system inside
 // findUnattributed: self dirs, structural GUI signals, vendor table.
 func TestFindUnattributedFilter(t *testing.T) {
@@ -77,12 +97,7 @@ func TestFindUnattributedFilter(t *testing.T) {
 // 仍是合法孤儿候选。
 func TestFindUnattributedSkipsFilesAndSymlinks(t *testing.T) {
 	base := t.TempDir()
-	cfgRoot := filepath.Join(base, "config")
-	if err := os.MkdirAll(cfgRoot, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("XDG_CONFIG_HOME", cfgRoot)
-	t.Setenv("HOME", base)
+	_, _, cfgRoot := isolateXDGRoots(t, base)
 
 	// .DS_Store 文件（macOS 常见）
 	if err := os.WriteFile(filepath.Join(cfgRoot, ".DS_Store"), make([]byte, 4096), 0o644); err != nil {
@@ -126,15 +141,13 @@ func TestFindUnattributedSkipsFilesAndSymlinks(t *testing.T) {
 // 目录仍被工具认领，不列为孤儿。
 func TestFindUnattributedCaseInsensitiveClaim(t *testing.T) {
 	base := t.TempDir()
-	dataRoot := filepath.Join(base, "data")
+	_, dataRoot, _ := isolateXDGRoots(t, base)
 	if err := os.MkdirAll(filepath.Join(dataRoot, "Claude"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dataRoot, "Claude", "config.json"), make([]byte, 1024), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("XDG_DATA_HOME", dataRoot)
-	t.Setenv("HOME", base)
 
 	tools := map[string]*toolBuilder{"claude": {name: "claude", aliases: map[string]bool{}}}
 	got := findUnattributed(tools, []string{"claude"}, &disk.Sizer{})
@@ -147,15 +160,13 @@ func TestFindUnattributedCaseInsensitiveClaim(t *testing.T) {
 // 时（opencode 的 ~/.config/oh-my-opencode）仍被认领，不列为孤儿。
 func TestFindUnattributedClaimsDataDirs(t *testing.T) {
 	base := t.TempDir()
-	cfgRoot := filepath.Join(base, "config")
+	_, _, cfgRoot := isolateXDGRoots(t, base)
 	if err := os.MkdirAll(filepath.Join(cfgRoot, "oh-my-opencode", "inner"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(cfgRoot, "oh-my-opencode", "inner", "x"), make([]byte, 1024), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("XDG_CONFIG_HOME", cfgRoot)
-	t.Setenv("HOME", base)
 
 	tools := map[string]*toolBuilder{"opencode": {name: "opencode", aliases: map[string]bool{},
 		dataDirs: []DataDir{{Path: filepath.Join(cfgRoot, "oh-my-opencode")}}}}
@@ -169,16 +180,7 @@ func TestFindUnattributedClaimsDataDirs(t *testing.T) {
 // 排除表条目不列为孤儿（.mono、configstore、man、iterm2、raycast 等）。
 func TestFindUnattributedSystemAndVendorDirs(t *testing.T) {
 	base := t.TempDir()
-	cfgRoot := filepath.Join(base, "config")
-	dataRoot := filepath.Join(base, "data")
-	for _, r := range []string{cfgRoot, dataRoot} {
-		if err := os.MkdirAll(r, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	t.Setenv("XDG_CONFIG_HOME", cfgRoot)
-	t.Setenv("XDG_DATA_HOME", dataRoot)
-	t.Setenv("HOME", base)
+	_, dataRoot, cfgRoot := isolateXDGRoots(t, base)
 
 	mk := func(p string) {
 		if err := os.MkdirAll(filepath.Join(p, "inner"), 0o755); err != nil {
