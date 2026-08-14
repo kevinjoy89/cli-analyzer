@@ -1,0 +1,6 @@
+# Wails 自动生成的绑定代码（wails generate module 产物，禁止手改）
+# 标记为 generated，从 GitHub 语言统计中排除
+frontend/wailsjs/** linguist-generated=true
+
+# Wails Windows 安装器模板（NSIS，wails build 自动使用，非手写逻辑）
+build/windows/installer/** linguist-generated=true
