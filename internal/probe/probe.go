@@ -3,6 +3,7 @@
 package probe
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -41,6 +42,26 @@ func ProbeVersion(bin string) (string, bool) {
 	return "", false
 }
 
+// syncBuf 是并发安全的输出缓冲：子进程 stdout/stderr 由两个复制 goroutine
+// 并行写入同一 buffer（Start+Wait 分离后无法用 CombinedOutput 的锁定合并）——
+// 管道缓冲在多数场景串行化写入，但无锁 buffer 仍是理论竞态，加锁防御。
+type syncBuf struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuf) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuf) Bytes() []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Bytes()
+}
+
 func runWithTimeout(bin string, args []string, d time.Duration) (out []byte, ok, timedOut bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), d)
 	defer cancel()
@@ -48,7 +69,16 @@ func runWithTimeout(bin string, args []string, d time.Duration) (out []byte, ok,
 	platform.HideConsoleWindow(cmd)
 	setupProcessGroup(cmd)
 
+	var buf syncBuf
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	if err := cmd.Start(); err != nil {
+		// 启动失败（命令不存在/不可执行）按非 0 退出处理
+		return nil, false, false
+	}
 	// 超时后连同进程组一起终止（防止 --version 派生的子进程残留）。
+	// 必须在 Start 返回后才读 cmd.Process——Start 之前启动 goroutine 会与
+	// exec 内部写 cmd.Process 形成数据竞态（race 检测实锤，超时瞬间触发）。
 	done := make(chan struct{})
 	defer close(done)
 	go func() {
@@ -59,13 +89,14 @@ func runWithTimeout(bin string, args []string, d time.Duration) (out []byte, ok,
 		}
 	}()
 
-	b, err := cmd.CombinedOutput()
+	err := cmd.Wait()
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, false, true // 超时
 		}
 		return nil, false, false // 非 0 退出
 	}
+	b := buf.Bytes()
 	if len(strings.TrimSpace(cleanOutput(b))) == 0 {
 		return nil, false, false // 空输出不算成功
 	}
@@ -143,10 +174,22 @@ func Save() {
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return
 	}
-	tmp := p + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err == nil {
-		_ = os.Rename(tmp, p)
+	// 唯一临时文件名：多实例并发 Save 时固定 ".tmp" 会互相覆盖
+	tmp, err := os.CreateTemp(filepath.Dir(p), "probe-*.tmp")
+	if err != nil {
+		return
 	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return
+	}
+	_ = os.Rename(tmpName, p)
 }
 
 // CachedOrRun 优先命中缓存（键 = real path + size + mtime）；未命中则探测并

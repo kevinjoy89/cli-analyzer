@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"errors"
+	"flag"
 	"fmt"
 	"strings"
 	"text/tabwriter"
@@ -21,7 +23,10 @@ func runTrash(args []string) int {
 	case "restore":
 		return trashRestore(args[1:])
 	case "empty":
-		return trashEmpty()
+		return trashEmpty(args[1:])
+	case "help", "-h", "--help":
+		trashUsage()
+		return 0
 	}
 	fmt.Fprintf(stderr(), "%s\n", i18n.T("cli.trashUnknown", map[string]any{"cmd": args[0]}))
 	trashUsage()
@@ -35,7 +40,7 @@ func trashUsage() {
 用法:
   cli-analyzer trash list              # 列出回收站项目
   cli-analyzer trash restore <id>      # 恢复一个项目到原路径
-  cli-analyzer trash empty             # 清空回收站（彻底删除）`)
+  cli-analyzer trash empty [--yes]     # 清空回收站（永久删除，需确认；--yes 跳过确认）`)
 }
 
 // fmtTrashTime 将 RFC3339 时间压缩为 "2006-01-02 15:04" 便于终端阅读
@@ -82,8 +87,24 @@ func trashRestore(args []string) int {
 	return 0
 }
 
-// trashEmpty 清空回收站（彻底删除全部项目）
-func trashEmpty() int {
+// trashEmpty 清空回收站（永久删除全部项目）。
+// 破坏性操作需要用户确认（--yes 跳过确认，供脚本使用）；
+// 永久删除语义与 README / GUI "Delete permanently" 契约一致
+// （此前复用过期配置，默认只是转系统回收站，空间并未释放）。
+func trashEmpty(args []string) int {
+	fs := flag.NewFlagSet("empty", flag.ContinueOnError)
+	yes := fs.Bool("yes", false, "skip confirmation (permanent delete)")
+	fs.SetOutput(stderr())
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0 // 帮助请求不是错误
+		}
+		return 1
+	}
+	if fs.NArg() > 0 {
+		trashUsage()
+		return 1
+	}
 	items, err := trash.List()
 	if err != nil {
 		fmt.Fprintf(stderr(), "%s\n", i18n.T("cli.trashReadFailed", map[string]any{"err": err}))
@@ -91,6 +112,10 @@ func trashEmpty() int {
 	}
 	if len(items) == 0 {
 		fmt.Fprintln(stdout(), i18n.T("cli.trashEmpty"))
+		return 0
+	}
+	if !*yes && !confirmPrompt(i18n.T("cli.trashEmptyConfirm", map[string]any{"n": len(items)})) {
+		fmt.Fprintln(stdout(), i18n.T("cli.cancelled"))
 		return 0
 	}
 	ids := make([]string, 0, len(items))

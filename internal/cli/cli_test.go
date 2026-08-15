@@ -233,3 +233,23 @@ func TestPrintCleanables(t *testing.T) {
 		}
 	}
 }
+
+// TestSubcommandHelpExitsZero 验证各子命令的 --help 是帮助请求而非错误
+// （flag.ErrHelp 此前被当作失败返回 exit 1，脚本/交互用户被误导）。
+func TestSubcommandHelpExitsZero(t *testing.T) {
+	pinZhCN(t)
+	captureStdout(t)
+	captureStderr(t)
+	for _, args := range [][]string{
+		{"scan", "--help"},
+		{"clean", "--help"},
+		{"cache", "--help"},
+		{"update", "--help"},
+		{"uninstall", "--help"},
+		{"trash", "empty", "--help"},
+	} {
+		if code := Run(args); code != 0 {
+			t.Errorf("Run(%v) = %d, want 0（帮助请求不是错误）", args, code)
+		}
+	}
+}

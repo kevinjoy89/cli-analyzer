@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 
@@ -12,12 +13,15 @@ import (
 
 // runUpdate 处理 `update check [--json]`。
 // 退出码约定：0 = 已是最新、2 = 有更新、1 = 错误（脚本友好）。
-// 手动检查不受 24h 缓存限制；CLI 不做下载/安装（那是 GUI 交互场景，design D8）。
+// 手动检查不受 4h 缓存限制；CLI 不做下载/安装（那是 GUI 交互场景，design D8）。
 func runUpdate(args []string) int {
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	jsonOut := fs.Bool("json", false, "output JSON")
 	fs.SetOutput(stderr())
 	if err := fs.Parse(reorderFlags(args)); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0 // 帮助请求不是错误
+		}
 		return 1
 	}
 	if fs.NArg() == 0 || fs.Arg(0) != "check" {

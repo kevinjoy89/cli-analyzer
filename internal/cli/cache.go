@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 
@@ -14,6 +15,9 @@ func runCache(args []string) int {
 	clear := fs.Bool("clear", false, "clear the scan cache")
 	fs.SetOutput(stderr())
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0 // 帮助请求不是错误
+		}
 		return 1
 	}
 	if *clear {

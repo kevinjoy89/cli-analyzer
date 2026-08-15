@@ -1,6 +1,9 @@
 package scanner
 
 import (
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"cli-analyzer/internal/platform"
@@ -103,5 +106,52 @@ func TestDiscoverSkipsLibraries(t *testing.T) {
 		if isLibraryOrBackup(n) {
 			t.Errorf("expected %q to be kept", n)
 		}
+	}
+}
+
+// TestDiscoverSymlinkToDirResolvesRealBinary 验证 PATH 中指向目录的符号链接
+// （sdkman current 形态：symlink -> 目录，目录内含同名可执行文件）扫描后
+// Binary.Real 必须是真实二进制文件而非目录——此前 Real=EvalSymlinks(入口)
+// = 目录，导致二进制大小恒 0、probe 对目录执行、卸载残留检测误判。
+func TestDiscoverSymlinkToDirResolvesRealBinary(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-only symlink 场景")
+	}
+	binDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(binDir, "mytool"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pathDir := t.TempDir()
+	if err := os.Symlink(binDir, filepath.Join(pathDir, "mytool")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", pathDir)
+	execs := discoverExecs()
+	var found bool
+	for _, ex := range execs {
+		if ex.Name == "mytool" {
+			found = true
+			// 指向目录的链接必须解析到目录内的真实二进制（扫描器直接用
+			// execEntry.Real，不再对目录做 EvalSymlinks 得到目录本身；
+			// macOS 上 /var 是 /private/var 的符号链接，用 Eval 归一化比较）
+			if ex.Real == "" {
+				t.Fatal("execEntry.Real 为空：symlink-to-dir 未携带真实二进制路径")
+			}
+			want, err := filepath.EvalSymlinks(filepath.Join(binDir, "mytool"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := filepath.EvalSymlinks(ex.Real)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != want {
+				t.Errorf("real = %q, want %q（指向目录的链接必须解析到目录内的真实二进制）", got, want)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Fatal("symlink-to-dir 命令未被发现")
 	}
 }

@@ -4,9 +4,11 @@ package cleaner
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"cli-analyzer/internal/config"
+	"cli-analyzer/internal/i18n"
 	"cli-analyzer/internal/scanner"
 	"cli-analyzer/internal/trash"
 )
@@ -54,7 +56,7 @@ func clean(result *scanner.ScanResult, ids []string, dryRun bool, permanent bool
 		Errors:  []string{},
 	}
 	if result == nil {
-		report.Errors = append(report.Errors, "no scan result available")
+		report.Errors = append(report.Errors, i18n.T("cln.noResult"))
 		return report
 	}
 
@@ -97,7 +99,7 @@ func clean(result *scanner.ScanResult, ids []string, dryRun bool, permanent bool
 	for _, id := range ids {
 		if c, ok := byID[id]; ok {
 			if c.Tier != scanner.TierSafe {
-				report.Skipped = append(report.Skipped, c.Path+" (USER data — not auto-deletable)")
+				report.Skipped = append(report.Skipped, c.Path+" ("+i18n.T("cln.userSkipped")+")")
 				continue
 			}
 			if reason := guard(c); reason != "" {
@@ -109,7 +111,7 @@ func clean(result *scanner.ScanResult, ids []string, dryRun bool, permanent bool
 		}
 		if si, ok := subs[id]; ok {
 			if si.parent.Tier != scanner.TierSafe {
-				report.Skipped = append(report.Skipped, si.sub.Path+" (USER data — not auto-deletable)")
+				report.Skipped = append(report.Skipped, si.sub.Path+" ("+i18n.T("cln.userSkipped")+")")
 				continue
 			}
 			if reason := guardSub(si.parent.Path, si.sub.Path); reason != "" {
@@ -125,7 +127,7 @@ func clean(result *scanner.ScanResult, ids []string, dryRun bool, permanent bool
 			remove(si.sub.Path, si.sub.Bytes, si.parent.Tool, kind)
 			continue
 		}
-		report.Skipped = append(report.Skipped, id+" (unknown item)")
+		report.Skipped = append(report.Skipped, id+" ("+i18n.T("cln.unknownItem")+")")
 	}
 	return report
 }
@@ -133,20 +135,20 @@ func clean(result *scanner.ScanResult, ids []string, dryRun bool, permanent bool
 // guard returns "" when the item may be deleted, else a reason string.
 func guard(c *scanner.Cleanable) string {
 	if !filepath.IsAbs(c.Path) {
-		return "path is not absolute"
+		return i18n.T("cln.guardNotAbs")
 	}
 	clean := filepath.Clean(c.Path)
 	if clean != c.Path {
-		return "path contains .. or redundant segments"
+		return i18n.T("cln.guardDirty")
 	}
 	if forbidden(clean) {
-		return "path is a forbidden system root"
+		return i18n.T("cln.guardForbidden")
 	}
 	if clean == trash.Root() {
-		return "path is the trash root"
+		return i18n.T("cln.guardTrashRoot")
 	}
 	if c.CurrentPath != "" && clean == filepath.Clean(c.CurrentPath) {
-		return "refusing to delete the current version"
+		return i18n.T("cln.guardCurrent")
 	}
 	return ""
 }
@@ -156,18 +158,18 @@ func guard(c *scanner.Cleanable) string {
 // directory (so an id can never reach outside the parent).
 func guardSub(parent, p string) string {
 	if !filepath.IsAbs(p) {
-		return "path is not absolute"
+		return i18n.T("cln.guardNotAbs")
 	}
 	clean := filepath.Clean(p)
 	if clean != p {
-		return "path contains .. or redundant segments"
+		return i18n.T("cln.guardDirty")
 	}
 	if forbidden(clean) {
-		return "path is a forbidden system root"
+		return i18n.T("cln.guardForbidden")
 	}
 	rel, err := filepath.Rel(parent, p)
 	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "path is not inside its cleanable"
+		return i18n.T("cln.guardNotInside")
 	}
 	return ""
 }
@@ -190,6 +192,15 @@ func forbidden(p string) bool {
 			return true
 		}
 	}
+	// Windows 系统根（大小写不敏感）：扫描器通常不会产生这些 cleanable，
+	// 此处是纵深防御——任何来源的删除请求都不能命中系统目录
+	if runtime.GOOS == "windows" {
+		for _, r := range windowsForbiddenRoots {
+			if strings.EqualFold(p, r) {
+				return true
+			}
+		}
+	}
 	// The user's home dir itself must never be deleted.
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		if p == home {
@@ -197,4 +208,10 @@ func forbidden(p string) bool {
 		}
 	}
 	return false
+}
+
+// windowsForbiddenRoots 是 Windows 系统根（大小写不敏感匹配）
+var windowsForbiddenRoots = []string{
+	`C:\Windows`, `C:\Program Files`, `C:\Program Files (x86)`,
+	`C:\ProgramData`, `C:\Users\Default`, `C:\Recovery`,
 }

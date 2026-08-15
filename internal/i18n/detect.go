@@ -24,6 +24,15 @@ func Resolve(explicit string) string {
 // 支持形如 "zh-CN"、"zh-Hans-CN"、"zh_TW"、"en-US"、"en" 的常见形式。
 func normalize(raw string) string {
 	lower := strings.ToLower(strings.ReplaceAll(raw, "_", "-"))
+	// POSIX/C locale（含 C.UTF-8——Linux 服务器常见默认）语义是英文界面，
+	// 不能回退到中文默认
+	switch lower {
+	case "c", "posix":
+		return "en"
+	}
+	if strings.HasPrefix(lower, "c.") || strings.HasPrefix(lower, "posix.") {
+		return "en"
+	}
 	switch {
 	case strings.HasPrefix(lower, "zh-hans"), strings.HasPrefix(lower, "zh-cn"),
 		strings.HasPrefix(lower, "zh-sg"), lower == "zh":

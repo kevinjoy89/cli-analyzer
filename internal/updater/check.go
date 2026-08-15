@@ -33,7 +33,7 @@ type CheckResult struct {
 
 // CheckForUpdates 执行一次更新检查。
 //
-// force=false（自动检查）：命中 24h 缓存时复用缓存结果；网络失败返回带 Error
+// force=false（自动检查）：命中 4h 缓存时复用缓存结果；网络失败返回带 Error
 // 的结果（调用方决定是否静默）；源码构建（Version=="dev"）直接跳过。
 // force=true（手动检查）：不受缓存限制；Version=="dev" 时报“无法确定当前版本”。
 func CheckForUpdates(ctx context.Context, force bool) CheckResult {
@@ -101,7 +101,9 @@ func cachedResult(cfg *config.Config, fresh CheckResult) (CheckResult, bool) {
 		return CheckResult{}, false
 	}
 	t, err := time.Parse(time.RFC3339, cfg.Update.LastCheckAt)
-	if err != nil || time.Since(t) >= cacheInterval {
+	// 时钟回拨（LastCheckAt 在未来）时 time.Since 为负：不满足 >= cacheInterval
+	// 会永远命中缓存，自动检查永不刷新——负间隔一律视为缓存失效
+	if err != nil || time.Since(t) >= cacheInterval || time.Since(t) < 0 {
 		return CheckResult{}, false
 	}
 	var cached struct {
@@ -117,7 +119,7 @@ func cachedResult(cfg *config.Config, fresh CheckResult) (CheckResult, bool) {
 	fresh.Latest = cached.Latest
 	fresh.ReleaseURL = cached.ReleaseURL
 	// 更新可用性必须按“当前版本 vs 缓存的最新版”重算：缓存只存网络结论
-	// （最新版是哪个），不存“对我是否可更新”——否则升级后 24h 内旧缓存
+	// （最新版是哪个），不存“对我是否可更新”——否则升级后 4h 内旧缓存
 	// 仍会提示“vX → vX”（升级后重新打开继续提示更新的 bug）。
 	if compareVersions(cached.Latest, fresh.Current) > 0 {
 		fresh.UpdateAvailable = true

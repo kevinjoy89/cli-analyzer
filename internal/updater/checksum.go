@@ -35,7 +35,9 @@ func FetchChecksums(ctx context.Context, client *http.Client, r *Release) ([]byt
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%s", i18n.T("err.updateFetchChecksums", map[string]any{"err": err}))
+		// %w 保留原始错误链：取消下载（context.Canceled）必须能被
+		// errors.Is 识别，否则 GUI 把取消显示成通用错误
+		return nil, fmt.Errorf("%s: %w", i18n.T("err.updateFetchChecksums"), err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -50,6 +52,9 @@ func ParseChecksums(content []byte) map[string]string {
 	out := make(map[string]string)
 	for _, line := range strings.Split(string(content), "\n") {
 		line = strings.TrimSpace(line)
+		// UTF-8 BOM（Windows 编辑保存的常见形态）挂在首行 hash 前，
+		// 不剥除会让哈希比对永远失败
+		line = strings.TrimPrefix(line, "\ufeff")
 		if line == "" {
 			continue
 		}

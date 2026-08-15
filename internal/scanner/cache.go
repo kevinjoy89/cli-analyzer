@@ -22,11 +22,27 @@ func SaveCache(res *ScanResult) error {
 	if err != nil {
 		return err
 	}
-	tmp := cachePath() + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	// 唯一临时文件名：GUI 与 CLI 并发扫描写缓存时固定 ".tmp" 会互相覆盖
+	tmp, err := os.CreateTemp(dir, "last-scan-*.tmp")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, cachePath())
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	return os.Rename(tmpName, cachePath())
 }
 
 // LoadCache reads the last scan result, or returns an error when absent.
@@ -43,7 +59,14 @@ func LoadCache() (*ScanResult, error) {
 }
 
 // ClearCache removes the cache file (used by `cache --clear`).
-func ClearCache() error { return os.Remove(cachePath()) }
+// 无缓存时视为已清除（幂等）：首次运行/已清过的机器上"清除失败"是误导。
+func ClearCache() error {
+	err := os.Remove(cachePath())
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
 
 // CacheInfo returns the cache modification time, or ok=false when absent.
 func CacheInfo() (string, bool) {

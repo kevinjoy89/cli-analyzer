@@ -30,8 +30,12 @@ type Official struct {
 }
 
 // blocklist 是拒绝卸载的系统关键工具（含 cli-analyzer 自身）。
+// 除命令名字面量外，还需覆盖扫描器返回的安装形态：brew 公式
+// （python@3.13）、版本化解释器（python3.x）——blocklist 无法穷举
+// 未来版本，故用前缀匹配兜底（见 IsBlocked）。
 var blocklist = map[string]bool{
 	"python": true, "python3": true, "python3.13": true, "python3.12": true,
+	"pip": true, "pip3": true, // Python 生态核心工具：卸载即破坏全部包管理
 	"node": true, "npm": true, "npx": true, "corepack": true,
 	"nodejs": true, // nodejs 家族合并工具（node/npm/npx/corepack/node-gyp）
 	"git":    true, "docker": true, "podman": true, "go": true, "gofmt": true,
@@ -45,13 +49,24 @@ var blocklist = map[string]bool{
 }
 
 // IsBlocked 报告该工具名是否命中系统关键工具黑名单。
-// Windows 下工具名带扩展名（ssh.exe），匹配前剥掉以便与黑名单（ssh）对齐。
+// Windows 下工具名带扩展名（ssh.exe），匹配前剥掉以便与黑名单（ssh）对齐；
+// brew 公式形态（python@3.13）与版本化解释器形态（python3.14 等）无法在
+// 静态表里穷举，按前缀拦截：python 系（python@ / python3.）、node 系
+// （node@，如 node@20 公式）、go 系（go@）均属系统关键工具。
 func IsBlocked(name string) bool {
 	n := strings.ToLower(strings.TrimSpace(name))
 	for _, ext := range []string{".exe", ".cmd", ".bat"} {
 		n = strings.TrimSuffix(n, ext)
 	}
-	return blocklist[n]
+	if blocklist[n] {
+		return true
+	}
+	for _, prefix := range []string{"python@", "python3.", "node@", "go@"} {
+		if strings.HasPrefix(n, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // OfficialCommand 返回按安装来源映射的标准卸载建议。
@@ -68,7 +83,11 @@ func OfficialCommand(installer scanner.Installer, name, binName string) Official
 	case scanner.InstCargo:
 		return Official{Command: "cargo uninstall " + name, Runnable: true, Bin: "cargo", Args: []string{"uninstall", name}}
 	case scanner.InstGo:
-		// go install 无包管理器：删除 GOPATH/bin 下的二进制（仅提示，不代跑）
+		// go install 无包管理器：删除 GOPATH/bin 下的二进制（仅提示，不代跑）。
+		// binName 可能为空（缓存种子工具无 PATH 二进制）——给通用提示而非残缺命令
+		if binName == "" {
+			return Official{Command: "rm $(go env GOPATH)/bin/<命令名>"}
+		}
 		return Official{Command: fmt.Sprintf("rm $(go env GOPATH)/bin/%s", binName)}
 	case scanner.InstPyenv:
 		// pyenv 托管的解释器：在对应版本内卸载包（仅提示）
@@ -95,4 +114,20 @@ func ResolveCommand(bin string) (string, error) {
 // npm 等工具内部会再派生子进程（如 node），子进程继承的 PATH 必须完整。
 func AugmentedPathEnv() string {
 	return strings.Join(platform.PathDirs(false), string(os.PathListSeparator))
+}
+
+// WithPath 返回替换 PATH 后的环境变量切片（保留其余环境）。
+// 键匹配大小写不敏感：Windows 系统环境变量名为 "Path"（大写 P 小写 ath），
+// 只匹配 "PATH=" 会残留旧变量并追加新变量，子进程拿到重复 PATH。
+// GUI 与 CLI 代跑卸载命令共用（CLI 曾直接 exec 裸命令名，最小 PATH 环境下
+// 找不到 brew/npm——与 GUI 的 ResolveCommand + 增强 PATH 行为不一致）。
+func WithPath(env []string, path string) []string {
+	out := make([]string, 0, len(env)+1)
+	for _, e := range env {
+		if strings.HasPrefix(strings.ToUpper(e), "PATH=") {
+			continue
+		}
+		out = append(out, e)
+	}
+	return append(out, "PATH="+path)
 }

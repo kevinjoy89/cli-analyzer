@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -248,6 +249,26 @@ func TestUnder(t *testing.T) {
 	}
 }
 
+// TestUnderFold 验证 Windows 大小写不敏感路径包含：GOPATH 环境变量
+// （C:\Users\X\Go\bin）与 EvalSymlinks 解析的真实路径大小写可能不同
+// （C:\Users\X\go\bin\tool），大小写敏感比较会让 go/cargo/pyenv 归因失效
+// （工具被归为 other，安装根与卸载建议丢失）。
+func TestUnderFold(t *testing.T) {
+	// 正斜杠形式：underFold 内部 ToSlash 归一化，与平台无关可测
+	if !underFold(`C:/Users/X/go/bin/tool`, `C:/Users/X/Go/bin`) {
+		t.Error("不同大小写应判为包含（Windows 文件系统大小写不敏感）")
+	}
+	if !underFold(`C:/Users/X/Go/bin`, `C:/Users/X/go/bin`) {
+		t.Error("反向大小写也应判为包含")
+	}
+	if underFold(`C:/Users/X/binaries`, `C:/Users/X/bin`) {
+		t.Error("前缀必须带分隔符边界（binaries 不是 bin 的子路径）")
+	}
+	if underFold(``, ``) {
+		t.Error("空路径不应判为包含")
+	}
+}
+
 // TestPathSplitPlatformContract 固化分隔符处理的平台契约：Windows 上反斜杠
 // 是分隔符；unix 上反斜杠是合法文件名字符，必须保留在段内（防止回归把
 // unix 上含反斜杠的真实目录名错误切分）。
@@ -291,5 +312,97 @@ func TestSubKind(t *testing.T) {
 		if got := subKind(c.parent, c.name); got != c.want {
 			t.Errorf("subKind(%q, %q) = %q, want %q", c.parent, c.name, got, c.want)
 		}
+	}
+}
+
+// TestVersionedMatchSkipsNvmLayout 验证 nvm 布局不得被误判为 versioned
+// installer：~/.nvm/versions/<家族名>/<版本>/bin/<cmd> 的 "versions" 段后是
+// node/iojs 等家族名而非版本号，误判会把 node/npm/npx 全部归为名为 ".nvm"
+// 的工具、nodejs 家族合并失效、当前版本被推断为 "node"。
+func TestVersionedMatchSkipsNvmLayout(t *testing.T) {
+	if _, v, ok := versionedMatch("/Users/x/.nvm/versions/node/v22.14.0/bin/node"); ok {
+		t.Errorf("nvm 布局被误判为 versioned installer: v=%q", v)
+	}
+	if _, v, ok := versionedMatch(`C:\Users\x\.nvm\versions\node\v22.14.0\bin\node`); ok {
+		t.Errorf("nvm 布局（Windows 反斜杠）被误判: v=%q", v)
+	}
+	// 标准 versioned installer（claude/mavis）仍应命中
+	if _, v, ok := versionedMatch("/Users/x/.claude/versions/0.2.5/bin/claude"); !ok || v != "0.2.5" {
+		t.Errorf("标准 versioned 布局应命中，got v=%q ok=%v", v, ok)
+	}
+	if _, v, ok := versionedMatch("/Users/x/.mavis/versions/v1.2.3/bin/mavis"); !ok || v != "v1.2.3" {
+		t.Errorf("v 前缀版本目录应命中，got v=%q ok=%v", v, ok)
+	}
+}
+
+// TestBrewCellarPrefixTrailingSlash 验证 HOMEBREW_PREFIX 带尾斜杠时
+// Cellar 前缀不产生双斜杠（手拼 pre+"/Cellar/" 会让 brew 归因全部失效）。
+func TestBrewCellarPrefixTrailingSlash(t *testing.T) {
+	sep := string(filepath.Separator)
+	if got := brewCellarPrefix("/opt/homebrew"); got != "/opt/homebrew"+sep+"Cellar"+sep {
+		t.Errorf("无尾斜杠前缀: got %q", got)
+	}
+	if got := brewCellarPrefix("/opt/homebrew/"); got != "/opt/homebrew"+sep+"Cellar"+sep {
+		t.Errorf("带尾斜杠前缀应规范化: got %q", got)
+	}
+	// 真实路径匹配验证：前缀后跟公式名应命中
+	real := brewCellarPrefix("/opt/homebrew/") + "python/3.13/bin/python3"
+	if !strings.HasPrefix(real, brewCellarPrefix("/opt/homebrew")) {
+		t.Error("带尾斜杠 vs 无尾斜杠的前缀应一致匹配")
+	}
+}
+
+// TestEnvOverridablePaths 验证自定义环境变量（PYENV_ROOT/RUSTUP_HOME/
+// CARGO_HOME）下的安装路径被识别——此前硬编码 ~/.pyenv、~/.rustup、
+// ~/.cargo，用户自定义根目录时版本目录/工具链归因全部失效。
+func TestEnvOverridablePaths(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	pyenvRoot := t.TempDir()
+	t.Setenv("PYENV_ROOT", pyenvRoot)
+	if got := pyenvVersionsPath(); got != filepath.Join(pyenvRoot, "versions") {
+		t.Errorf("pyenvVersionsPath = %q, want %q（应识别 PYENV_ROOT）", got, filepath.Join(pyenvRoot, "versions"))
+	}
+	if got := pyenvShimsPath(); got != filepath.Join(pyenvRoot, "shims") {
+		t.Errorf("pyenvShimsPath = %q, want %q", got, filepath.Join(pyenvRoot, "shims"))
+	}
+
+	rustupHome := t.TempDir()
+	t.Setenv("RUSTUP_HOME", rustupHome)
+	if got := rustupToolchainsPath(); got != filepath.Join(rustupHome, "toolchains") {
+		t.Errorf("rustupToolchainsPath = %q, want %q（应识别 RUSTUP_HOME）", got, filepath.Join(rustupHome, "toolchains"))
+	}
+
+	cargoHome := t.TempDir()
+	t.Setenv("CARGO_HOME", cargoHome)
+	if got := cargoBin(); got != filepath.Join(cargoHome, "bin") {
+		t.Errorf("cargoBin = %q, want %q（应识别 CARGO_HOME）", got, filepath.Join(cargoHome, "bin"))
+	}
+}
+
+// TestClassifyGitkJoinsGitFamily 验证 gitk/git-gui（随 Git 分发的 GUI 附属）
+// 归并进 git 家族：unix 上它们是可执行脚本（IsConsoleExe 恒真），此前不入
+// gitFamily 表导致每个 git 安装都多出独立 GUI 工具行（噪音，且无卸载来源）。
+func TestClassifyGitkJoinsGitFamily(t *testing.T) {
+	for _, name := range []string{"gitk", "git-gui"} {
+		c := classify("/usr/local/git/bin/"+name, name)
+		if c.Family != "git" {
+			t.Errorf("classify(%s).Family = %q, want git", name, c.Family)
+		}
+	}
+}
+
+// TestClassifyRustupInstaller 验证 ~/.cargo/bin/rustup 归 InstRustup 而非
+// InstCargo：InstCargo 不推导工具链清理项，rustup 的旧工具链展示会缺失。
+func TestClassifyRustupInstaller(t *testing.T) {
+	c := classify(filepath.Join(cargoBin(), "rustup"), "rustup")
+	if c.Installer != InstRustup {
+		t.Errorf("rustup installer = %q, want rustup（此前归 cargo，工具链细分丢失）", c.Installer)
+	}
+	// cargo 本身仍是 cargo 来源
+	c2 := classify(filepath.Join(cargoBin(), "cargo"), "cargo")
+	if c2.Installer != InstCargo {
+		t.Errorf("cargo installer = %q, want cargo", c2.Installer)
 	}
 }

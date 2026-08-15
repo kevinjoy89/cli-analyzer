@@ -347,3 +347,34 @@ func TestLatestReleaseErrorLocalized(t *testing.T) {
 		t.Errorf("en 403 error = %v, want friendly rate-limit message", err)
 	}
 }
+
+// TestParseChecksumsWithBOM 验证 checksums.txt 带 UTF-8 BOM（Windows 编辑
+// 保存的常见形态）时仍能解析：首行 hash 前挂 \ufeff 会让 fields[0] 含 BOM，
+// 与校验计算的 hex 不匹配导致哈希校验永远失败。
+func TestParseChecksumsWithBOM(t *testing.T) {
+	m := ParseChecksums([]byte("\ufeffabc123  CLI-Analyzer-0.3.0-darwin-arm64.dmg\n"))
+	got, ok := m["CLI-Analyzer-0.3.0-darwin-arm64.dmg"]
+	if !ok || got != "abc123" {
+		t.Errorf("BOM 行解析失败: %v", m)
+	}
+}
+
+// TestFetchChecksumsWrapsContextError 验证 FetchChecksums 的错误保留
+// context.Canceled 身份（%w 包装）：取消下载时（恰在拉取校验和阶段）
+// GUI 能识别为"已取消"而非通用错误——此前 %s 格式化丢掉了错误链。
+func TestFetchChecksumsWrapsContextError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done() // 挂起直到客户端取消
+	}))
+	t.Cleanup(srv.Close)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // 已取消：client.Do 立即返回 context.Canceled
+	rel := &Release{Assets: []ReleaseAsset{{Name: "checksums.txt", BrowserDownloadURL: srv.URL}}}
+	_, err := FetchChecksums(ctx, nil, rel)
+	if err == nil {
+		t.Fatal("已取消的请求应返回错误")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("错误应可被 errors.Is 匹配 context.Canceled，got %v", err)
+	}
+}

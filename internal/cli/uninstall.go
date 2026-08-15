@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -28,6 +29,9 @@ func runUninstall(args []string) int {
 	jsonOut := fs.Bool("json", false, "output JSON")
 	fs.SetOutput(stderr())
 	if err := fs.Parse(reorderFlags(args)); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0 // 帮助请求不是错误
+		}
 		return 1
 	}
 	if fs.NArg() != 1 {
@@ -40,7 +44,18 @@ func runUninstall(args []string) int {
 		return uninstallBlocked(name, *jsonOut)
 	}
 
-	res, _ := scanner.LoadCache()
+	res, err := scanner.LoadCache()
+	if err != nil {
+		// 从未扫描：缓存缺失是状态问题，不是工具不存在——错误信息必须
+		// 可区分（此前静默当"未找到工具"处理，用户会被误导去怀疑工具名）
+		if *jsonOut {
+			b, _ := json.Marshal(map[string]any{"tool": name, "error": i18n.T("cli.noScanResult")})
+			fmt.Fprintln(stdout(), string(b))
+		} else {
+			fmt.Fprintln(stderr(), i18n.T("cli.noScanResult"))
+		}
+		return 1
+	}
 	tool := findTool(res, name)
 	if tool == nil {
 		if *jsonOut {
@@ -110,7 +125,7 @@ func runUninstall(args []string) int {
 	deleted, errs := uninstall.TrashResidues(rr, tool.Name)
 	fmt.Fprintf(stdout(), "%s %d 项\n", i18n.T("un.trashed"), len(deleted))
 	for _, e := range errs {
-		fmt.Fprintf(stderr(), "%s: %v\n", i18n.T("cli.errors"), e)
+		fmt.Fprintf(stderr(), "%s\n", i18n.T("cli.errors", map[string]any{"msg": e}))
 	}
 	if len(errs) > 0 {
 		return 1
@@ -159,7 +174,7 @@ func printResidueList(rr []uninstall.Residue) {
 // confirmPrompt 从 stdin 读取 y/N；非交互（EOF）时返回 false。
 func confirmPrompt(prompt string) bool {
 	fmt.Fprintf(stdout(), "%s ", prompt)
-	sc := bufio.NewScanner(os.Stdin)
+	sc := bufio.NewScanner(stdin)
 	if !sc.Scan() {
 		return false
 	}
@@ -168,10 +183,18 @@ func confirmPrompt(prompt string) bool {
 }
 
 // runOfficial 代跑标准卸载命令（5 分钟超时，输出流式透传）。
+// 与 GUI 行为一致：经（增强的）PATH 解析命令绝对路径并注入完整 PATH——
+// CLI 若从最小 PATH 环境启动（GUI 启动的终端/cron），裸 exec "npm" 会报
+// "executable file not found in $PATH"，增强目录补齐 shell-only 安装位置。
 func runOfficial(off uninstall.Official) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, off.Bin, off.Args...)
+	bin := off.Bin
+	if resolved, rerr := uninstall.ResolveCommand(off.Bin); rerr == nil {
+		bin = resolved
+	}
+	cmd := exec.CommandContext(ctx, bin, off.Args...)
+	cmd.Env = uninstall.WithPath(os.Environ(), uninstall.AugmentedPathEnv())
 	cmd.Stdout = stdout()
 	cmd.Stderr = stderr()
 	return cmd.Run()

@@ -57,6 +57,11 @@ func augmentUserDirs(seen map[string]bool, out []string) []string {
 	if g := goBinDir(); g != "" {
 		dirs = append(dirs, g)
 	}
+	// GOBIN 自定义时 go install 的二进制在 GOBIN（而非 GOPATH/bin）——
+	// goBinDir 的 go env GOPATH/bin 不包含它，GUI 最小 PATH 下会漏扫
+	if gb := os.Getenv("GOBIN"); gb != "" {
+		dirs = append(dirs, gb)
+	}
 
 	for _, d := range dirs {
 		abs, err := filepath.Abs(d)

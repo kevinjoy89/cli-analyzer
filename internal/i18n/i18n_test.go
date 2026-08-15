@@ -85,16 +85,20 @@ func TestResolve(t *testing.T) {
 
 func TestNormalize(t *testing.T) {
 	cases := map[string]string{
-		"zh-CN":      "zh-CN",
-		"zh-Hans-CN": "zh-CN",
-		"zh_SG":      "zh-CN",
-		"zh-TW":      "zh-TW",
-		"zh-Hant-TW": "zh-TW",
-		"zh-HK":      "zh-TW",
-		"en-US":      "en",
-		"en":         "en",
-		"ja-JP":      "",
-		"de":         "",
+		"zh-CN":       "zh-CN",
+		"zh-Hans-CN":  "zh-CN",
+		"zh_SG":       "zh-CN",
+		"zh-TW":       "zh-TW",
+		"zh-Hant-TW":  "zh-TW",
+		"zh-HK":       "zh-TW",
+		"en-US":       "en",
+		"en":          "en",
+		"C":           "en",
+		"POSIX":       "en",
+		"C.UTF-8":     "en",
+		"POSIX.UTF-8": "en",
+		"ja-JP":       "",
+		"de":          "",
 	}
 	for in, want := range cases {
 		if got := normalize(in); got != want {

@@ -57,6 +57,36 @@ func TestResolveCleanableGlob(t *testing.T) {
 	}
 }
 
+// TestResolveCleanableGlobPrefixOnly 验证通配规则是前缀匹配而非任意包含：
+// 目录名中间包含 base 片段但不以其开头时，不应被归为该工具的清理项
+// （防止把用户自建目录误判为缓存/暂存目录）。
+func TestResolveCleanableGlobPrefixOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("XDG cache root does not apply on Windows")
+	}
+	td := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", td)
+	mkdir(t, filepath.Join(td, "p10k-wei"))
+	mkdir(t, filepath.Join(td, "my-p10k-cache")) // 包含 "p10k-" 但不以其开头
+
+	var r CleanRule
+	for _, cur := range curated {
+		if cur.Name == "p10k" && len(cur.Cleanables) > 0 {
+			r = cur.Cleanables[0]
+		}
+	}
+	if r.Sub == "" {
+		t.Fatal("p10k cleanable rule not found")
+	}
+	got := ResolveCleanable(r)
+	if len(got) != 1 {
+		t.Fatalf("prefix 规则应只匹配 1 项（p10k-* 前缀）, got %v", got)
+	}
+	if filepath.Base(got[0]) != "p10k-wei" {
+		t.Errorf("匹配项应为 p10k-wei, got %v", got)
+	}
+}
+
 func mkdir(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(path, 0o755); err != nil {

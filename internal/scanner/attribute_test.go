@@ -90,3 +90,90 @@ func TestReAttributeVendorsNoAlias(t *testing.T) {
 		t.Errorf("vendor tool should lose its moved binary: %+v", tools["rg"].binaries)
 	}
 }
+
+// TestAttributeGoUsesRealGopath 验证 go 工具的数据目录按真实 GOPATH 归因：
+// rules 表硬编码 ~/go/pkg/mod，自定义 GOPATH（go env GOPATH 或 GOPATH 变量）
+// 下模块缓存完全漏归因（本机实测 929MB 不可见，且展示不存在的 ~/go/pkg/mod）。
+func TestAttributeGoUsesRealGopath(t *testing.T) {
+	gopath := t.TempDir()
+	t.Setenv("GOPATH", gopath)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// 构造 go 工具（brew 安装 + 真实模块缓存）
+	modDir := filepath.Join(gopath, "pkg", "mod")
+	if err := os.MkdirAll(modDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dlDir := filepath.Join(modDir, "cache", "download")
+	if err := os.MkdirAll(dlDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tb := &toolBuilder{name: "go", installer: InstGo, aliases: map[string]bool{}}
+	tools := map[string]*toolBuilder{"go": tb}
+	order := []string{"go"}
+
+	sizer := &disk.Sizer{}
+	attribute(tools, order, rules.Load(), Options{}, sizer)
+
+	found := false
+	for _, dd := range tb.dataDirs {
+		if dd.Path == modDir {
+			found = true
+			break
+		}
+	}
+	if !found {
+		got := make([]string, 0, len(tb.dataDirs))
+		for _, dd := range tb.dataDirs {
+			got = append(got, dd.Path)
+		}
+		t.Errorf("go 工具 dataDirs 不含真实 GOPATH 模块缓存 %q: %v", modDir, got)
+	}
+	// 硬编码的 ~/go/pkg/mod 不应出现（HOME 已隔离，该目录不存在）
+	for _, dd := range tb.dataDirs {
+		if dd.Path == filepath.Join(home, "go", "pkg", "mod") {
+			t.Errorf("硬编码 ~/go/pkg/mod 仍存在: %q", dd.Path)
+		}
+	}
+	// 模块下载缓存 cleanable 应指向真实路径
+	foundDL := false
+	for _, c := range tb.cleanables {
+		if c.Path == dlDir {
+			foundDL = true
+			break
+		}
+	}
+	if !foundDL {
+		t.Errorf("go 工具 cleanables 不含真实 GOPATH 下载缓存 %q", dlDir)
+	}
+}
+
+// TestAttributeSkipsSelfCache 验证应用自身的缓存目录（~/.cache/cli-analyzer）
+// 不作为可清理项：通用规则按工具名匹配会把"清理工具自己"列为 SAFE——
+// clean --all 会清掉应用缓存（扫描快照/探测缓存丢失，下次全量重扫）。
+func TestAttributeSkipsSelfCache(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cacheRoot := filepath.Join(home, ".cache")
+	t.Setenv("XDG_CACHE_HOME", cacheRoot)
+	selfCache := filepath.Join(cacheRoot, "cli-analyzer")
+	if err := os.MkdirAll(selfCache, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tb := &toolBuilder{name: "cli-analyzer", installer: InstOther, aliases: map[string]bool{}}
+	tools := map[string]*toolBuilder{"cli-analyzer": tb}
+	order := []string{"cli-analyzer"}
+	sizer := &disk.Sizer{}
+	attribute(tools, order, rules.Load(), Options{}, sizer)
+	for _, c := range tb.cleanables {
+		if c.Path == selfCache {
+			t.Errorf("应用自身缓存 %q 不应列为可清理项", selfCache)
+		}
+	}
+	for _, dd := range tb.dataDirs {
+		if dd.Path == selfCache {
+			t.Errorf("应用自身缓存 %q 不应归因为可清理缓存（应跳过或 USER）", selfCache)
+		}
+	}
+}

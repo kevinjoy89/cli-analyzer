@@ -169,6 +169,7 @@
   "cli.trashEmptied_one": "已清空 {n} 項",
   "cli.trashEmptied_other": "已清空 {n} 項",
   "cli.trendsFailed": "讀取趨勢失敗: {err}",
+  "cli.trendsHelp": "cli-analyzer trends [days] — 顯示最近 N 天（預設 30）的佔用趨勢與可清理增量排行",
   "cli.trendsEmpty": "暫無趨勢資料 — 請先執行 `cli-analyzer scan` 累積歷史",
   "cli.trendsHeader": "日期\t總佔用\t可清理\t使用者資料",
   "cli.growersNone": "\n可清理增量 Top 5：暫無（掃描次數不足）",
@@ -321,5 +322,18 @@
   "ui.kindLabel.state": "狀態",
   "ui.kindLabel.install": "安裝",
   "ui.kindLabel.logs": "日誌",
-  "ui.trashSummary": "共 {n} 項 · {size} · 最早 {time} 到期"
+  "ui.trashSummary": "共 {n} 項 · {size} · 最早 {time} 到期",
+  "cli.cancelled": "已取消",
+  "cli.trashEmptyConfirm": "確認清空資源回收筒（{n} 項，永久刪除，無法復原）？",
+  "ui.purgeConfirm": "確認永久刪除資源回收筒中的 {n} 項？此操作無法復原。",
+  "cln.noResult": "無掃描結果可用",
+  "cln.userSkipped": "使用者資料——不可自動刪除",
+  "cln.guardNotAbs": "路徑不是絕對路徑",
+  "cln.guardDirty": "路徑包含 .. 或冗餘段",
+  "cln.guardForbidden": "路徑是受保護的系統根",
+  "cln.guardTrashRoot": "路徑是資源回收筒根",
+  "cln.guardCurrent": "拒絕刪除目前版本",
+  "cln.guardNotInside": "路徑不在其可清理項內",
+  "cln.unknownItem": "未知項目",
+  "cli.scanFailed": "掃描失敗: {err}"
 }

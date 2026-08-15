@@ -311,3 +311,38 @@ func TestIsSelfDataDir(t *testing.T) {
 		t.Errorf("running exe base %q must be self data dir", base)
 	}
 }
+
+// TestFindUnattributedIncludesStateRoot 验证 ~/.local/state（XDG_STATE_HOME）
+// 下的未认领目录也列为孤儿：state 同样是 CLI 工具主导的数据根（pnpm store、
+// 工具运行状态等），残留数据不应被静默漏掉（此前遍历仅覆盖 cache/data/
+// config/appdata/localappdata，state 根完全缺席）。
+func TestFindUnattributedIncludesStateRoot(t *testing.T) {
+	skipOnWindows(t)
+	base := t.TempDir()
+	_, _, _ = isolateXDGRoots(t, base)
+	stateRoot := filepath.Join(base, "state")
+	if err := os.MkdirAll(stateRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_STATE_HOME", stateRoot)
+	// 构造一个未被任何工具认领的 state 目录
+	orphan := filepath.Join(stateRoot, "some-tool-state")
+	if err := os.MkdirAll(filepath.Join(orphan, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(orphan, "sub", "x"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sizer := &disk.Sizer{}
+	res := findUnattributed(map[string]*toolBuilder{}, nil, sizer)
+	found := false
+	for _, u := range res {
+		if u.Path == orphan {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("state 根下的未认领目录未列为孤儿: %v", res)
+	}
+}

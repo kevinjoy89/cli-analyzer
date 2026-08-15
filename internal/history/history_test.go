@@ -119,6 +119,11 @@ func TestTrendsFiltersByDays(t *testing.T) {
 	if len(tr.Points) != 1 {
 		t.Errorf("30 天窗口内 Points = %d, want 1", len(tr.Points))
 	}
+	// TopGrowers 必须与 days 窗口一致：40 天前的扫描不在窗口内，
+	// 不能作为"上次扫描"参与增长计算（否则 7 天趋势会显示 40 天前的增量）
+	if len(tr.TopGrowers) != 0 {
+		t.Errorf("窗口外记录不应参与 TopGrowers, got %v", tr.TopGrowers)
+	}
 }
 
 func TestPruneRemovesOldRecords(t *testing.T) {

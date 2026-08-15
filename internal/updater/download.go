@@ -67,6 +67,13 @@ func Download(ctx context.Context, client *http.Client, url, name string, sizeHi
 	buf := make([]byte, 64*1024)
 	var written int64
 	for {
+		// 取消必须可靠：数据可能已缓冲在传输层，Read 不报错也能继续读出
+		// 全部内容——不检查 ctx.Err() 会让"取消"在数据接近读完时静默失效，
+		// 用户点取消后仍弹出"下载完成"
+		if err := ctx.Err(); err != nil {
+			cleanup()
+			return "", err
+		}
 		n, rerr := resp.Body.Read(buf)
 		if n > 0 {
 			if _, werr := f.Write(buf[:n]); werr != nil {

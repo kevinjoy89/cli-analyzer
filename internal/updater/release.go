@@ -61,7 +61,8 @@ func LatestRelease(ctx context.Context, client *http.Client) (*Release, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%s", i18n.T("err.updateQuery", map[string]any{"err": err}))
+		// %w 保留原始错误链：取消（context.Canceled）可被 errors.Is 识别
+		return nil, fmt.Errorf("%s: %w", i18n.T("err.updateQuery"), err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusForbidden {

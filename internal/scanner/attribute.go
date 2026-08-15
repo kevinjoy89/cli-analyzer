@@ -60,7 +60,37 @@ func (b *toolBuilder) aliasSet() map[string]bool {
 func attribute(tools map[string]*toolBuilder, order []string, ruleTable *rules.Table, opts Options, sizer *disk.Sizer) {
 	for _, id := range order {
 		tb := tools[id]
+
+		// 应用自身不归因：通用规则按工具名匹配会把"清理工具自己"列为
+		// SAFE 可清理项，clean --all 会清掉扫描快照/探测缓存（自伤）
+		if isSelfDataDir(id) {
+			continue
+		}
+
 		cur := ruleTable.Lookup(id)
+
+		// go 工具的 pkg/mod 归因必须按真实 GOPATH：rules 表硬编码
+		// ~/go/pkg/mod，自定义 GOPATH（go env GOPATH / ~/.config/go/env）
+		// 下模块缓存完全漏归因且展示不存在的目录。值拷贝后改写规则，
+		// 不影响共享规则表。
+		if id == "go" && cur != nil {
+			rc := *cur
+			cur = &rc
+			gopath := goEnvGopath()
+			if gopath != "" {
+				mod := filepath.Join(gopath, "pkg", "mod")
+				for i := range cur.DataDirs {
+					if cur.DataDirs[i].Root == platform.Home && cur.DataDirs[i].Sub == "go/pkg/mod" {
+						cur.DataDirs[i] = rules.DataDirRule{Path: mod, Tier: rules.TierUser, Kind: "data"}
+					}
+				}
+				for i := range cur.Cleanables {
+					if cur.Cleanables[i].Root == platform.Home && cur.Cleanables[i].Sub == "go/pkg/mod/cache/download" {
+						cur.Cleanables[i] = rules.CleanRule{Path: filepath.Join(mod, "cache", "download"), Tier: rules.TierSafe, Kind: "download", Desc: cur.Cleanables[i].Desc}
+					}
+				}
+			}
+		}
 
 		// Data dirs: curated (authoritative) or generic name-matching.
 		if cur != nil {
@@ -284,10 +314,13 @@ func reAttributeVendors(tools map[string]*toolBuilder, order []string) {
 func collectBackups(tools map[string]*toolBuilder, order []string) map[string]*toolBuilder {
 	// A file that is itself a discovered command (e.g. agy.123.old in
 	// ~/.local/bin) is already counted as a tool; don't double-count it.
+	// Symlinked commands must also protect their real target: if kimi is a
+	// symlink to kimi.bak, the .bak file is a live command, not a backup.
 	isCommand := map[string]bool{}
 	for _, id := range order {
 		for _, b := range tools[id].binaries {
 			isCommand[b.Path] = true
+			isCommand[b.Real] = true
 		}
 	}
 	seenDir := map[string]bool{}
@@ -539,6 +572,10 @@ func toolchainVersion(real string) (string, bool) {
 }
 
 func rustupToolchainsPath() string {
+	// RUSTUP_HOME 可自定义（默认 ~/.rustup）
+	if r := os.Getenv("RUSTUP_HOME"); r != "" {
+		return filepath.Join(r, "toolchains")
+	}
 	if h, err := os.UserHomeDir(); err == nil {
 		return filepath.Join(h, ".rustup", "toolchains")
 	}
@@ -581,6 +618,11 @@ func finalize(tools map[string]*toolBuilder, order []string, opts Options) *Scan
 	totals := Totals{}
 	for _, id := range order {
 		tb := tools[id]
+		// 应用自身从结果中完全剔除（attribute 已跳过归因，这里跳过展示）：
+		// "清理工具自己"出现在列表里是噪音，且其缓存曾可被 SAFE 清理
+		if isSelfDataDir(id) {
+			continue
+		}
 		// nodejs 合并工具把 node 排到 Binaries[0]，让版本探测取到运行时版本。
 		probeOrder(tb)
 		var cleanSum, userSum int64
@@ -617,7 +659,13 @@ func finalize(tools map[string]*toolBuilder, order []string, opts Options) *Scan
 				tb.cleanables[i].Sub = []SubEntry{}
 			}
 		}
-		sort.Slice(tb.cleanables, func(i, j int) bool { return tb.cleanables[i].Bytes > tb.cleanables[j].Bytes })
+		// 确定性排序：同大小清理项按路径升序
+		sort.Slice(tb.cleanables, func(i, j int) bool {
+			if tb.cleanables[i].Bytes != tb.cleanables[j].Bytes {
+				return tb.cleanables[i].Bytes > tb.cleanables[j].Bytes
+			}
+			return tb.cleanables[i].Path < tb.cleanables[j].Path
+		})
 		// Marshal empty slices as [] rather than null for JSON consumers.
 		if tb.binaries == nil {
 			tb.binaries = []Binary{}
@@ -640,7 +688,14 @@ func finalize(tools map[string]*toolBuilder, order []string, opts Options) *Scan
 		totals.Cleanable += cleanSum
 		totals.User += userSum
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Footprint > out[j].Footprint })
+	// 确定性排序：同 footprint 的工具按名称升序——sort.Slice 不稳定，
+	// 等值元素顺序随输入抖动，两次扫描的展示顺序会无规律变化
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Footprint != out[j].Footprint {
+			return out[i].Footprint > out[j].Footprint
+		}
+		return out[i].Name < out[j].Name
+	})
 
 	roots := map[string][]string{}
 	for _, k := range platform.AllKinds {

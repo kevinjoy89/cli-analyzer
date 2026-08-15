@@ -163,7 +163,7 @@ func TestCheckNetworkFailureDoesNotCache(t *testing.T) {
 	_ = time.Now()
 }
 
-// 回归：升级到最新版后，24h 缓存命中时“是否有更新”必须按新当前版本重算——
+// 回归：升级到最新版后，4h 缓存命中时“是否有更新”必须按新当前版本重算——
 // 否则升级后重新打开会继续提示 “v0.3.2 → v0.3.2”。
 func TestCacheRecomputesUpdateAfterUpgrade(t *testing.T) {
 	restore := checkEnv(t, "0.2.3", []Release{
@@ -206,5 +206,32 @@ func TestCompareVersionsLexicalFallback(t *testing.T) {
 	// current 无法解析 → 不判定有更新
 	if got := compareVersions("0.3.2.1", "dev"); got != 0 {
 		t.Errorf("unparseable current = %d, want 0", got)
+	}
+}
+
+// TestCheckFutureCacheInvalid 验证系统时钟回拨（LastCheckAt 在未来）时缓存
+// 必须失效：time.Since(t) 为负不满足 >= cacheInterval，会永远命中缓存，
+// 自动检查永不刷新，用户收不到更新提示。
+func TestCheckFutureCacheInvalid(t *testing.T) {
+	checkEnv(t, "0.2.3", []Release{
+		{TagName: "v0.3.0", HTMLURL: "https://github.com/x/releases/tag/v0.3.0", Assets: sampleAssets("0.3.0")},
+	})
+	// 首次检查写入缓存（LastCheckAt = 现在）
+	first := CheckForUpdates(context.Background(), false)
+	if !first.UpdateAvailable {
+		t.Fatal("first check should find update")
+	}
+	// 把 LastCheckAt 改到未来 1 小时：time.Since(t) < 0
+	cfg := config.Load()
+	cfg.Update.LastCheckAt = time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	second := CheckForUpdates(context.Background(), false)
+	if second.Cached {
+		t.Error("时钟回拨（LastCheckAt 在未来）时缓存应失效，重新请求网络")
+	}
+	if !second.UpdateAvailable {
+		t.Error("重新检查应仍发现更新")
 	}
 }

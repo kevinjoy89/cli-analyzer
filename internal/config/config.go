@@ -38,7 +38,7 @@ type UpdateConfig struct {
 	// CheckUpdates 表示启动时是否自动检查更新（默认 true）。
 	// 用指针区分“未设置（nil → 默认 true）”与“显式 false”。
 	CheckUpdates *bool `json:"checkUpdates,omitempty"`
-	// LastCheckAt 是上次成功检查的时间（RFC3339），用于 24h 限流缓存。
+	// LastCheckAt 是上次成功检查的时间（RFC3339），用于 4h 限流缓存。
 	LastCheckAt string `json:"lastCheckAt,omitempty"`
 	// LastResult 是上次检查结果的缓存 JSON（限流期内复用，避免重复请求）。
 	LastResult string `json:"lastResult,omitempty"`
@@ -130,11 +130,29 @@ func Save(c *Config) error {
 	if err != nil {
 		return err
 	}
-	tmp := Path() + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+	// 唯一临时文件名：固定 ".tmp" 在并发写（GUI 自动更新缓存与用户改配置
+	// 同时发生）时会互相覆盖，一个 Rename 因源文件被移走而失败——配置更新
+	// 静默丢失
+	tmp, err := os.CreateTemp(dir, "config-*.tmp")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, Path())
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	return os.Rename(tmpName, Path())
 }
 
 // normalize 将非法值回退到默认

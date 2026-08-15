@@ -140,4 +140,4 @@ git tag v0.3.3 && git push origin main && git push origin v0.3.3   # 触发 CI
 | Linux 旧发行版打不开 GUI | webkit2gtk 版本 < 4.1，仅用 CLI |
 | Spotlight 搜到两个「CLI Analyzer」 | `build/bin` 里的构建中间产物被索引；`build-dmg.sh` 构建后自动删除。彻底解决：系统设置 → Siri 与 Spotlight → 聚焦隐私，把项目 `build/` 目录加入排除 |
 | 本地 `build-dmg.sh` 报「资源忙」无法卸载临时卷 | 已有一个同名卷被挂载（如正在使用的测试 dmg）。用 `VOLNAME` 换卷名，或先推出占用卷 |
-| 更新检查提示「已是最新」但刚发了新版本 | 24h 限流缓存尚未刷新；稍后或手动「检查更新」 |
+| 更新检查提示「已是最新」但刚发了新版本 | 4h 限流缓存尚未刷新；稍后或手动「检查更新」 |

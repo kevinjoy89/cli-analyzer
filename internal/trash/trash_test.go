@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"cli-analyzer/internal/config"
 )
 
 // withTrashRoot 将回收站根指向临时目录；故意不预创建目录，让所有测试
@@ -44,6 +46,66 @@ func itemIDs(t *testing.T) []string {
 		ids = append(ids, it.ID)
 	}
 	return ids
+}
+
+// TestRemoveExpiredFallbackKeepsInfoOnFailure 验证系统回收站不可用且降级
+// 删除也失败（权限）时，info.json 与项目目录必须保留（待下次重试）——
+// 此前忽略 RemoveAll 错误仍删 info，数据变成不可见也不可恢复的孤儿。
+func TestRemoveExpiredFallbackKeepsInfoOnFailure(t *testing.T) {
+	withTrashRoot(t)
+	origSys := systemTrashFn
+	systemTrashFn = func(string) error { return errors.New("no system trash") }
+	t.Cleanup(func() { systemTrashFn = origSys })
+
+	itemDir := filepath.Join(Root(), "expired_item")
+	if err := os.MkdirAll(filepath.Join(itemDir, "_data"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(itemDir, "_data", "x"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeInfo(itemDir, Item{
+		ID: "expired_item", Original: "/orig", Tool: "t", Kind: "cache",
+		Bytes: 1, TrashedAt: "2020-01-01T00:00:00Z", ExpiresAt: "2020-01-02T00:00:00Z",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// 数据目录只读 → 降级 RemoveAll 失败
+	if err := os.Chmod(filepath.Join(itemDir, "_data"), 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(filepath.Join(itemDir, "_data"), 0o755) })
+
+	err := removeExpired(itemDir, config.ExpireActionSystemTrash)
+	if err == nil {
+		t.Fatal("removeExpired 应返回降级删除错误")
+	}
+	if _, err := os.Stat(infoPathOf(itemDir)); err != nil {
+		t.Errorf("降级删除失败时 info.json 必须保留, stat err=%v", err)
+	}
+}
+
+// TestTrashWriteInfoFailureRollsBack 验证元数据落盘失败（磁盘满/权限）时
+// 数据必须回滚到原路径：此前 Rename 已把数据移入回收站但 info.json 写失败，
+// 项目既不在回收站列表、也无法恢复，变成永久孤儿数据。
+func TestTrashWriteInfoFailureRollsBack(t *testing.T) {
+	withTrashRoot(t)
+	origWrite := writeInfoFn
+	writeInfoFn = func(_ string, _ Item) error { return errors.New("simulated info write failure") }
+	t.Cleanup(func() { writeInfoFn = origWrite })
+
+	src := mkSource(t, "data")
+	err := Trash(src, Item{Tool: "t", Kind: "cache", Bytes: 1})
+	if err == nil {
+		t.Fatal("Trash 应返回元数据写入错误")
+	}
+	// 数据必须回到原路径，不能残留在回收站
+	if _, err := os.Stat(src); err != nil {
+		t.Errorf("数据应回滚到原路径, stat err=%v", err)
+	}
+	if got := itemIDs(t); len(got) != 0 {
+		t.Errorf("回滚后回收站不应残留项目, got %v", got)
+	}
 }
 
 // TestTrashCreatesTrashRoot verifies first-time cleanup works even when the
@@ -217,9 +279,10 @@ func TestPurge(t *testing.T) {
 	if got := itemIDs(t); len(got) != 0 {
 		t.Errorf("Purge 后仍有 %d 项", len(got))
 	}
-	// 默认配置（system-trash）下 Purge 应移入系统回收站，而非直接删除
-	if len(trashed) != 1 {
-		t.Errorf("默认配置下 Purge 应调用系统回收站，实际调用 %d 次", len(trashed))
+	// Purge 是"清空/彻底删除"的显式语义（CLI empty / GUI Delete permanently），
+	// 必须永久删除而非转系统回收站；此前复用过期配置导致空间未释放。
+	if len(trashed) != 0 {
+		t.Errorf("Purge 应永久删除（不经过系统回收站），实际调用系统回收站 %d 次", len(trashed))
 	}
 }
 
@@ -259,5 +322,41 @@ func TestRefineKind(t *testing.T) {
 		if got := refineKind(c.kind, c.original); got != c.want {
 			t.Errorf("refineKind(%q, %q) = %q, want %q", c.kind, c.original, got, c.want)
 		}
+	}
+}
+
+// TestRestoreRecreatesParentDir 验证恢复时原父目录已被删除（用户清理了
+// 上级目录）也能恢复：os.Rename 到不存在的父目录会失败，恢复应重新创建
+// 父目录（此前恢复直接报错，数据困在回收站）。
+func TestRestoreRecreatesParentDir(t *testing.T) {
+	withTrashRoot(t)
+	parent := t.TempDir()
+	src := filepath.Join(parent, "app-data")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "x"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Trash(src, Item{Tool: "t", Kind: "data", Bytes: 1}); err != nil {
+		t.Fatal(err)
+	}
+	// 用户随后删除了原父目录
+	if err := os.RemoveAll(parent); err != nil {
+		t.Fatal(err)
+	}
+	ids := itemIDs(t)
+	if len(ids) != 1 {
+		t.Fatalf("items = %v", ids)
+	}
+	restored, err := Restore(ids[0])
+	if err != nil {
+		t.Fatalf("Restore 在父目录缺失时应重建父目录: %v", err)
+	}
+	if restored != src {
+		t.Errorf("restored = %q, want %q", restored, src)
+	}
+	if _, err := os.Stat(filepath.Join(src, "x")); err != nil {
+		t.Errorf("恢复后数据不可读: %v", err)
 	}
 }

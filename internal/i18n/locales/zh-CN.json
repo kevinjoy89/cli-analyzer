@@ -169,6 +169,7 @@
   "cli.trashEmptied_one": "已清空 {n} 项",
   "cli.trashEmptied_other": "已清空 {n} 项",
   "cli.trendsFailed": "读取趋势失败: {err}",
+  "cli.trendsHelp": "cli-analyzer trends [days] — 显示最近 N 天（默认 30）的占用趋势与可清理增量排行",
   "cli.trendsEmpty": "暂无趋势数据 — 请先执行 `cli-analyzer scan` 积累历史",
   "cli.trendsHeader": "日期\t总占用\t可清理\t用户数据",
   "cli.growersNone": "\n可清理增量 Top 5：暂无（不足两次扫描）",
@@ -321,5 +322,18 @@
   "ui.kindLabel.state": "状态",
   "ui.kindLabel.install": "安装",
   "ui.kindLabel.logs": "日志",
-  "ui.trashSummary": "共 {n} 项 · {size} · 最早 {time} 到期"
+  "ui.trashSummary": "共 {n} 项 · {size} · 最早 {time} 到期",
+  "cli.cancelled": "已取消",
+  "cli.trashEmptyConfirm": "确认清空回收站（{n} 项，永久删除，不可恢复）？",
+  "ui.purgeConfirm": "确认永久删除回收站中的 {n} 项？此操作不可恢复。",
+  "cln.noResult": "无扫描结果可用",
+  "cln.userSkipped": "用户数据——不可自动删除",
+  "cln.guardNotAbs": "路径不是绝对路径",
+  "cln.guardDirty": "路径包含 .. 或冗余段",
+  "cln.guardForbidden": "路径是受保护的系统根",
+  "cln.guardTrashRoot": "路径是回收站根",
+  "cln.guardCurrent": "拒绝删除当前版本",
+  "cln.guardNotInside": "路径不在其可清理项内",
+  "cln.unknownItem": "未知项目",
+  "cli.scanFailed": "扫描失败: {err}"
 }

@@ -550,7 +550,10 @@ function subRows(c: Cleanable, parentSelected: boolean): string {
     if (!sub.length) return '';
     const shown = sub.slice(0, SUB_CAP);
     const more = sub.length - shown.length;
-    const base = c.path.endsWith('/') ? c.path : c.path + '/';
+    // 分隔符随平台：Windows 路径为反斜杠（Go 端 filepath.Join），unix 为正斜杠；
+    // 固定用 '/' 拼接会让反斜杠路径的子项退化为显示完整路径。
+    const sep = c.path.includes('\\') ? '\\' : '/';
+    const base = c.path.endsWith(sep) ? c.path : c.path + sep;
     const rows = shown.map(s => {
         const rel = s.path.startsWith(base) ? s.path.slice(base.length) : s.path;
         const selectable = !!s.id;
@@ -710,6 +713,8 @@ async function refreshTrashList() {
     });
     body.querySelectorAll<HTMLButtonElement>('[data-purge]').forEach(btn => {
         btn.onclick = async () => {
+            // 永久删除前必须确认（自 0.3.8 起 PurgeNow 为不可恢复的永久删除）
+            if (!confirm(t('ui.purgeConfirm', {n: 1}))) return;
             const r = JSON.parse(await PurgeNow([btn.dataset.purge!]));
             if ((r.errors ?? []).length) showToast(t('ui.purgeFailed', {err: r.errors.join('; ')}), true);
             else { showToast(t('ui.purged')); rescan(); }
@@ -760,13 +765,18 @@ function showUpdateAvailable(res: UpdateResult) {
     lastUpdateResult = res;
     updateState = 'idle';
     const body = el('updateBody');
+    // 无下载入口（安装来源 unknown 且资产匹配失败）时只提供 Release 页链接，
+    // 不显示无效的下载按钮（DownloadUpdate 对空 URL 只返回提示）
+    const dlAction = res.downloadURL
+        ? `<button class="btn primary" id="updDownload">${esc(t('upd.download'))}</button>`
+        : `<button class="btn primary" id="updRelease">${esc(t('upd.releasePage'))}</button>`;
     body.innerHTML = `
         <p class="update-versions">${t('upd.versions', {current: res.current, latest: res.latest})}</p>
         <p class="muted">${esc(t('upd.manualInstall'))}</p>
         <div class="update-actions">
             <button class="btn" id="updLater">${esc(t('upd.later'))}</button>
             <button class="btn" id="updIgnore">${esc(t('upd.ignore'))}</button>
-            <button class="btn primary" id="updDownload">${esc(t('upd.download'))}</button>
+            ${dlAction}
         </div>`;
     el('updateModal').classList.remove('hidden');
     el('updLater').onclick = () => el('updateModal').classList.add('hidden');
@@ -775,7 +785,10 @@ function showUpdateAvailable(res: UpdateResult) {
         el('updateModal').classList.add('hidden');
         showToast(t('upd.ignored', {version: res.latest}));
     };
-    el('updDownload').onclick = () => startDownload();
+    const dl = document.getElementById('updDownload');
+    if (dl) dl.onclick = () => startDownload();
+    const rl = document.getElementById('updRelease');
+    if (rl) rl.onclick = () => OpenURL(res.releaseURL || 'https://github.com/kevinjoy89/cli-analyzer/releases');
 }
 
 // 开始下载：进度条 + 取消；进度由 update:progress 事件驱动
@@ -828,7 +841,7 @@ function showUpdateVerifyFailed(err: string, releaseURL: string) {
     el('updRelease').onclick = () => OpenURL(releaseURL || 'https://github.com/kevinjoy89/cli-analyzer/releases');
 }
 
-// 手动检查（Help 菜单「检查更新…」）：不受 24h 缓存限制
+// 手动检查（Help 菜单「检查更新…」）：不受 4h 缓存限制
 async function manualCheck() {
     let res: UpdateResult;
     try { res = JSON.parse(await CheckForUpdates()); }
@@ -1249,6 +1262,8 @@ async function init() {
     el('trashPurgeAll').onclick = async () => {
         const ids = trashItems.map(it => it.id);
         if (!ids.length) return;
+        // 永久删除前必须确认（自 0.3.8 起 PurgeNow 为不可恢复的永久删除）
+        if (!confirm(t('ui.purgeConfirm', {n: ids.length}))) return;
         const r = JSON.parse(await PurgeNow(ids));
         showToast((r.errors ?? []).length ? t('ui.emptyTrashFailed', {err: r.errors.join('; ')}) : t('ui.emptyTrashDone', {n: r.deleted.length}), (r.errors ?? []).length > 0);
         if (r.deleted?.length) rescan();

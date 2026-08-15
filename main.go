@@ -5,6 +5,7 @@ import (
 	"embed"
 	"os"
 	goruntime "runtime"
+	"strings"
 
 	"cli-analyzer/gui"
 	"cli-analyzer/internal/cli"
@@ -135,6 +136,12 @@ func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "scan", "clean", "cache", "trash", "trends", "update", "uninstall", "version", "--version", "-v", "help", "-h", "--help":
+			os.Exit(cli.Run(os.Args[1:]))
+		}
+		// 横线开头的参数不是 GUI 标志（Wails 窗口不接收 CLI 参数）：交给
+		// CLI 报"未知命令"与 usage——此前落到 GUI 分支，在无 build tags 的
+		// CLI 构建下显示 "Wails applications will not build..." 的误导错误
+		if strings.HasPrefix(os.Args[1], "-") {
 			os.Exit(cli.Run(os.Args[1:]))
 		}
 		// "gui" and anything else fall through to the window.

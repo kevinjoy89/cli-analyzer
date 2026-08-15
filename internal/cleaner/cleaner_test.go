@@ -3,7 +3,10 @@ package cleaner
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"cli-analyzer/internal/i18n"
 
 	"cli-analyzer/internal/scanner"
 	"cli-analyzer/internal/trash"
@@ -296,5 +299,45 @@ func TestCleanSubUsesPreciseKind(t *testing.T) {
 	}
 	if !kinds["logs"] || !kinds["cache"] {
 		t.Fatalf("trash kinds = %v, want logs and cache", kinds)
+	}
+}
+
+// TestCleanGuardRejectsWindowsRoots 验证 Windows 系统根被 guard 拒绝
+// （大小写不敏感纵深防御）：任何来源的删除请求都不能命中系统目录。
+func TestCleanGuardRejectsWindowsRoots(t *testing.T) {
+	for _, p := range []string{`C:\Windows`, `c:\windows`, `C:\Program Files`, `C:\PROGRAM FILES (X86)`} {
+		if reason := guard(&scanner.Cleanable{Path: p, Tier: scanner.TierSafe}); reason == "" {
+			t.Errorf("guard(%q) 应拒绝 Windows 系统根", p)
+		}
+	}
+	// 合法 cleanable（用户缓存）仍放行（unix 上无法真实创建，直接检查路径判断）
+	if reason := guard(&scanner.Cleanable{Path: filepath.Join(t.TempDir(), "cache"), Tier: scanner.TierSafe}); reason != "" {
+		t.Errorf("合法路径被拒绝: %v", reason)
+	}
+}
+
+// TestCleanMessagesLocalized 验证 cleaner 的用户可见消息走 i18n（三语有 key、
+// 输出不含硬编码英文原文）——此前 guard/Skipped 消息全部英文硬编码，
+// 中文界面用户看到英文提示。
+func TestCleanMessagesLocalized(t *testing.T) {
+	i18n.SetLocale("zh-CN")
+	t.Cleanup(func() { i18n.SetLocale("zh-CN") })
+	p := filepath.Join(t.TempDir(), "config")
+	if err := os.MkdirAll(p, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	res := mkScanResult(scanner.Cleanable{
+		ID: "t|user|" + p, Tool: "t", Path: p, Bytes: 10, Tier: scanner.TierUser, Kind: "config",
+	})
+	report := Clean(res, []string{"t|user|" + p}, false)
+	if len(report.Skipped) != 1 {
+		t.Fatalf("skipped = %v", report.Skipped)
+	}
+	if strings.Contains(report.Skipped[0], "USER data") {
+		t.Errorf("Skipped 消息未本地化: %q", report.Skipped[0])
+	}
+	// guard 消息同样本地化
+	if reason := guard(&scanner.Cleanable{Path: "/", Tier: scanner.TierSafe}); strings.Contains(reason, "forbidden system root") {
+		t.Errorf("guard 消息未本地化: %q", reason)
 	}
 }

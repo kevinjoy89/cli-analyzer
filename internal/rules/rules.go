@@ -133,7 +133,10 @@ func ResolveCleanable(r CleanRule) []string {
 		}
 		var out []string
 		for _, e := range entries {
-			if strings.Contains(e.Name(), base) {
+			// 通配语义是前缀匹配：`codex-runtime-install-*` 只匹配以该
+			// 片段开头的目录；Contains 会把任意位置包含该片段的目录
+			// （如 my-codex-runtime-install-backup）误判为清理项。
+			if strings.HasPrefix(e.Name(), base) {
 				out = append(out, filepath.Join(dir, e.Name()))
 			}
 		}

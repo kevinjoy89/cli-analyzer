@@ -10,6 +10,8 @@ import (
 )
 
 // humanBytes renders a byte count compactly (e.g. "1.2 GB").
+// 后缀表覆盖 int64 全范围：最大 9.2 EiB 对应 exp=5，故需 6 个后缀
+// （K/M/G/T/P/E），此前 4 个后缀在 n ≥ 1 PiB 时 "KMGT"[4] 越界 panic。
 func humanBytes(n int64) string {
 	const unit = 1024
 	if n < unit {
@@ -20,7 +22,7 @@ func humanBytes(n int64) string {
 		div *= unit
 		exp++
 	}
-	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGT"[exp])
+	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGTPE"[exp])
 }
 
 // printTable renders the scan result as a terminal table.

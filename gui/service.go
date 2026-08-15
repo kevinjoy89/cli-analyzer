@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	goruntime "runtime"
-	"strings"
 	"sync"
 	"time"
 
@@ -247,18 +246,34 @@ func (s *ScannerService) PurgeNow(ids []string) string {
 }
 
 // OrphanTrash 将孤儿数据目录移入内置回收站（USER 级，可恢复，无永久删除）。
+// 安全约束：只接受当前扫描结果 Unattributed 列表中的路径——前端传入的
+// 任意路径一律拒绝，防止把用户数据（或任何非孤儿目录）移入回收站。
 func (s *ScannerService) OrphanTrash(paths []string) string {
+	s.mu.Lock()
+	allowed := map[string]bool{}
+	if s.last != nil {
+		for _, u := range s.last.Unattributed {
+			allowed[u.Path] = true
+		}
+	}
+	s.mu.Unlock()
 	sizer := &disk.Sizer{Skip: map[string]bool{trash.Root(): true}}
 	trashed := []string{}
 	errs := []string{}
 	for _, p := range paths {
+		if !allowed[p] {
+			errs = append(errs, p+": not an unattributed data dir")
+			continue
+		}
 		if err := trash.Trash(p, trash.Item{Tool: "orphan", Kind: "data", Bytes: sizer.WalkSize(p)}); err != nil {
 			errs = append(errs, p+": "+err.Error())
 			continue
 		}
 		trashed = append(trashed, p)
 	}
-	s.Scan() // 后台重扫，刷新孤儿列表
+	if s.ctx != nil {
+		s.Scan() // 后台重扫，刷新孤儿列表
+	}
 	b, _ := json.Marshal(map[string]any{"trashed": trashed, "errors": errs})
 	return string(b)
 }
@@ -669,8 +684,10 @@ func (s *ScannerService) runUninstallOfficial(off uninstall.Official) {
 	}
 	cmd := exec.CommandContext(ctx, bin, off.Args...)
 	platform.HideConsoleWindow(cmd) // Windows: 不闪控制台窗口
-	cmd.Env = withPath(os.Environ(), uninstall.AugmentedPathEnv())
-	var buf bytes.Buffer
+	cmd.Env = uninstall.WithPath(os.Environ(), uninstall.AugmentedPathEnv())
+	// 并发安全输出缓冲：stdout/stderr 由 exec 的两个复制 goroutine 并行
+	// 写入同一 buffer（管道缓冲多数场景串行化，无锁仍是理论竞态）
+	var buf syncBuf
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
 	err := cmd.Run()
@@ -741,14 +758,20 @@ func (s *ScannerService) UninstallTrashResidues(paths []string) string {
 	return string(b)
 }
 
-// withPath 返回替换 PATH 后的环境变量切片（保留其余环境）。
-func withPath(env []string, path string) []string {
-	out := make([]string, 0, len(env)+1)
-	for _, e := range env {
-		if strings.HasPrefix(e, "PATH=") {
-			continue
-		}
-		out = append(out, e)
-	}
-	return append(out, "PATH="+path)
+// syncBuf 是并发安全的输出缓冲（子进程 stdout/stderr 双写）
+type syncBuf struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuf) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuf) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }

@@ -126,6 +126,8 @@ func TestDeriveOldVersionsPyenv(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)        // isolate pyenv root (unix)
 	t.Setenv("USERPROFILE", home) // Windows：os.UserHomeDir 优先 USERPROFILE
+	// PYENV_ROOT 现在被识别：必须显式隔离，否则继承宿主的真实 pyenv 根
+	t.Setenv("PYENV_ROOT", filepath.Join(home, ".pyenv"))
 	versions := filepath.Join(home, ".pyenv", "versions")
 	for _, v := range []string{"3.12.0", "3.11.5"} {
 		os.MkdirAll(filepath.Join(versions, v), 0o755)

@@ -216,3 +216,15 @@ func TestResolveCommandViaAugmentedPath(t *testing.T) {
 		t.Error("missing command should error")
 	}
 }
+
+// TestOfficialCommandGoNoBinName 验证 go 来源工具无 PATH 二进制（缓存种子）
+// 时卸载提示不是残缺命令（rm $(go env GOPATH)/bin/ 无文件名）。
+func TestOfficialCommandGoNoBinName(t *testing.T) {
+	off := OfficialCommand(scanner.InstGo, "mytool", "")
+	if off.Command == "rm $(go env GOPATH)/bin/" {
+		t.Errorf("binName 为空时命令残缺: %q", off.Command)
+	}
+	if !strings.Contains(off.Command, "<命令名>") {
+		t.Errorf("应给通用占位提示，got %q", off.Command)
+	}
+}

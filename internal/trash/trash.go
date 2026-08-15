@@ -67,7 +67,16 @@ func Trash(path string, meta Item) error {
 		return err
 	}
 	meta.Path = dataDirOf(itemDir)
-	return writeInfo(itemDir, meta)
+	if err := writeInfoFn(itemDir, meta); err != nil {
+		// 元数据落盘失败（磁盘满/权限）：数据已被 Rename 移入回收站但无
+		// info.json 索引，列表不可见、恢复不可达、Sweep 也会跳过 → 永久
+		// 孤儿数据。立即把数据移回原路径回滚现场。
+		if rbErr := os.Rename(dataDirOf(itemDir), path); rbErr == nil {
+			_ = os.Remove(itemDir)
+		}
+		return err
+	}
+	return nil
 }
 
 // Restore 将指定项目还原到原路径；原路径被占用时改名还原并返回实际路径
@@ -83,6 +92,11 @@ func Restore(id string) (string, error) {
 	target := meta.Original
 	if _, err := os.Lstat(target); err == nil {
 		target = uniquify(target)
+	}
+	// 原父目录可能已被用户删除：恢复必须重建父目录，否则 Rename 直接
+	// 失败（ENOENT），数据困在回收站无法恢复
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return "", err
 	}
 	if err := os.Rename(dataDirOf(itemDir), target); err != nil {
 		return "", err
@@ -186,7 +200,13 @@ func List() ([]Item, error) {
 			out = append(out, *meta)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].TrashedAt > out[j].TrashedAt })
+	// 确定性排序：同移入时间（同秒批量）按原路径升序，列表顺序可复现
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].TrashedAt != out[j].TrashedAt {
+			return out[i].TrashedAt > out[j].TrashedAt
+		}
+		return out[i].Original < out[j].Original
+	})
 	return out, nil
 }
 
@@ -203,16 +223,20 @@ func refineKind(kind, original string) string {
 	return kind
 }
 
-// Purge 立即清出回收站中指定项目；处理方式遵循过期配置——默认移到系统回收站
-// （最后一道保险），配置为 permanent 时才彻底删除
+// Purge 立即永久删除回收站中指定项目（"清空/彻底删除"的显式语义）。
+// 调用方（CLI `trash empty` / GUI "彻底删除"）承诺的是不可恢复的永久删除，
+// 不经过系统回收站——README、CLI 注释与前端文案（Delete permanently）均
+// 如此声明，此前实现却复用过期配置（默认 system-trash），"清空"只是把项目
+// 转到系统回收站，磁盘空间并未释放，行为与契约不符。
+// 过期项目的自动清理（Sweep）才遵循 ExpireAction 配置（默认系统回收站，
+// 作为无人值守路径的最后一道保险）。
 func Purge(ids []string) (deleted []string, errs []string) {
-	action := config.Load().Trash.ExpireAction
 	for _, id := range ids {
 		if id == "" || filepath.Base(id) != id {
 			errs = append(errs, id+": "+i18n.T("err.trashInvalidItem"))
 			continue
 		}
-		if err := removeExpired(filepath.Join(Root(), id), action); err != nil {
+		if err := removeExpired(filepath.Join(Root(), id), config.ExpireActionPermanent); err != nil {
 			errs = append(errs, id+": "+err.Error())
 			continue
 		}
@@ -272,6 +296,8 @@ func uniquify(target string) string {
 }
 
 // writeInfo 写元数据并落盘，保证崩溃后可恢复。
+// 原子写（唯一 tmp + rename）：进程崩溃时不会留下半截 info.json——
+// 半截 JSON 会让 readInfo 失败，项目数据既不可见也不可恢复（永久孤儿）。
 // 注意：必须用可写句柄打开再 Sync——Windows 的 FlushFileBuffers 对只读
 // 句柄返回 ERROR_ACCESS_DENIED（unix fsync 无此限制）。
 func writeInfo(itemDir string, meta Item) error {
@@ -279,17 +305,30 @@ func writeInfo(itemDir string, meta Item) error {
 	if err != nil {
 		return err
 	}
-	p := infoPathOf(itemDir)
-	if err := os.WriteFile(p, b, 0o644); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(p, os.O_RDWR, 0)
+	tmp, err := os.CreateTemp(itemDir, "info-*.tmp")
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	return f.Sync()
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	return os.Rename(tmpName, infoPathOf(itemDir))
 }
+
+// writeInfoFn 可被测试替换，用于模拟元数据落盘失败（磁盘满/权限）场景
+var writeInfoFn = writeInfo
 
 // readInfo 读取项目元数据并补全 ID 与 Path
 func readInfo(itemDir string) (*Item, error) {
@@ -306,12 +345,17 @@ func readInfo(itemDir string) (*Item, error) {
 	return &it, nil
 }
 
-// removeExpired 按配置清除一个过期项；系统回收站不可用时降级为彻底删除
+// removeExpired 按配置清除一个过期项；系统回收站不可用时降级为彻底删除。
+// 降级删除必须检查错误：RemoveAll 失败（权限）时保留 info.json 与项目目录，
+// 让该项目留在回收站中待下次重试——此前忽略错误仍删 info，数据会变成
+// 既不可见也不可恢复的孤儿。
 func removeExpired(itemDir string, action string) error {
 	content := dataDirOf(itemDir)
 	if action == config.ExpireActionSystemTrash {
 		if err := systemTrashFn(content); err != nil {
-			_ = os.RemoveAll(content)
+			if err2 := os.RemoveAll(content); err2 != nil {
+				return err2
+			}
 		}
 	} else {
 		if err := os.RemoveAll(content); err != nil {

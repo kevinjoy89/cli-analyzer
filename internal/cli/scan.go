@@ -2,12 +2,14 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"sort"
 	"time"
 
 	"cli-analyzer/internal/history"
+	"cli-analyzer/internal/i18n"
 	"cli-analyzer/internal/probe"
 	"cli-analyzer/internal/scanner"
 )
@@ -22,6 +24,9 @@ func runScan(args []string) int {
 	order := fs.String("order", "size", "sort order: size|name")
 	fs.SetOutput(stderr())
 	if err := fs.Parse(reorderFlags(args)); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0 // 帮助请求不是错误
+		}
 		return 1
 	}
 	filters := fs.Args()
@@ -36,11 +41,15 @@ func runScan(args []string) int {
 		var err error
 		res, err = scanner.Scan(scanner.Options{Full: *full, NoCache: *noCache, ToolFilter: filters})
 		if err != nil {
-			fmt.Fprintf(stderr(), "scan failed: %v\n", err)
+			fmt.Fprintf(stderr(), "%s\n", i18n.T("cli.scanFailed", map[string]any{"err": err}))
 			return 1
 		}
 		// 只有真实扫描才追加历史；命中缓存时已有记录，不重复写入
-		_ = history.Record(res)
+		// 过滤扫描（`scan <filter> --refresh`）返回的是过滤后的 totals，
+		// 写入历史会污染整体趋势/增量排行数据（此前无条件 Record）
+		if len(filters) == 0 {
+			_ = history.Record(res)
+		}
 	} else if len(filters) > 0 {
 		res = filterResult(res, filters)
 	}

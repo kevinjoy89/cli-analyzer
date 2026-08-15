@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"sync"
 	"testing"
 )
 
@@ -156,5 +157,29 @@ func TestLanguageRoundTrip(t *testing.T) {
 	}
 	if got := Load(); got.Language != LangEn {
 		t.Errorf("Language = %q, want en", got.Language)
+	}
+}
+
+// TestSaveConcurrent 验证并发 Save 不丢更新：固定 ".tmp" 名在并发写时
+// 互相覆盖导致一个 Rename 失败（配置更新静默丢失），唯一 tmp 名后
+// 两次并发写都成功且最终文件是合法 JSON。
+func TestSaveConcurrent(t *testing.T) {
+	withTempRoot(t)
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			c := Default()
+			c.Trash.RetentionDays = n + 1
+			if err := Save(c); err != nil {
+				t.Errorf("并发 Save 失败: %v", err)
+			}
+		}(i)
+	}
+	wg.Wait()
+	got := Load()
+	if got.Trash.RetentionDays < 1 {
+		t.Errorf("配置损坏: %+v", got)
 	}
 }

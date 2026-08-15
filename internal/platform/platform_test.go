@@ -103,3 +103,24 @@ func TestPathDirsAugmentUserDirs(t *testing.T) {
 		t.Error("non-existent dir should be skipped")
 	}
 }
+
+// TestPathDirsAugmentsGOBIN 验证 GOBIN 自定义时增强目录包含 GOBIN：
+// go install 的二进制在 GOBIN（而非 GOPATH/bin），GUI 最小 PATH 启动
+// 时若不补齐会漏扫 GOBIN 工具。
+func TestPathDirsAugmentsGOBIN(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("user-dir PATH augmentation is unix-only")
+	}
+	home := t.TempDir()
+	gobin := filepath.Join(home, "custom-gobin")
+	if err := os.MkdirAll(gobin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("GOBIN", gobin)
+	t.Setenv("PATH", "/usr/bin:/bin")
+	dirs := PathDirs(true)
+	if !contains(dirs, gobin) {
+		t.Errorf("PathDirs missing GOBIN %q, got %v", gobin, dirs)
+	}
+}

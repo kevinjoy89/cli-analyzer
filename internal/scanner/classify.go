@@ -3,6 +3,7 @@ package scanner
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -73,6 +74,13 @@ func classify(real, entryName string) classification {
 	// go install: $GOPATH/bin or $GOBIN.
 	if under(real, goBin()) {
 		return classification{ToolID: entryName, Installer: InstGo}
+	}
+
+	// rustup 本体：~/.cargo/bin/rustup。单独识别为 InstRustup（而非
+	// InstCargo）以推导工具链清理项（旧工具链 USER 展示），否则 rustup
+	// 的工具链细分在扫描中完全缺失。
+	if under(real, cargoBin()) && strings.EqualFold(filepath.Base(real), "rustup") {
+		return classification{ToolID: "rustup", Installer: InstRustup}
 	}
 
 	// cargo: ~/.cargo/bin.
@@ -152,19 +160,76 @@ func nodejsFamilyRoot(entryName string) (string, bool) {
 }
 
 // nodejsInstallRoot 仅当目录本身就是 Node 运行时目录时返回该目录作为安装根
-// （目录内存在 node / node.exe），避免把 ~/.local/bin 等共享 bin 目录整体
-// 算作 nodejs 的安装占用。Windows 官方安装器 / nvm-windows / Volta / scoop
-// 的目录都满足；unix 上独立散放的 npm 脚本不满足（返回 ""，按文件计大小）。
+// （目录内存在 node / node.exe，且不含 node 家族以外的命令），避免把
+// /usr/local/bin、~/.local/bin 等共享 bin 目录整体算作 nodejs 的安装占用
+// （手动放置的 node 只是单个二进制，目录里其余命令不属于 node 运行时）。
+// Windows 官方安装器 / nvm-windows / Volta / scoop 的目录都满足；unix 上
+// 独立散放的 npm 脚本不满足（返回 ""，按文件计大小）。
 func nodejsInstallRoot(dir string) string {
 	if dir == "" {
 		return ""
 	}
+	hasNode := false
 	for _, cand := range []string{"node.exe", "node"} {
 		if st, err := os.Stat(filepath.Join(dir, cand)); err == nil && !st.IsDir() {
-			return dir
+			hasNode = true
+			break
 		}
 	}
-	return ""
+	if !hasNode {
+		return ""
+	}
+	if !nodeOnlyDir(dir) {
+		return ""
+	}
+	return dir
+}
+
+// nodeOnlyDir 报告目录内除 node 家族命令外无其他命令（专用运行时目录形态）。
+// Windows 官方安装目录附带 npm.ps1/npx.ps1/corepack.ps1、node_etw_provider.man
+// 等清单与文档文件，这些不是其他工具的命令，必须放行：unix 按执行位判定
+// （无执行位的文档/数据文件放行），Windows 按"命令必须带可执行扩展名
+// （.exe/.cmd/.bat/.com/.ps1）"判定（.man/.dll/无扩展名等一律放行）。
+func nodeOnlyDir(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		switch normEntryName(e.Name()) {
+		case "", "node", "npm", "npx", "corepack", "node-gyp", "install_tools", "nodevars",
+			"npm.ps1", "npx.ps1", "corepack.ps1", "node-gyp.ps1":
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(e.Name()))
+		if runtime.GOOS == "windows" {
+			// Windows 命令必须带可执行扩展名：.exe/.cmd/.bat/.com/.ps1 之外的
+			// 文件（.man/.dll/.dat/无扩展名等）是数据/文档——官方安装器目录里
+			// 存在 node_etw_provider.man 等清单文件，把它们当"其他命令"会把
+			// 真正的 Node 运行时目录误拒（安装根归因失效）。
+			switch ext {
+			case ".exe", ".cmd", ".bat", ".com", ".ps1":
+				return false // 其他工具的命令（不在 node 家族白名单内）
+			default:
+				continue
+			}
+		} else if info.Mode()&0o111 == 0 {
+			continue // 无执行位 = 文档/数据文件，不是命令
+		}
+		switch ext {
+		case ".md", ".txt", ".html", ".json", ".xml", ".yml", ".yaml", ".cfg", ".ini":
+			continue // 文档/配置文件不是命令
+		}
+		return false
+	}
+	return true
 }
 
 // ---- Git 家族 ----
@@ -174,9 +239,11 @@ func nodejsInstallRoot(dir string) string {
 // start-ssh-agent.cmd、start-ssh-pageant.cmd 等）与 unix 安装中的同名命令。
 // 它们共享同一安装，应归并为一条 "git"。brew 公式 git-lfs / tig 等是独立
 // 产品，已在 classify 的 brew 分支保持独立（家族检查在其后）。gh / hub 是
-// 独立 CLI 产品，不属于家族。
+// 独立 CLI 产品，不属于家族。gitk/git-gui 是随 Git 分发的 GUI 附属：unix 上
+// 是可执行脚本（IsConsoleExe 恒真），不并入家族会各自成为独立工具行。
 var gitFamily = map[string]bool{
 	"git": true, "git-lfs": true, "scalar": true, "tig": true,
+	"gitk": true, "git-gui": true,
 	"git-receive-pack": true, "git-upload-pack": true, "git-upload-archive": true,
 	"start-ssh-agent": true, "start-ssh-pageant": true,
 }
@@ -189,20 +256,78 @@ func gitFamilyRoot(entryName string) (string, bool) {
 	return "", false
 }
 
-// gitInstallRoot 仅当目录本身就是 Git 命令目录（含 git.exe / git）时返回
-// 该目录作为安装根（Git for Windows 的 cmd/ 即此形态），避免把共享 bin
-// 目录整体算作 git 的安装占用。unix 上 git 由 brew/系统提供（已在更早分支
-// 命中），独立散放的 git 脚本不满足（返回 ""，按文件计大小）。
+// gitInstallRoot 仅当目录本身就是 Git 命令目录（含 git.exe / git，且不含
+// Git 家族以外的命令）时返回该目录作为安装根（Git for Windows 的 cmd/
+// 即此形态），避免把 /usr/local/bin 等共享 bin 目录整体算作 git 的安装
+// 占用。unix 上 git 由 brew/系统提供（已在更早分支命中），独立散放的 git
+// 脚本不满足（返回 ""，按文件计大小）。
 func gitInstallRoot(dir string) string {
 	if dir == "" {
 		return ""
 	}
+	hasGit := false
 	for _, cand := range []string{"git.exe", "git"} {
 		if st, err := os.Stat(filepath.Join(dir, cand)); err == nil && !st.IsDir() {
-			return dir
+			hasGit = true
+			break
 		}
 	}
-	return ""
+	if !hasGit {
+		return ""
+	}
+	if !gitOnlyDir(dir) {
+		return ""
+	}
+	return dir
+}
+
+// gitOnlyDir 报告目录内除 git 家族命令外无其他命令（专用命令目录形态）。
+// gitk/git-gui/git-citool 等 GUI 附属与 git-bash/git-cmd 等启动器随 Git 官方
+// 安装器分发（git-bash/git-cmd 不在 gitFamily，也不应并入家族——它们是
+// 启动器而非 git 命令），目录内存在它们不算"其他工具"；文档/数据文件
+// （README/LICENSE 等）同样放行（unix 按执行位、Windows 按扩展名）。
+func gitOnlyDir(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		switch normEntryName(e.Name()) {
+		case "", "gitk", "git-gui", "git-citool", "git-web--browse", "git-mergetool", "git-difftool",
+			"git-bash", "git-cmd":
+			continue
+		}
+		if gitFamily[normEntryName(e.Name())] {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(e.Name()))
+		if runtime.GOOS == "windows" {
+			// Windows 命令必须带可执行扩展名：其余（.dll/.md/无扩展名等）是
+			// 数据/文档，不当"其他命令"，避免把真实 Git for Windows 的 cmd/
+			// 目录误拒（安装根归因失效）。
+			switch ext {
+			case ".exe", ".cmd", ".bat", ".com", ".ps1":
+				return false // 其他工具的命令（不在 git 家族白名单内）
+			default:
+				continue
+			}
+		} else if info.Mode()&0o111 == 0 {
+			continue // 无执行位 = 文档/数据文件，不是命令
+		}
+		switch ext {
+		case ".md", ".txt", ".html", ".json", ".xml", ".yml", ".yaml", ".cfg", ".ini":
+			continue // 文档/配置文件不是命令
+		}
+		return false
+	}
+	return true
 }
 
 // probeOrder 把工具的主二进制排到 Binaries[0]：版本探测（--version）取
@@ -254,7 +379,7 @@ func brewCellarMatch(real string) (formula, ver string, ok bool) {
 	if pre == "" {
 		return "", "", false
 	}
-	marker := pre + "/Cellar/"
+	marker := brewCellarPrefix(pre)
 	if !strings.HasPrefix(real, marker) {
 		return "", "", false
 	}
@@ -265,9 +390,20 @@ func brewCellarMatch(real string) (formula, ver string, ok bool) {
 	return segs[0], segs[1], true
 }
 
+// brewCellarPrefix 返回 Cellar 前缀（含尾分隔符）。
+// 用 filepath.Join 规范化：用户设置 HOMEBREW_PREFIX 带尾斜杠时
+// 手拼 pre+"/Cellar/" 会产生双斜杠，真实路径不匹配导致 brew 归因失效。
+func brewCellarPrefix(pre string) string {
+	return filepath.Join(pre, "Cellar") + string(filepath.Separator)
+}
+
 // versionedMatch finds .../<base>/versions/<v>/ in a real path.
 // 分隔符无关：Windows 反斜杠路径与 unix 正斜杠路径同样识别（拆分后按
 // 正斜杠重建，filepath.FromSlash 还原为本机分隔符）。
+// versions 后的段必须是版本形态（数字或 v+数字开头）：nvm 的布局是
+// ~/.nvm/versions/<家族名 node/iojs>/<版本>/bin/<cmd>，"versions" 后是
+// 家族名而非版本号，误判会把 node/npm/npx 归为名为 ".nvm" 的工具并使
+// nodejs 家族合并失效。
 func versionedMatch(real string) (base, v string, ok bool) {
 	segs := splitPath(real)
 	for i := 0; i+1 < len(segs); i++ {
@@ -279,12 +415,24 @@ func versionedMatch(real string) (base, v string, ok bool) {
 			continue
 		}
 		v = segs[i+1]
-		if v == "" {
-			continue
+		if !isVersionDir(v) {
+			continue // nvm 布局（versions 后是 node/iojs 等家族名）
 		}
 		return base, v, true
 	}
 	return "", "", false
+}
+
+// isVersionDir 报告目录名是否为版本目录形态（数字开头或 v+数字开头）。
+func isVersionDir(name string) bool {
+	if name == "" {
+		return false
+	}
+	c := name[0]
+	if c >= '0' && c <= '9' {
+		return true
+	}
+	return (c == 'v' || c == 'V') && len(name) > 1 && name[1] >= '0' && name[1] <= '9'
 }
 
 // npmPkgMatch returns the package name, its node_modules root and the pkg dir.
@@ -430,7 +578,38 @@ func goBin() string {
 	return filepath.Join("go", "bin")
 }
 
+var (
+	goEnvOnce sync.Once
+	goEnvVal  string
+)
+
+// goEnvGopath 返回真实 GOPATH：优先 $GOPATH，其次 `go env GOPATH`
+// （用户可能在 ~/.config/go/env 里配置，Go 1.8+ 默认路径与 env 变量不同），
+// 均不可用时回退 ~/go。go 命令首次调用后缓存。
+func goEnvGopath() string {
+	goEnvOnce.Do(func() {
+		if g := os.Getenv("GOPATH"); g != "" {
+			goEnvVal = filepath.Clean(g)
+			return
+		}
+		if out, err := exec.Command("go", "env", "GOPATH").Output(); err == nil {
+			if g := strings.TrimSpace(string(out)); g != "" {
+				goEnvVal = filepath.Clean(g)
+				return
+			}
+		}
+		if h, err := os.UserHomeDir(); err == nil {
+			goEnvVal = filepath.Join(h, "go")
+		}
+	})
+	return goEnvVal
+}
+
 func cargoBin() string {
+	// CARGO_HOME 可自定义（默认 ~/.cargo）
+	if c := os.Getenv("CARGO_HOME"); c != "" {
+		return filepath.Join(c, "bin")
+	}
 	if h, err := os.UserHomeDir(); err == nil {
 		return filepath.Join(h, ".cargo", "bin")
 	}
@@ -438,6 +617,10 @@ func cargoBin() string {
 }
 
 func pyenvVersionsPath() string {
+	// PYENV_ROOT 可自定义（默认 ~/.pyenv）
+	if r := os.Getenv("PYENV_ROOT"); r != "" {
+		return filepath.Join(r, "versions")
+	}
 	if h, err := os.UserHomeDir(); err == nil {
 		return filepath.Join(h, ".pyenv", "versions")
 	}
@@ -445,6 +628,9 @@ func pyenvVersionsPath() string {
 }
 
 func pyenvShimsPath() string {
+	if r := os.Getenv("PYENV_ROOT"); r != "" {
+		return filepath.Join(r, "shims")
+	}
 	if h, err := os.UserHomeDir(); err == nil {
 		return filepath.Join(h, ".pyenv", "shims")
 	}
@@ -456,8 +642,24 @@ func under(real, dir string) bool {
 	if dir == "" {
 		return false
 	}
+	if runtime.GOOS == "windows" {
+		// Windows 文件系统大小写不敏感：GOPATH 等环境变量与 EvalSymlinks
+		// 解析出的真实路径大小写可能不同，必须按大小写不敏感比较，
+		// 否则 go/cargo/pyenv 归因失效（工具被归为 other）。
+		return underFold(real, dir)
+	}
 	if real == dir {
 		return true
 	}
 	return strings.HasPrefix(real, dir+string(filepath.Separator))
+}
+
+// underFold 是 Windows 专用的大小写不敏感路径包含判断（斜杠归一化后比较）。
+func underFold(real, dir string) bool {
+	if dir == "" {
+		return false
+	}
+	rl := strings.ToLower(filepath.ToSlash(real))
+	dl := strings.ToLower(filepath.ToSlash(dir))
+	return rl == dl || strings.HasPrefix(rl, dl+"/")
 }

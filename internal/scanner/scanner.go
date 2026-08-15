@@ -61,9 +61,13 @@ func Scan(opts Options) (*ScanResult, error) {
 	}
 
 	for _, ex := range execs {
-		real, err := filepath.EvalSymlinks(ex.Path)
-		if err != nil {
-			real = ex.Path
+		real := ex.Real
+		if real == "" {
+			var err error
+			real, err = filepath.EvalSymlinks(ex.Path)
+			if err != nil {
+				real = ex.Path
+			}
 		}
 		var size int64
 		if st, err := os.Stat(real); err == nil && st.Mode().IsRegular() {
@@ -92,16 +96,26 @@ func Scan(opts Options) (*ScanResult, error) {
 	res.Unattributed = findUnattributed(tools, order, sizer)
 	res.Errors = sizer.Errors
 
+	// 扫描耗时必须在写缓存之前计算：SaveCache 序列化的是当前 res，
+	// 若在写缓存之后才赋值，缓存 JSON 里的 scanTimeMs 恒为 0
+	// （GUI 启动从缓存渲染时会显示"扫描耗时 0ms"）。
+	res.ScanTimeMS = time.Since(start).Milliseconds()
+
 	if !opts.NoCache {
 		// Cache the full (unfiltered) result: a filtered CLI scan like
 		// `scan npm` must not clobber the snapshot the GUI starts from.
 		cached := res
 		if len(opts.ToolFilter) > 0 {
 			cached = finalize(tools, order, Options{Full: opts.Full})
+			// finalize 生成的是新 ScanResult：必须补上主流程计算、filter
+			// 无关的字段——ScanTimeMS（扫描耗时）与 Unattributed（孤儿
+			// 列表）。此前漏补导致 `scan <filter> --refresh` 写出的缓存
+			// scanTimeMs=0、孤儿列表为空（GUI 从缓存渲染时表现异常）。
+			cached.ScanTimeMS = res.ScanTimeMS
+			cached.Unattributed = res.Unattributed
 		}
 		_ = SaveCache(cached)
 	}
-	res.ScanTimeMS = time.Since(start).Milliseconds()
 	return res, nil
 }
 
@@ -135,11 +149,12 @@ func findUnattributed(tools map[string]*toolBuilder, order []string, sizer *disk
 	var paths []string
 	var pathKind = map[string]string{}
 	// 孤儿遍历仅限 CLI 工具主导的数据根（平台不适用时解析为 "" 自动跳过）：
-	// macOS/Linux 用 XDG 目录；Windows 用 AppData/LocalAppData。
+	// macOS/Linux 用 XDG 目录（含 state——pnpm store、工具运行状态等残留
+	// 同样是可展示的未认领数据）；Windows 用 AppData/LocalAppData。
 	// macOS Application Support/Caches/Preferences 是 GUI 应用主导（Safari、
 	// App Store、Chrome…），只用于已认领工具的归因，不作为孤儿来源。
 	for _, k := range []platform.RootKind{
-		platform.XDGCache, platform.XDGData, platform.XDGConfig,
+		platform.XDGCache, platform.XDGData, platform.XDGConfig, platform.XDGState,
 		platform.AppData, platform.LocalAppData,
 	} {
 		root := platform.Root(k)
@@ -244,9 +259,11 @@ func isDirEntry(p string, e os.DirEntry) bool {
 
 // claimTopLevel 把 path 在任一扫描数据根下的顶层目录名加入 claimed。
 // （cleanable 通常位于某数据根下；无法归属到根时忽略。）
+// root 列表与 findUnattributed 保持一致（含 XDGState），防止状态根下的
+// cleanable 被当成孤儿。
 func claimTopLevel(claimed map[string]bool, path string) {
 	for _, k := range []platform.RootKind{
-		platform.XDGCache, platform.XDGData, platform.XDGConfig,
+		platform.XDGCache, platform.XDGData, platform.XDGConfig, platform.XDGState,
 		platform.AppData, platform.LocalAppData,
 	} {
 		root := platform.Root(k)

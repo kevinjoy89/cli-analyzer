@@ -15,6 +15,9 @@ import (
 var out io.Writer = os.Stdout
 var errOut io.Writer = os.Stderr
 
+// stdin 供交互确认读取；变量形式便于测试注入（空输入 = 拒绝）
+var stdin io.Reader = os.Stdin
+
 func stdout() io.Writer { return out }
 func stderr() io.Writer { return errOut }
 

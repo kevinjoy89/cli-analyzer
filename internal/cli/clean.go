@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -28,6 +29,9 @@ func runClean(args []string) int {
 	permanent := fs.Bool("permanent", false, "immediately delete, skip the built-in trash")
 	fs.SetOutput(stderr())
 	if err := fs.Parse(reorderFlags(args)); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0 // 帮助请求不是错误
+		}
 		return 1
 	}
 	filters := fs.Args()

@@ -12,6 +12,10 @@ import (
 type execEntry struct {
 	Path string // full path as found (may be a symlink)
 	Name string // base name
+	// Real 是真实二进制路径（symlink 解析后）。指向目录的 symlink 场景
+	// （sdkman current：链接 -> 目录，目录内含同名命令）由 resolveSymlinkExec
+	// 解析到 <dir>/<name> 的真实文件；为空时扫描器自行 EvalSymlinks。
+	Real string
 }
 
 // discoverExecs enumerates executables on PATH, resolving symlinks so that
@@ -78,13 +82,13 @@ func resolveSymlinkExec(full, name string) []execEntry {
 		for _, cand := range []string{filepath.Join(real, "bin", name), filepath.Join(real, name)} {
 			ci, err := os.Stat(cand)
 			if err == nil && ci.Mode().IsRegular() && platform.IsExecutable(ci) && platform.IsConsoleExe(full) {
-				return []execEntry{{Path: full, Name: name}}
+				return []execEntry{{Path: full, Name: name, Real: cand}}
 			}
 		}
 		return nil
 	}
 	if platform.IsExecutable(st) && platform.IsConsoleExe(full) {
-		return []execEntry{{Path: full, Name: name}}
+		return []execEntry{{Path: full, Name: name, Real: real}}
 	}
 	return nil
 }

@@ -10,6 +10,10 @@ import (
 
 // runTrends 打印最近 days 天的占用趋势与 cleanable 增量 Top 5；可带一个天数参数
 func runTrends(args []string) int {
+	if len(args) >= 1 && (args[0] == "help" || args[0] == "-h" || args[0] == "--help") {
+		fmt.Fprintln(stdout(), i18n.T("cli.trendsHelp"))
+		return 0
+	}
 	days := 30
 	if len(args) >= 1 {
 		var d int

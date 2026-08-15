@@ -58,6 +58,29 @@ func TestRunUninstallUnknown(t *testing.T) {
 	}
 }
 
+// TestRunUninstallNoCache 验证从未扫描（无缓存）时给出"请先扫描"的明确
+// 提示（exit 1），而不是误报"未找到该工具"（exit 2）——缓存缺失是状态
+// 问题，不是工具不存在，错误信息必须可区分。
+func TestRunUninstallNoCache(t *testing.T) {
+	pinZhCN(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "xdg-cache"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "xdg-data"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "xdg-config"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(home, "local-appdata"))
+	t.Setenv("APPDATA", filepath.Join(home, "appdata"))
+	captureStdout(t)
+	errBuf := captureStderr(t)
+	if code := Run([]string{"uninstall", "mytool"}); code != 1 {
+		t.Fatalf("no-cache exit = %d, want 1（无缓存应提示先扫描，而非误报工具不存在）", code)
+	}
+	if !strings.Contains(errBuf.String(), "扫描") {
+		t.Errorf("stderr 应提示先扫描: %q", errBuf.String())
+	}
+}
+
 func TestRunUninstallResidue(t *testing.T) {
 	pinZhCN(t)
 	cfgDir := filepath.Join(t.TempDir(), "xdg-config", "mytool")

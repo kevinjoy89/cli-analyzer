@@ -152,16 +152,27 @@ func Trends(days int) (*TrendsResult, error) {
 		}
 		all = append(all, s)
 	}
+	// 循环正常结束不保证无错误：中途 IO/损坏错误只在 Err 里暴露，
+	// 不检查会把不完整数据当全量返回（趋势图/增量排行静默失真）
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	rows.Close()
 
 	cutoff := time.Now().AddDate(0, 0, -days)
 	// 无历史时返回空数组而非 nil，保证 JSON 序列化为 [] 而不是 null
 	out := &TrendsResult{Points: []Point{}, TopGrowers: []Grower{}}
+	// 窗口内记录：Points 与 TopGrowers 共用同一过滤——TopGrowers 若用
+	// 全量历史（含窗口外旧扫描）会把"40 天前的扫描"当作上次扫描计算
+	// 增量，导致 `trends 7` 显示 40 天前的增长（契约不一致）。
+	var inWindow []scanRow
 	for _, s := range all {
 		t, err := time.Parse(time.RFC3339, s.scannedAt)
 		if err != nil || t.Before(cutoff) {
 			continue
 		}
+		inWindow = append(inWindow, s)
 		p := Point{
 			Date:      t.Format("2006-01-02"),
 			Footprint: s.footprint, Cleanable: s.cleanable, User: s.user,
@@ -173,36 +184,51 @@ func Trends(days int) (*TrendsResult, error) {
 			out.Points = append(out.Points, p)
 		}
 	}
-	out.TopGrowers = topGrowers(db, all, 5)
+	out.TopGrowers, err = topGrowers(db, inWindow, 5)
+	if err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
 // topGrowers 用最近两次扫描的 cleanable 差计算增长排行；历史不足两次返回空数组
-func topGrowers(db *sql.DB, all []scanRow, n int) []Grower {
+func topGrowers(db *sql.DB, all []scanRow, n int) ([]Grower, error) {
 	if len(all) < 2 {
-		return []Grower{}
+		return []Grower{}, nil
 	}
 	prev := all[len(all)-2].id
 	last := all[len(all)-1].id
 	delta := map[string]int64{}
-	load := func(scanID int64) map[string]int64 {
+	load := func(scanID int64) (map[string]int64, error) {
 		m := map[string]int64{}
 		rows, err := db.Query(`SELECT tool, cleanable FROM scan_tools WHERE scan_id = ?`, scanID)
 		if err != nil {
-			return m
+			return nil, err
 		}
 		defer rows.Close()
 		for rows.Next() {
 			var tool string
 			var clean int64
-			if err := rows.Scan(&tool, &clean); err == nil {
-				m[tool] = clean
+			if err := rows.Scan(&tool, &clean); err != nil {
+				return nil, err
 			}
+			m[tool] = clean
 		}
-		return m
+		// 中途错误必须向上传播：静默返回不完整数据会让增量排行失真，
+		// 且调用方无法区分"正常空结果"与"查询失败"
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return m, nil
 	}
-	prevTools := load(prev)
-	lastTools := load(last)
+	prevTools, err := load(prev)
+	if err != nil {
+		return nil, err
+	}
+	lastTools, err := load(last)
+	if err != nil {
+		return nil, err
+	}
 	for tool, clean := range lastTools {
 		delta[tool] = clean - prevTools[tool]
 	}
@@ -213,11 +239,17 @@ func topGrowers(db *sql.DB, all []scanRow, n int) []Grower {
 			growers = append(growers, Grower{Tool: tool, DeltaBytes: d})
 		}
 	}
-	sort.Slice(growers, func(i, j int) bool { return growers[i].DeltaBytes > growers[j].DeltaBytes })
+	// 确定性排序：同增量按工具名升序
+	sort.Slice(growers, func(i, j int) bool {
+		if growers[i].DeltaBytes != growers[j].DeltaBytes {
+			return growers[i].DeltaBytes > growers[j].DeltaBytes
+		}
+		return growers[i].Tool < growers[j].Tool
+	})
 	if len(growers) > n {
 		growers = growers[:n]
 	}
-	return growers
+	return growers, nil
 }
 
 // prune 删除超出保留期（默认 90 天）的旧历史，避免无限增长
