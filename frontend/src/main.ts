@@ -382,6 +382,24 @@ async function trashPaths(paths: string[]) {
     } catch (e) { showToast(String(e), true); }
 }
 
+// 应用内确认弹窗（复用工具风格 #modal，替代原生 confirm()）：
+// macOS WKWebView 不支持 window.confirm（点击永远无反应），Windows WebView2
+// 的 confirm 是网页风格弹窗，与工具 UI 不一致。返回 Promise<boolean>。
+function confirmDialog(opts: {title: string; message: string; confirmText: string}): Promise<boolean> {
+    return new Promise(resolve => {
+        el('modalTitle').textContent = opts.title;
+        el('modalBody').innerHTML = `<p class="warn">${esc(opts.message)}</p>`;
+        el('modalConfirm').textContent = opts.confirmText;
+        const done = (ok: boolean) => {
+            el('modal').classList.add('hidden');
+            resolve(ok);
+        };
+        el('modalConfirm').onclick = () => done(true);
+        el('modalCancel').onclick = () => done(false);
+        el('modal').classList.remove('hidden');
+    });
+}
+
 // 二次确认：展示待移入项（路径 + 大小）与可恢复说明，确认后才真正移入回收站
 function showOrphanConfirm(paths: string[]) {
     if (!paths.length) return;
@@ -714,7 +732,12 @@ async function refreshTrashList() {
     body.querySelectorAll<HTMLButtonElement>('[data-purge]').forEach(btn => {
         btn.onclick = async () => {
             // 永久删除前必须确认（自 0.3.8 起 PurgeNow 为不可恢复的永久删除）
-            if (!confirm(t('ui.purgeConfirm', {n: 1}))) return;
+            const ok = await confirmDialog({
+                title: t('ui.purge'),
+                message: t('ui.purgeConfirm', {n: 1}),
+                confirmText: t('ui.purge'),
+            });
+            if (!ok) return;
             const r = JSON.parse(await PurgeNow([btn.dataset.purge!]));
             if ((r.errors ?? []).length) showToast(t('ui.purgeFailed', {err: r.errors.join('; ')}), true);
             else { showToast(t('ui.purged')); rescan(); }
@@ -1280,7 +1303,12 @@ async function init() {
         const ids = trashItems.map(it => it.id);
         if (!ids.length) return;
         // 永久删除前必须确认（自 0.3.8 起 PurgeNow 为不可恢复的永久删除）
-        if (!confirm(t('ui.purgeConfirm', {n: ids.length}))) return;
+        const ok = await confirmDialog({
+            title: t('ui.emptyTrash'),
+            message: t('ui.purgeConfirm', {n: ids.length}),
+            confirmText: t('ui.emptyTrash'),
+        });
+        if (!ok) return;
         const r = JSON.parse(await PurgeNow(ids));
         showToast((r.errors ?? []).length ? t('ui.emptyTrashFailed', {err: r.errors.join('; ')}) : t('ui.emptyTrashDone', {n: r.deleted.length}), (r.errors ?? []).length > 0);
         if (r.deleted?.length) rescan();

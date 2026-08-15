@@ -505,6 +505,10 @@ body.platform-linux #header { padding-top: 10px; }
     z-index: 10;
 }
 .modal.hidden { display: none; }
+/* 通用确认弹窗（#modal）必须在其他弹窗（回收站面板等，同为 z-index 10）
+   之上：DOM 顺序靠前 + 同级 z-index 会被后渲染的弹窗盖住，导致确认框
+   在面板后面看不见、点不到 */
+#modal { z-index: 50; }
 .modal-box {
     background: var(--panel);
     border: 1px solid var(--border);
