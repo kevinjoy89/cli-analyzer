@@ -6,15 +6,18 @@ package scanner
 
 import "time"
 
-// Tier classifies an item for the two-tier safety model.
+// Tier classifies an item by what kind of directory it is. Since the two-tier
+// gate was removed it is an informational label only — the cleaner never
+// blocks on it; the user decides what to dispose of.
 type Tier string
 
 const (
-	// TierSafe items (caches, old versions, package-manager caches) may be
-	// deleted after per-item confirmation.
+	// TierSafe labels items that are typically safe to remove (caches, old
+	// versions, package-manager caches). Informational only.
 	TierSafe Tier = "safe"
-	// TierUser items (config, data, history, venvs) are shown but never
-	// auto-deleted; the cleaner hard-rejects them regardless of flags.
+	// TierUser labels config/data/history/venv-style directories. Removing them
+	// is riskier, so they carry this label — but nothing blocks the user from
+	// choosing to dispose of them.
 	TierUser Tier = "user"
 )
 
@@ -81,14 +84,15 @@ type SubEntry struct {
 	Kind  string `json:"kind"`
 }
 
-// Cleanable is one deletable item.
+// Cleanable is one user-actionable attributed directory (every attributed
+// data dir except the tool's own install root).
 type Cleanable struct {
 	ID    string `json:"id"` // stable: tool|kind|path
 	Tool  string `json:"tool"`
 	Path  string `json:"path"`
 	Bytes int64  `json:"bytes"`
-	Tier  Tier   `json:"tier"`
-	Kind  string `json:"kind"` // old-version|cache|backup|toolchain|download
+	Tier  Tier   `json:"tier"` // informational label (safe|user), not a gate
+	Kind  string `json:"kind"` // cache|config|data|old-version|backup|toolchain|download|state|logs
 	Keep  string `json:"keep"` // what is never deleted (e.g. "current symlink target")
 	Desc  string `json:"desc"` // human sentence for the confirm prompt
 	// Sub is the size breakdown of Path's direct children (SAFE items only),
@@ -114,9 +118,10 @@ type Tool struct {
 	Cleanables  []Cleanable `json:"cleanables"`
 	// Footprint is the union size of all maximal attributed dirs.
 	Footprint int64 `json:"footprintBytes"`
-	// Cleanable is the sum of SAFE items.
+	// Cleanable is the sum of all actionable items (attributed dirs except the
+	// install root).
 	Cleanable int64 `json:"cleanableBytes"`
-	// User is Footprint minus Cleanable.
+	// User is Footprint minus Cleanable (install roots, standalone binaries…).
 	User int64 `json:"userBytes"`
 }
 

@@ -115,14 +115,20 @@ func attribute(tools map[string]*toolBuilder, order []string, ruleTable *rules.T
 			tb.addMeasure(tb.installRoot)
 		}
 
-		// Cache-kind data dirs are automatically SAFE cleanables.
+		// 归因的数据目录（安装根除外）全部成为可处置项：Tier 只是信息标签，
+		// 不再作为门槛，删除与否由用户决定。按物理路径去重（平台无关：
+		// 不同规则可能解析到同一目录，如 macOS 上 XDG 根与 Library 根各自
+		// 独立，但同名规则在部分平台上仍可能重叠）。
+		seenPath := map[string]bool{}
 		for _, dd := range tb.dataDirs {
-			if dd.Kind == "cache" && dd.Tier == TierSafe {
-				tb.cleanables = append(tb.cleanables, Cleanable{
-					ID: id + "|cache|" + dd.Path, Tool: id, Path: dd.Path,
-					Tier: TierSafe, Kind: "cache", Desc: i18n.T("ui.kind.cache"),
-				})
+			if dd.Kind == "install" || dd.Path == "" || seenPath[dd.Path] {
+				continue
 			}
+			seenPath[dd.Path] = true
+			tb.cleanables = append(tb.cleanables, Cleanable{
+				ID: id + "|" + dd.Kind + "|" + dd.Path, Tool: id, Path: dd.Path,
+				Tier: dd.Tier, Kind: dd.Kind, Desc: kindDesc(dd.Kind),
+			})
 		}
 
 		// Curated cleanables (npm cache, GOCACHE, model caches…).
@@ -155,6 +161,22 @@ func attribute(tools map[string]*toolBuilder, order []string, ruleTable *rules.T
 			Tier: TierSafe, Kind: "backup", Desc: i18n.T("ui.kind.backup"),
 		})
 		tb.addMeasure(path)
+	}
+
+	// 同一物理路径只保留一个可处置项（平台无关：按路径去重而非按规则去重）。
+	// 数据目录派生项先于 curated 清理项入列，重叠时优先保留前者的信息。
+	for _, id := range order {
+		tb := tools[id]
+		seenPath := map[string]bool{}
+		kept := tb.cleanables[:0]
+		for _, c := range tb.cleanables {
+			if seenPath[c.Path] {
+				continue
+			}
+			seenPath[c.Path] = true
+			kept = append(kept, c)
+		}
+		tb.cleanables = kept
 	}
 
 	// Display metadata: current version, newest install time, homepage/description.
@@ -205,14 +227,13 @@ func attribute(tools map[string]*toolBuilder, order []string, ruleTable *rules.T
 		tb.footprint = footprintOf(tb, sizes)
 	}
 
-	// One-level size breakdown for SAFE cleanables, so the UI can show what is
-	// inside (e.g. ~/.npm -> _cacache 9.5G, _npx 728M). USER items are hidden
-	// in the UI anyway, so skip them to keep the rescan fast.
+	// One-level size breakdown for actionable items, so the UI can show what is
+	// inside (e.g. ~/.npm -> _cacache 9.5G, _npx 728M).
 	for _, id := range order {
 		tb := tools[id]
 		for i := range tb.cleanables {
 			c := &tb.cleanables[i]
-			if c.Tier != TierSafe || c.Bytes <= 0 {
+			if c.Bytes <= 0 {
 				continue
 			}
 			for p, n := range sizer.ChildrenSizes(c.Path) {
@@ -238,6 +259,20 @@ func subKind(parentKind, name string) string {
 		return "logs"
 	}
 	return parentKind
+}
+
+// kindDesc 返回可处置项的人类可读描述；无对应文案的类型返回空串
+// （UI 以 kind 标签为准，desc 仅作补充说明）。
+func kindDesc(kind string) string {
+	switch kind {
+	case "cache":
+		return i18n.T("ui.kind.cache")
+	case "old-version":
+		return i18n.T("ui.kind.oldVersion")
+	case "backup":
+		return i18n.T("ui.kind.backup")
+	}
+	return ""
 }
 
 // reAttributeVendors moves binaries that live inside another tool's attributed
@@ -453,9 +488,10 @@ func (b *toolBuilder) deriveOldVersions(id string) {
 		keep = "default toolchain: " + b.currentVer
 		// pyenv/rustup toolchains are load-bearing: pip-installed commands hardcode
 		// the interpreter path in their shebangs (e.g. ~/.pyenv/versions/3.6.15/bin),
-		// and projects pin toolchains via rust-toolchain.toml. Nothing safe to
-		// reference-check at scan time, so toolchains are display-only — removing
-		// them is always manual (pyenv uninstall / rustup toolchain uninstall).
+		// and projects pin toolchains via rust-toolchain.toml. Tier stays "user" as
+		// an informational label (dangerous to remove), but it no longer blocks
+		// deletion — the user decides (pyenv uninstall / rustup toolchain uninstall
+		// remain the recommended removal paths).
 		tier = TierUser
 		desc = i18n.T("ui.kind.oldToolchain")
 	}
@@ -625,13 +661,13 @@ func finalize(tools map[string]*toolBuilder, order []string, opts Options) *Scan
 		}
 		// nodejs 合并工具把 node 排到 Binaries[0]，让版本探测取到运行时版本。
 		probeOrder(tb)
-		var cleanSum, userSum int64
+		var cleanSum int64
 		for _, c := range tb.cleanables {
-			if c.Tier == TierSafe {
-				cleanSum += c.Bytes
-			}
+			cleanSum += c.Bytes
 		}
-		userSum = tb.footprint - cleanSum
+		// 可处置合计 = 全部可处置项（非安装根的归因目录）；其余（安装根 +
+		// 独立二进制等）为 userSum。Tier 不再参与汇总。
+		userSum := tb.footprint - cleanSum
 		if userSum < 0 {
 			userSum = 0
 		}

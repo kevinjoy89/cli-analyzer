@@ -180,6 +180,37 @@ func TestTrashResiduesMovesToTrash(t *testing.T) {
 	}
 }
 
+// TestRemoveResiduesPermanently 验证永久删除变体直接删除且不经过内置回收站：
+// 残留处置默认走 TrashResidues（可恢复），永久删除是用户的显式选择。
+func TestRemoveResiduesPermanently(t *testing.T) {
+	fakeRoots(t)
+	cfgDir := filepath.Join(configRoot(), "mytool")
+	mkdir(t, cfgDir)
+	res := Residues("mytool", nil)
+	if len(res) == 0 {
+		t.Fatal("no residue detected")
+	}
+	deleted, errs := RemoveResidues(res, "mytool")
+	if len(errs) > 0 {
+		t.Fatalf("RemoveResidues errors: %v", errs)
+	}
+	if len(deleted) != len(res) {
+		t.Errorf("deleted %d, want %d", len(deleted), len(res))
+	}
+	for _, p := range deleted {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Errorf("residue %q still exists after permanent delete", p)
+		}
+	}
+	items, err := trash.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Errorf("trash should be empty after permanent delete, got %d items", len(items))
+	}
+}
+
 // 空结果必须是非 nil 切片：JSON 序列化为 [] 而非 null（前端 null.length 会崩）。
 func TestResiduesEmptyIsNotNil(t *testing.T) {
 	fakeRoots(t)

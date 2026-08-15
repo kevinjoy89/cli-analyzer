@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -227,7 +228,7 @@ func TestPrintCleanables(t *testing.T) {
 	buf := captureStdout(t)
 	printCleanables(res, nil)
 	s := buf.String()
-	for _, want := range []string{"工具", "npm", "1.0 GB", "共 1 项可安全清理"} {
+	for _, want := range []string{"工具", "npm", "1.0 GB", "共 1 项可处置"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("cleanables output missing %q in:\n%s", want, s)
 		}
@@ -251,5 +252,78 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 		if code := Run(args); code != 0 {
 			t.Errorf("Run(%v) = %d, want 0（帮助请求不是错误）", args, code)
 		}
+	}
+}
+
+// cacheEnv 隔离扫描缓存根（unix: XDG_CACHE_HOME；Windows: LOCALAPPDATA），
+// 使 runClean 读到的 last-scan.json 落在临时目录。
+func cacheEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(t.TempDir(), "cache"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(t.TempDir(), "localappdata"))
+}
+
+// TestRunCleanAllKindsWhitelist 验证 `clean --all` 默认只批量选择"清理类"
+// （cache/old-version/backup/download），config/data 需 --include-data。
+// Tier 不再是门槛（config 项可逐项指定删除），白名单只是批处理的保护性默认。
+func TestRunCleanAllKindsWhitelist(t *testing.T) {
+	pinZhCN(t)
+	cacheEnv(t)
+	// 平台无关：用真实临时绝对路径（Windows 上 "/c1" 不是绝对路径，guard 会拒绝）
+	c1 := filepath.Join(t.TempDir(), "c1")
+	c2 := filepath.Join(t.TempDir(), "c2")
+	res := &scanner.ScanResult{
+		Tools: []scanner.Tool{{
+			Name: "npm",
+			Cleanables: []scanner.Cleanable{
+				{ID: "npm|cache|" + c1, Tool: "npm", Path: c1, Bytes: 100, Kind: "cache", Tier: scanner.TierSafe},
+				{ID: "npm|config|" + c2, Tool: "npm", Path: c2, Bytes: 200, Kind: "config", Tier: scanner.TierUser},
+			},
+		}},
+	}
+	if err := scanner.SaveCache(res); err != nil {
+		t.Fatal(err)
+	}
+	// 默认 --all：只选 cache（1 项）
+	buf := captureStdout(t)
+	if code := Run([]string{"clean", "--all", "--dry-run"}); code != 0 {
+		t.Fatalf("exit = %d", code)
+	}
+	if s := buf.String(); !strings.Contains(s, "1 项") || strings.Contains(s, "2 项") {
+		t.Errorf("默认 --all 应只选 1 项（cache），输出:\n%s", s)
+	}
+	// --include-data：config 也入选（2 项）
+	buf.Reset()
+	if code := Run([]string{"clean", "--all", "--dry-run", "--include-data"}); code != 0 {
+		t.Fatalf("exit = %d", code)
+	}
+	if !strings.Contains(buf.String(), "2 项") {
+		t.Errorf("--include-data 应选 2 项，输出:\n%s", buf.String())
+	}
+}
+
+// TestRunCleanAllDataOnlyHintsIncludeData 验证全部为数据类时 --all 不静默
+// 清 0 项，而是提示 --include-data。
+func TestRunCleanAllDataOnlyHintsIncludeData(t *testing.T) {
+	pinZhCN(t)
+	cacheEnv(t)
+	d1 := filepath.Join(t.TempDir(), "d1")
+	res := &scanner.ScanResult{
+		Tools: []scanner.Tool{{
+			Name: "tool",
+			Cleanables: []scanner.Cleanable{
+				{ID: "tool|data|" + d1, Tool: "tool", Path: d1, Bytes: 50, Kind: "data", Tier: scanner.TierUser},
+			},
+		}},
+	}
+	if err := scanner.SaveCache(res); err != nil {
+		t.Fatal(err)
+	}
+	buf := captureStdout(t)
+	if code := Run([]string{"clean", "--all", "--dry-run"}); code != 0 {
+		t.Fatalf("exit = %d", code)
+	}
+	if !strings.Contains(buf.String(), "include-data") {
+		t.Errorf("应提示 --include-data，输出:\n%s", buf.String())
 	}
 }

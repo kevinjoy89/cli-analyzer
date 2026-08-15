@@ -1,4 +1,14 @@
-// Package cleaner deletes cleanable items with a hard two-tier safety gate.
+// Package cleaner deletes attributed directories the user has chosen to
+// dispose of.
+//
+// The former SAFE/USER two-tier gate has been removed: every attributed
+// directory is actionable, and which items are deleted is the user's call
+// (GUI checkboxes, CLI confirmation). Tier values remain as informational
+// labels ("what kind of directory is this") and no longer gate deletion.
+//
+// What is kept is the integrity layer that prevents catastrophic mistakes:
+// guards re-checked at delete time (absolute path, no "..", not a forbidden
+// system root, not the trash root, not the tool's current version path).
 package cleaner
 
 import (
@@ -14,7 +24,7 @@ import (
 )
 
 // subItem pairs a sub entry with its owning cleanable, so a child path can be
-// deleted on its own while inheriting the parent's SAFE gate and guards.
+// deleted on its own while inheriting the parent's guards.
 type subItem struct {
 	parent *scanner.Cleanable
 	sub    *scanner.SubEntry
@@ -24,16 +34,14 @@ type subItem struct {
 //
 // An id is either a full cleanable (deletes its whole path) or a sub-entry id
 // ("<cleanable ID>::<child path>") which deletes just that child — verified to
-// be one of the children the scan actually attributed to a SAFE cleanable.
+// be one of the children the scan actually attributed to a cleanable.
 //
-// Safety model:
-//   - Only Tier "safe" items are ever removed; anything else lands in Skipped
-//     regardless of caller intent or flags.
+// Integrity model (kept after the two-tier gate was removed):
 //   - Guards are re-checked at delete time (not just scan time): the path must
 //     be absolute, free of "..", outside forbidden system roots, not the trash
 //     root, and — for old-version items — not equal to the tool's current
-//     version path.
-//   - Deletion is deferred by default: SAFE items move into the built-in trash
+//     version path. Tiers are informational labels only; they never block.
+//   - Deletion is deferred by default: items move into the built-in trash
 //     (recoverable within the retention window) unless the config disables it.
 //
 // When dryRun is true nothing is touched and Deleted stays empty.
@@ -42,7 +50,7 @@ func Clean(result *scanner.ScanResult, ids []string, dryRun bool) scanner.CleanR
 }
 
 // CleanPermanent 强制直接删除（跳过内置回收站），供 `clean --permanent` 使用；
-// SAFE 门禁与 guard 检查不变
+// guard 完整性检查不变
 func CleanPermanent(result *scanner.ScanResult, ids []string, dryRun bool) scanner.CleanReport {
 	return clean(result, ids, dryRun, true)
 }
@@ -98,10 +106,6 @@ func clean(result *scanner.ScanResult, ids []string, dryRun bool, permanent bool
 
 	for _, id := range ids {
 		if c, ok := byID[id]; ok {
-			if c.Tier != scanner.TierSafe {
-				report.Skipped = append(report.Skipped, c.Path+" ("+i18n.T("cln.userSkipped")+")")
-				continue
-			}
 			if reason := guard(c); reason != "" {
 				report.Skipped = append(report.Skipped, c.Path+" ("+reason+")")
 				continue
@@ -110,10 +114,6 @@ func clean(result *scanner.ScanResult, ids []string, dryRun bool, permanent bool
 			continue
 		}
 		if si, ok := subs[id]; ok {
-			if si.parent.Tier != scanner.TierSafe {
-				report.Skipped = append(report.Skipped, si.sub.Path+" ("+i18n.T("cln.userSkipped")+")")
-				continue
-			}
 			if reason := guardSub(si.parent.Path, si.sub.Path); reason != "" {
 				report.Skipped = append(report.Skipped, si.sub.Path+" ("+reason+")")
 				continue

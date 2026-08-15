@@ -17,16 +17,17 @@ import (
 
 func runClean(args []string) int {
 	fs := flag.NewFlagSet("clean", flag.ContinueOnError)
-	all := fs.Bool("a", false, "all cleanable items")
-	fs.BoolVar(all, "all", false, "all cleanable items")
+	all := fs.Bool("a", false, "all actionable items")
+	fs.BoolVar(all, "all", false, "all actionable items")
 	dryRun := fs.Bool("n", false, "dry run (print plan, delete nothing)")
 	fs.BoolVar(dryRun, "dry-run", false, "dry run")
 	yes := fs.Bool("y", false, "assume yes to every item")
 	fs.BoolVar(yes, "yes", false, "assume yes")
 	jsonOut := fs.Bool("j", false, "output JSON report")
 	fs.BoolVar(jsonOut, "json", false, "output JSON report")
-	list := fs.Bool("list", false, "list cleanable items and exit")
+	list := fs.Bool("list", false, "list actionable items and exit")
 	permanent := fs.Bool("permanent", false, "immediately delete, skip the built-in trash")
+	includeData := fs.Bool("include-data", false, "include config/data/state/toolchain items in --all")
 	fs.SetOutput(stderr())
 	if err := fs.Parse(reorderFlags(args)); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -42,17 +43,14 @@ func runClean(args []string) int {
 		return 1
 	}
 
-	// Collect SAFE items, optionally filtered by tool.
+	// Collect actionable items (every attributed dir, any tier), optionally
+	// filtered by tool. Tier is an informational label, not a gate.
 	var items []scanner.Cleanable
 	for _, t := range res.Tools {
 		if len(filters) > 0 && !matchAny(t.Name, t.Aliases, filters) {
 			continue
 		}
-		for _, c := range t.Cleanables {
-			if c.Tier == scanner.TierSafe {
-				items = append(items, c)
-			}
-		}
+		items = append(items, t.Cleanables...)
 	}
 	if *list {
 		printCleanables(res, filters)
@@ -63,10 +61,28 @@ func runClean(args []string) int {
 		return 0
 	}
 
+	// --all 的保护性默认：只批量选择"清理类"（缓存/旧版本/备份/下载），
+	// config/data/state/toolchain 等"数据类"需 --include-data 或逐项指定 id。
+	// 这是防误操作的默认值，不是门槛——用户随时可以显式覆盖。
+	cleanKinds := map[string]bool{"cache": true, "old-version": true, "backup": true, "download": true}
+	if *includeData {
+		for _, k := range []string{"config", "data", "state", "toolchain", "logs"} {
+			cleanKinds[k] = true
+		}
+	}
+
 	var chosen []string
 	if *all {
 		for _, it := range items {
-			chosen = append(chosen, it.ID)
+			if cleanKinds[it.Kind] {
+				chosen = append(chosen, it.ID)
+			}
+		}
+		if len(chosen) == 0 {
+			// 批量选择未命中任何"清理类"项（数据类需 --include-data），
+			// 明确提示而非静默清 0 项。
+			fmt.Fprintln(stdout(), i18n.T("cli.cleanAllEmpty"))
+			return 0
 		}
 	} else {
 		for _, it := range items {

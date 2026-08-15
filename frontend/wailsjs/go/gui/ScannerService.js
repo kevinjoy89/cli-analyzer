@@ -134,6 +134,10 @@ export function UninstallBlocked(arg1) {
   return window['go']['gui']['ScannerService']['UninstallBlocked'](arg1);
 }
 
+export function UninstallDeleteResidues(arg1) {
+  return window['go']['gui']['ScannerService']['UninstallDeleteResidues'](arg1);
+}
+
 export function UninstallResidue() {
   return window['go']['gui']['ScannerService']['UninstallResidue']();
 }

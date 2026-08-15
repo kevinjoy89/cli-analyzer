@@ -68,6 +68,8 @@ export function TrashList():Promise<string>;
 
 export function UninstallBlocked(arg1:string):Promise<string>;
 
+export function UninstallDeleteResidues(arg1:Array<string>):Promise<string>;
+
 export function UninstallResidue():Promise<string>;
 
 export function UninstallRunOfficial():Promise<string>;

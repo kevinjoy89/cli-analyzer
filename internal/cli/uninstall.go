@@ -18,14 +18,15 @@ import (
 	"cli-analyzer/internal/uninstall"
 )
 
-// runUninstall 处理 `uninstall <tool> [--residue] [--yes] [--json]`。
+// runUninstall 处理 `uninstall <tool> [--residue] [--yes] [--permanent] [--json]`。
 // 退出码：0 成功 / 1 错误 / 2 黑名单或无该工具。
-// 流程：展示标准卸载命令（可代跑）→ 残留检测 → 残留移入内置回收站。
-// 残留清理是唯一触碰 USER 级数据的路径，硬约束为必须经回收站（--yes 不豁免）。
+// 流程：展示标准卸载命令（可代跑）→ 残留检测 → 残留处置（默认移入内置
+// 回收站，可恢复；--permanent 为用户显式选择的永久删除）。
 func runUninstall(args []string) int {
 	fs := flag.NewFlagSet("uninstall", flag.ContinueOnError)
 	residueOnly := fs.Bool("residue", false, "only list residue, delete nothing")
-	yes := fs.Bool("yes", false, "skip interactive prompts (trash constraint unchanged)")
+	yes := fs.Bool("yes", false, "skip interactive prompts")
+	permanent := fs.Bool("permanent", false, "permanently delete residue (default: built-in trash, recoverable)")
 	jsonOut := fs.Bool("json", false, "output JSON")
 	fs.SetOutput(stderr())
 	if err := fs.Parse(reorderFlags(args)); err != nil {
@@ -118,12 +119,27 @@ func runUninstall(args []string) int {
 		return 0
 	}
 	printResidueList(rr)
+	if *permanent {
+		if !*yes && !confirmPrompt(i18n.T("un.deletePermanentPrompt")) {
+			fmt.Fprintln(stdout(), i18n.T("un.trashSkipped"))
+			return 0
+		}
+		deleted, errs := uninstall.RemoveResidues(rr, tool.Name)
+		fmt.Fprintln(stdout(), i18n.T("un.deletedPermanentN", map[string]any{"n": len(deleted)}))
+		for _, e := range errs {
+			fmt.Fprintf(stderr(), "%s\n", i18n.T("cli.errors", map[string]any{"msg": e}))
+		}
+		if len(errs) > 0 {
+			return 1
+		}
+		return 0
+	}
 	if !*yes && !confirmPrompt(i18n.T("un.trashPrompt")) {
 		fmt.Fprintln(stdout(), i18n.T("un.trashSkipped"))
 		return 0
 	}
 	deleted, errs := uninstall.TrashResidues(rr, tool.Name)
-	fmt.Fprintf(stdout(), "%s %d 项\n", i18n.T("un.trashed"), len(deleted))
+	fmt.Fprintln(stdout(), i18n.T("un.trashedN", map[string]any{"n": len(deleted)}))
 	for _, e := range errs {
 		fmt.Fprintf(stderr(), "%s\n", i18n.T("cli.errors", map[string]any{"msg": e}))
 	}

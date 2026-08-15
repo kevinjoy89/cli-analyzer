@@ -53,7 +53,8 @@ func printTable(res *scanner.ScanResult) {
 	}
 }
 
-// printCleanables lists all SAFE cleanables across tools (for `clean --list`).
+// printCleanables lists all actionable items across tools (for `clean --list`).
+// Tier is a label, not a gate — everything attributed is listed.
 func printCleanables(res *scanner.ScanResult, onlyTools []string) {
 	w := tabwriter.NewWriter(stdout(), 2, 4, 2, ' ', 0)
 	fmt.Fprintln(w, i18n.T("cli.cleanHeader"))
@@ -64,9 +65,6 @@ func printCleanables(res *scanner.ScanResult, onlyTools []string) {
 			continue
 		}
 		for _, c := range t.Cleanables {
-			if c.Tier != scanner.TierSafe {
-				continue
-			}
 			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.Name, humanBytes(c.Bytes), c.Kind, c.Path)
 			total += c.Bytes
 			shown++

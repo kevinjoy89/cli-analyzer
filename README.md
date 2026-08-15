@@ -1,7 +1,7 @@
 <h1 align="center">CLI Analyzer</h1>
 
 <p align="center">
-  Find out which CLI tools are eating your disk — and reclaim the space <b>safely</b>.
+  Find out which CLI tools are eating your disk — and decide what to reclaim.
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@
 
 Cleanup tools like CleanMyMac show how much disk your **desktop apps** use — but they are blind to **CLI tools**. A CLI tool's footprint is scattered across hidden dotfiles and XDG directories (`~/.claude`, `~/.npm`, `~/.cache/*`), so it gets lumped under "Other" or ignored entirely.
 
-CLI Analyzer scans every CLI tool installed on your machine, attributes its **total** disk footprint (executable + package dirs + data/cache dirs), and identifies space that is **safe to clean**. One binary, two interfaces: a terminal CLI and a native dark-mode GUI (Wails v2).
+CLI Analyzer scans every CLI tool installed on your machine and attributes its **total** disk footprint (executable + package dirs + data/cache dirs). Every attributed directory is **labeled** (cache / config / data / old version / …) — but whether it should be removed is **your call**: the app never judges "safe to delete" on your behalf. One binary, two interfaces: a terminal CLI and a native dark-mode GUI (Wails v2).
 
 | Light theme | Dark theme |
 |---|---|
@@ -29,15 +29,13 @@ CLI Analyzer scans every CLI tool installed on your machine, attributes its **to
 
 - **Detection** — enumerates `$PATH` executables, resolves symlinks, and classifies each by install source (versioned installer / brew formula / npm package / pipx / pyenv shim / go / cargo / other). The Node.js runtime family (node / npm / npx / corepack / node-gyp) is merged into one `nodejs` entry instead of showing every command in the same install dir as a separate tool (common on Windows)
 - **Attribution** — total footprint = executable + package dir (`Cellar`, `node_modules`, `versions/…`) + platform data dirs (`~/.cache/<name>`, `~/.config/<name>`, `~/.local/share/<name>`, macOS `~/Library/*`, Windows `%APPDATA%`…)
-- **Two-level safety model**
-  - **SAFE** (caches, old versions, backups, package-manager caches) — moved into the built-in trash (recoverable) after per-item confirmation
-  - **USER** (config, history, venv) — display-only, **never auto-deleted**. The hard gate lives in the cleaner layer; `--yes` cannot bypass it
+- **Labeled attribution, your call** — every attributed directory is labeled by kind (cache / config / data / old version / backup / toolchain…). The former SAFE/USER hard gate is gone: nothing is blocked, and nothing is deleted without your explicit choice. Default disposal still goes through the built-in trash (recoverable); permanent deletion is always an explicit `--permanent`/confirm choice
 - **Built-in trash** — deletions go to the app's own trash first (same filesystem, instant), recoverable for 7 days (configurable in Preferences); expired items move to the OS trash or are deleted permanently
 - **Restore** — restore a trashed item from the GUI trash panel or `cli-analyzer trash restore`; `clean --permanent` skips the built-in trash entirely
-- **Usage trends** — every scan appends a snapshot; view total/cleanable over time (SVG chart) and the top cleanable growers, with a bell reminder when a tool's cleanable space exceeds a configurable limit (click it to list the tools and jump to one)
-- **Tree drill-down** — expand a cleanable item to its one-level child dirs (`~/.npm` → `_cacache` 10G / `_npx` 764M) and clean only the selected children. Sub-path deletion passes the same SAFE gate + guard (must be a child of an already-scanned, attributed parent)
+- **Usage trends** — every scan appends a snapshot; view total/actionable space over time (SVG chart) and the top actionable growers, with a bell reminder when a tool's actionable space exceeds a configurable limit (click it to list the tools and jump to one)
+- **Tree drill-down** — expand an actionable item to its one-level child dirs (`~/.npm` → `_cacache` 10G / `_npx` 764M) and dispose of only the selected children. Sub-path deletion passes the same integrity guards (must be a child of an already-scanned, attributed parent)
 - **Built-in updater** — checks GitHub Releases on startup for a new version (toggleable in Preferences, with a 4h rate-limit cache); prompts to download with a progress bar, verifies the SHA256 checksum, then opens the installer for you to complete manually. CLI: `cli-analyzer update check`. Note: within 4h of a release, a cached check may not yet report it — the prompt appears once the cache refreshes
-- **Official uninstall** — don't know the uninstall command? The tool detects the install source (brew / npm / pipx / cargo…), shows the standard command and can run it for you, then detects leftover config/cache dirs and moves them into the built-in trash (recoverable) — the only operation allowed to touch USER data, never deleting it permanently. System-critical tools are blocked. CLI: `cli-analyzer uninstall <tool>`
+- **Official uninstall** — don't know the uninstall command? The tool detects the install source (brew / npm / pipx / cargo…), shows the standard command and can run it for you, then detects leftover config/cache dirs. Residue disposal defaults to the built-in trash (recoverable); permanently deleting residue is an explicit choice. System-critical tools are blocked. CLI: `cli-analyzer uninstall <tool>`
 - **Localized UI** — Simplified Chinese / Traditional Chinese / English; follows the system language by default, switchable in Preferences → Language (applies instantly; macOS native menu applies after restart)
 - **Two interfaces** — CLI (`scan` / `clean` / `cache` / `trash` / `trends` / `update` / `version`) + native GUI
 - **Unattributed data dirs** — top-level dirs under the data roots that no tool claims (leftovers of removed or never-on-PATH tools) appear in a collapsible "Unattributed data" section; USER-level, move-to-trash only (recoverable), filtered by the non-CLI exclusion system (GUI apps, their data and command-line companions are out of scope)
@@ -74,16 +72,18 @@ Cross-platform installers (macOS dmg / Windows installer / Linux deb + AppImage)
 ```bash
 cli-analyzer scan                    # scan (first run is slower, cached afterwards)
 cli-analyzer scan --refresh --json   # force a rescan, JSON output (includes unattributed + probed versions)
-cli-analyzer clean                   # interactive, per-item SAFE cleanup (into built-in trash)
+cli-analyzer clean                   # interactive, per-item disposal (into built-in trash)
 cli-analyzer clean --dry-run --all   # show the plan only, delete nothing
-cli-analyzer clean --yes kimi        # clean all SAFE items for a specific tool
+cli-analyzer clean --yes kimi        # dispose of all cleanup-kind items for one tool
+cli-analyzer clean --all --include-data  # batch also includes config/data/state items
 cli-analyzer clean --permanent       # delete immediately, skip the built-in trash
 cli-analyzer trash list              # list built-in trash items
 cli-analyzer trash restore <id>      # restore an item to its original path
 cli-analyzer trash empty             # empty the built-in trash (permanent)
 cli-analyzer trends [days]           # usage trends over the last N days (default 30)
 cli-analyzer update check           # check for a new version (exit: 0 up-to-date / 2 update / 1 error)
-cli-analyzer uninstall <tool>       # standard uninstall + residue cleanup (via built-in trash)
+cli-analyzer uninstall <tool>       # standard uninstall + residue cleanup (built-in trash by default)
+cli-analyzer uninstall <tool> --permanent  # permanently delete residue (unrecoverable)
 cli-analyzer version                # show version and install source (e.g. 0.3.3 (darwin, dmg))
 cli-analyzer cache --clear           # clear the scan cache
 cli-analyzer                         # open the GUI
@@ -92,32 +92,34 @@ cli-analyzer                         # open the GUI
 Example scan output:
 
 ```
-Tool   Cmd   Total   Cleanable(SAFE)   User   Source
-nodejs 5     10.5 GB  10.5 GB          89.7 MB nodejs
-opencode -   8.2 GB   0 B              8.2 GB  other
-uv     -     7.3 GB   7.2 GB           57.0 MB other
-codex  -     2.0 GB   288.7 MB         1.8 GB  other
-pip    -     1.1 GB   1.1 GB           0 B     pip
-go     -     1.0 GB   753.7 MB         282.3 MB go
-pyenv  -     759.8 MB 0 B              759.8 MB pyenv
+Tool   Cmd   Total   Actionable   Install   Source
+nodejs 5     10.5 GB  10.5 GB     89.7 MB   nodejs
+opencode -   8.2 GB   0 B         8.2 GB    other
+uv     -     7.3 GB   7.2 GB      57.0 MB   other
+codex  -     2.0 GB   288.7 MB    1.8 GB    other
+pip    -     1.1 GB   1.1 GB      0 B       pip
+go     -     1.0 GB   753.7 MB    282.3 MB  go
+pyenv  -     759.8 MB 0 B         759.8 MB  pyenv
 ...
-Total  -     31.5 GB  19.9 GB          11.7 GB -
+Total  -     31.5 GB  19.9 GB     11.7 GB   -
 ```
 
-(The Node.js runtime family — node / npm / npx / corepack / node-gyp — is merged into a single `nodejs` entry; its detail panel lists every bundled command and binary path, and the `~/.npm` cache stays SAFE-cleanable.)
+(The Node.js runtime family — node / npm / npx / corepack / node-gyp — is merged into a single `nodejs` entry; its detail panel lists every bundled command and binary path, and the `~/.npm` cache stays an actionable cache item.)
 
-**Safety model**: only SAFE-level items (caches / old versions / backups / package-manager caches) are cleaned; USER-level (config / history / venv) is display-only. Old-version cleanup always keeps the current version (e.g. the symlink target for `claude`).
+**Disposal model**: the app attributes and labels each directory (cache / config / data / old version / backup / toolchain…); deletion is your call. `clean --all` batches only cleanup-kind items (cache / old-version / backup / download) by default — config/data/state need an explicit `--include-data`. Old-version disposal always keeps the current version (e.g. the symlink target for `claude`); the cleaner's integrity guards still refuse system roots, `..` paths, the trash root, and the current version path.
 
 **Deferred deletion**: SAFE items are moved into the app's built-in trash first — same filesystem, instant, and recoverable. They stay there for the retention window (default 7 days, configurable in Preferences) and are then purged: by default into the OS trash, or permanently if configured. The GUI status bar shows the trash occupancy and the earliest expiry, so "cleaned" and "space released" stay distinct. Use `clean --permanent` to bypass the built-in trash.
 
-### Cleaning boundaries — verified, never listed as SAFE
+### Disposal guidance — labeled, not judged
 
-| Path | Why it must not be auto-deleted |
+The app no longer auto-deletes anything, so nothing is "refused". These directories keep their risk labels as guidance for when you pick them yourself:
+
+| Path | What to know before disposing |
 |---|---|
 | `~/.cache/opencode`, `~/.cache/mimocode` | named "cache" but are actually **plugin install dirs** of opencode-family tools (MCP servers, language servers, skills, `package.json` manifests) |
 | pyenv / rustup old toolchains (non-current) | pip-installed commands hardcode the interpreter path in their shebang (e.g. 16 commands → `~/.pyenv/versions/3.6.15/bin/python3.6`); projects may pin a toolchain via `rust-toolchain.toml` |
 | brew non-current Cellar versions | may be depended on by other formulae (e.g. fontconfig); `brew cleanup` handles them safely |
-| `~/.cache/codex-runtimes/codex-primary-runtime` | the runtime codex is actively using; only `codex-runtime-install-*` staging dirs are cleanable |
+| `~/.cache/codex-runtimes/codex-primary-runtime` | the runtime codex is actively using; only `codex-runtime-install-*` staging dirs are meant to be cleaned |
 
 ## Cross-platform
 
@@ -140,7 +142,7 @@ internal/scanner/   # discover → classify → attribute → cleanability (pure
 internal/rules/     # two-level rules table + generic parser
 internal/platform/  # per-OS data roots & executable detection (build tags)
 internal/disk/      # parallel directory size measurement (no du dependency)
-internal/cleaner/   # SAFE hard gate + guard + deferred deletion
+internal/cleaner/   # integrity guards + deferred deletion (built-in trash)
 internal/trash/     # built-in trash: defer/restore/sweep + per-OS system trash
 internal/config/    # local config (retention, expire action, reminder threshold)
 internal/history/   # scan snapshots in SQLite for usage trends

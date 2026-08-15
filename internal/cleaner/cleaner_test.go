@@ -28,7 +28,10 @@ func useTempTrash(t *testing.T) {
 	t.Cleanup(func() { trash.Root = orig })
 }
 
-func TestCleanRejectsUserTier(t *testing.T) {
+// TestCleanDeletesUserTier 验证两级门槛移除后 USER 级（config/data）项目与
+// SAFE 级同等可处置：Tier 只是信息标签，不再导致 Skipped。默认走内置回收站。
+func TestCleanDeletesUserTier(t *testing.T) {
+	useTempTrash(t)
 	p := filepath.Join(t.TempDir(), "config")
 	if err := os.MkdirAll(p, 0o755); err != nil {
 		t.Fatal(err)
@@ -37,14 +40,14 @@ func TestCleanRejectsUserTier(t *testing.T) {
 		ID: "t|user|" + p, Tool: "t", Path: p, Bytes: 10, Tier: scanner.TierUser, Kind: "config",
 	})
 	report := Clean(res, []string{"t|user|" + p}, false)
-	if len(report.Deleted) != 0 {
-		t.Fatalf("USER item deleted: %v", report.Deleted)
+	if len(report.Deleted) != 1 || report.Freed != 10 {
+		t.Fatalf("USER item should be deleted now: deleted=%v freed=%d", report.Deleted, report.Freed)
 	}
-	if len(report.Skipped) != 1 {
-		t.Fatalf("expected 1 skipped, got %v", report.Skipped)
+	if len(report.Skipped) != 0 {
+		t.Fatalf("USER item must not be skipped (tier is a label): %v", report.Skipped)
 	}
-	if _, err := os.Stat(p); err != nil {
-		t.Fatalf("USER dir was removed: %v", err)
+	if _, err := os.Stat(p); !os.IsNotExist(err) {
+		t.Fatalf("USER dir was not moved to trash: %v", err)
 	}
 }
 
@@ -215,9 +218,10 @@ func TestCleanPermanentSkipsTrash(t *testing.T) {
 	}
 }
 
-// TestCleanSubUserParentRejected verifies a child of a USER cleanable is never
-// deleted, mirroring the parent's hard gate.
-func TestCleanSubUserParentRejected(t *testing.T) {
+// TestCleanSubUserParentDeleted 验证 USER 级可处置项的子项同样可独立删除
+// （门槛移除后与 SAFE 项行为一致），且仍受 guardSub 的父目录边界保护。
+func TestCleanSubUserParentDeleted(t *testing.T) {
+	useTempTrash(t)
 	td := t.TempDir()
 	parent := filepath.Join(td, "data")
 	child := filepath.Join(parent, "x")
@@ -231,11 +235,11 @@ func TestCleanSubUserParentRejected(t *testing.T) {
 		},
 	})
 	report := Clean(res, []string{"t|data|" + parent + "::" + child}, false)
-	if len(report.Deleted) != 0 || len(report.Skipped) != 1 {
-		t.Fatalf("USER-parent sub deleted: %v", report)
+	if len(report.Deleted) != 1 {
+		t.Fatalf("USER-parent sub should be deleted now: %v", report)
 	}
-	if _, err := os.Stat(child); err != nil {
-		t.Fatalf("child was removed: %v", err)
+	if _, err := os.Stat(child); !os.IsNotExist(err) {
+		t.Fatalf("child was not removed: %v", err)
 	}
 }
 
@@ -318,24 +322,11 @@ func TestCleanGuardRejectsWindowsRoots(t *testing.T) {
 
 // TestCleanMessagesLocalized 验证 cleaner 的用户可见消息走 i18n（三语有 key、
 // 输出不含硬编码英文原文）——此前 guard/Skipped 消息全部英文硬编码，
-// 中文界面用户看到英文提示。
+// 中文界面用户看到英文提示。门槛移除后 Skipped 只剩 guard 消息，此处守护
+// guard 消息的本地化。
 func TestCleanMessagesLocalized(t *testing.T) {
 	i18n.SetLocale("zh-CN")
 	t.Cleanup(func() { i18n.SetLocale("zh-CN") })
-	p := filepath.Join(t.TempDir(), "config")
-	if err := os.MkdirAll(p, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	res := mkScanResult(scanner.Cleanable{
-		ID: "t|user|" + p, Tool: "t", Path: p, Bytes: 10, Tier: scanner.TierUser, Kind: "config",
-	})
-	report := Clean(res, []string{"t|user|" + p}, false)
-	if len(report.Skipped) != 1 {
-		t.Fatalf("skipped = %v", report.Skipped)
-	}
-	if strings.Contains(report.Skipped[0], "USER data") {
-		t.Errorf("Skipped 消息未本地化: %q", report.Skipped[0])
-	}
 	// guard 消息同样本地化
 	if reason := guard(&scanner.Cleanable{Path: "/", Tier: scanner.TierSafe}); strings.Contains(reason, "forbidden system root") {
 		t.Errorf("guard 消息未本地化: %q", reason)

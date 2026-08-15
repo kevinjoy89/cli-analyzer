@@ -168,12 +168,53 @@ func TestAttributeSkipsSelfCache(t *testing.T) {
 	attribute(tools, order, rules.Load(), Options{}, sizer)
 	for _, c := range tb.cleanables {
 		if c.Path == selfCache {
-			t.Errorf("应用自身缓存 %q 不应列为可清理项", selfCache)
+			t.Errorf("应用自身缓存 %q 不应列为可处置项", selfCache)
 		}
 	}
 	for _, dd := range tb.dataDirs {
 		if dd.Path == selfCache {
 			t.Errorf("应用自身缓存 %q 不应归因为可清理缓存（应跳过或 USER）", selfCache)
 		}
+	}
+}
+
+// TestAttributeAllDataDirsActionable 验证两级门槛移除后所有归因数据目录
+// （cache/config/data…，安装根除外）都成为可处置项：Tier 只是标签，
+// 不再只对 cache 类生成可清理项。
+func TestAttributeAllDataDirsActionable(t *testing.T) {
+	cache := filepath.Join(t.TempDir(), "cache")
+	cfg := filepath.Join(t.TempDir(), "config")
+	installRoot := filepath.Join(t.TempDir(), "install")
+	if err := os.MkdirAll(cache, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cfg, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(installRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tb := &toolBuilder{name: "zzz-attr-all", installer: InstOther,
+		dataDirs: []DataDir{
+			{Path: cache, Tier: TierSafe, Kind: "cache"},
+			{Path: cfg, Tier: TierUser, Kind: "config"},
+			// 安装根是工具本体，不作为可处置项（删除安装根 = 卸载）
+			{Path: installRoot, Tier: TierUser, Kind: "install"},
+		}}
+	tb.addMeasure(cache)
+	tb.addMeasure(cfg)
+	tools := map[string]*toolBuilder{"zzz-attr-all": tb}
+
+	attribute(tools, []string{"zzz-attr-all"}, rules.Load(), Options{}, &disk.Sizer{})
+
+	kinds := map[string]bool{}
+	for _, c := range tb.cleanables {
+		kinds[c.Kind] = true
+		if c.Path == installRoot {
+			t.Errorf("安装根 %q 不应成为可处置项", installRoot)
+		}
+	}
+	if !kinds["cache"] || !kinds["config"] {
+		t.Errorf("cleanables = %+v, want both cache and config actionable items", tb.cleanables)
 	}
 }

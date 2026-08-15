@@ -1,6 +1,6 @@
 import './style.css';
 
-import {CancelDownload, CheckForUpdates, Clean, DownloadUpdate, GetDownloadProgress, GetLanguage, GetLastResult, GetReminderConfig, GetTranslations, GetTrashConfig, GetUninstallStatus, GetUpdateStatus, GetTrends, GetUpdateConfig, GetVersion, IgnoreVersion, InstallUpdate, OpenURL, OrphanTrash, PurgeNow, Restore, Scan, SetLanguage, SetLanguagePreference, SetReminderConfig, SetTheme, SetTrashConfig, SetUpdateConfig, TrashInfo, TrashList, UninstallBlocked, UninstallResidue, UninstallRunOfficial, UninstallStart, UninstallTrashResidues} from '../wailsjs/go/gui/ScannerService';
+import {CancelDownload, CheckForUpdates, Clean, DownloadUpdate, GetDownloadProgress, GetLanguage, GetLastResult, GetReminderConfig, GetTranslations, GetTrashConfig, GetUninstallStatus, GetUpdateStatus, GetTrends, GetUpdateConfig, GetVersion, IgnoreVersion, InstallUpdate, OpenURL, OrphanTrash, PurgeNow, Restore, Scan, SetLanguage, SetLanguagePreference, SetReminderConfig, SetTheme, SetTrashConfig, SetUpdateConfig, TrashInfo, TrashList, UninstallBlocked, UninstallDeleteResidues, UninstallResidue, UninstallRunOfficial, UninstallStart, UninstallTrashResidues} from '../wailsjs/go/gui/ScannerService';
 import {Environment, EventsOn, Quit} from '../wailsjs/runtime/runtime';
 import {applyCleanLocally} from './lib/clean';
 import {hb} from './lib/format';
@@ -468,12 +468,17 @@ function renderDetail() {
             `<div class="detail-item"><span class="badge safe">bin</span><span class="path" title="${esc(b.real)}">${esc(b.real)}</span><span class="size">${hb(b.size)}</span></div>`).join('')}</div>`
         : '<div class="detail-list"><div class="detail-item"><span class="muted">' + esc(t('ui.noBinary')) + '</span></div></div>';
 
-    const dataDirs = tool.dataDirs.length
-        ? `<div class="detail-list">${tool.dataDirs.map(d =>
+    // 安装根（Kind install）仅展示，不列为可处置项：删除安装根 = 卸载工具，
+    // 走独立的卸载流程（详情页「卸载」按钮）。
+    const installDirs = tool.dataDirs.filter(d => d.kind === 'install');
+    const installHtml = installDirs.length
+        ? `<div class="detail-list">${installDirs.map(d =>
             `<div class="detail-item"><span class="badge ${d.tier}">${d.tier}</span><span class="path" title="${esc(d.path)}">${esc(d.path)}</span><span class="size ${d.tier}">${hb(d.bytes)}</span><span class="keep">${esc(kindLabel(d.kind))}</span></div>`).join('')}</div>`
         : '';
 
-    const cleanables = tool.cleanables.filter(c => c.tier === 'safe');
+    // 全部归因目录（安装根除外）都是可处置项：kind/tier 是信息标签，
+    // 勾选即代表用户决策，应用不再替用户裁决"能不能删"。
+    const cleanables = tool.cleanables;
     const cleanHtml = cleanables.length
         ? `<div class="detail-list">${cleanables.map(c => {
             const checked = selectedCleanIds.has(c.id) ? 'checked' : '';
@@ -499,7 +504,7 @@ function renderDetail() {
         <div class="detail-head"><h2>${esc(tool.name)}</h2>${installer}</div>
         ${metaHtml}
         <div class="detail-section"><h4>${esc(t('ui.sectionBinaries'))}</h4>${binaries}</div>
-        ${dataDirs ? `<div class="detail-section"><h4>${esc(t('ui.sectionDataDirs'))}</h4>${dataDirs}</div>` : ''}
+        ${installHtml ? `<div class="detail-section"><h4>${esc(t('ui.sectionInstallRoot'))}</h4>${installHtml}</div>` : ''}
         <div class="detail-section"><h4>${esc(t('ui.sectionSafe'))}</h4>${cleanHtml}</div>
         <div class="detail-actions">
             <button id="cleanBtn" class="btn danger">${esc(t('ui.cleanSelected'))}</button>
@@ -610,7 +615,6 @@ interface PickItem { id: string; path: string; bytes: number; kind: string }
 function selectedItems(t: Tool): PickItem[] {
     const out: PickItem[] = [];
     for (const c of t.cleanables) {
-        if (c.tier !== 'safe') continue;
         if (selectedCleanIds.has(c.id)) {
             out.push({id: c.id, path: c.path, bytes: c.bytes, kind: c.kind});
             continue;
@@ -996,13 +1000,17 @@ async function showUninstallResidue() {
             </label>`).join('')}
         <div class="update-actions">
             <button class="btn" id="unCancel2">${esc(t('ui.cancel'))}</button>
+            <button class="btn danger" id="unDeletePerm">${esc(t('un.guiDeletePermanent'))}</button>
             <button class="btn danger" id="unTrash">${esc(t('un.guiTrashConfirm'))}</button>
         </div>`;
     el('uninstallModal').classList.remove('hidden');
     el('unCancel2').onclick = () => el('uninstallModal').classList.add('hidden');
-    el('unTrash').onclick = async () => {
+    const checkedPaths = () => {
         const boxes = body.querySelectorAll<HTMLInputElement>('input[type=checkbox]');
-        const paths = rr.filter((_, i) => boxes[i].checked).map(r => r.path);
+        return rr.filter((_, i) => boxes[i].checked).map(r => r.path);
+    };
+    el('unTrash').onclick = async () => {
+        const paths = checkedPaths();
         if (!paths.length) { showToast(t('un.residueNone')); return; }
         const rep = JSON.parse(await UninstallTrashResidues(paths));
         el('uninstallModal').classList.add('hidden');
@@ -1010,6 +1018,23 @@ async function showUninstallResidue() {
         showToast(t('un.guiResidueDone') + (hasErr ? '（' + t('un.runFailed') + '）' : ''), hasErr);
         // 立即刷新右下角回收站占用（不等后台重扫完成，与 clean 流程一致）
         refreshTrashInfo();
+    };
+    // 永久删除：不可恢复，必须先经强确认（confirmDialog），再调后端
+    el('unDeletePerm').onclick = async () => {
+        const paths = checkedPaths();
+        if (!paths.length) { showToast(t('un.residueNone')); return; }
+        const ok = await confirmDialog({
+            title: t('un.guiDeletePermanent'),
+            message: t('un.guiDeletePermanentConfirm'),
+            confirmText: t('un.guiDeletePermanent'),
+        });
+        if (!ok) return;
+        const rep = JSON.parse(await UninstallDeleteResidues(paths));
+        el('uninstallModal').classList.add('hidden');
+        const hasErr = (rep.errors ?? []).length > 0;
+        showToast(t('un.guiResidueDonePermanent') + (hasErr ? '（' + t('un.runFailed') + '）' : ''), hasErr);
+        refreshTrashInfo();
+        rescan(); // 永久删除真正释放空间，后台重扫校准占用
     };
 }
 

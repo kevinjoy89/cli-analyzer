@@ -189,11 +189,12 @@ func TestFinalize(t *testing.T) {
 	if len(res.Tools) != 1 || res.Tools[0].Name != "npm" {
 		t.Fatalf("tools = %+v", res.Tools)
 	}
-	if res.Totals.Footprint != 1000 || res.Totals.Cleanable != 400 || res.Totals.User != 600 {
+	// Tier 只是标签：可处置合计 = 全部 cleanables（400 + 200 = 600）
+	if res.Totals.Footprint != 1000 || res.Totals.Cleanable != 600 || res.Totals.User != 400 {
 		t.Errorf("totals = %+v", res.Totals)
 	}
-	if res.Tools[0].Cleanable != 400 {
-		t.Errorf("tool cleanable = %d, want 400", res.Tools[0].Cleanable)
+	if res.Tools[0].Cleanable != 600 {
+		t.Errorf("tool cleanable = %d, want 600", res.Tools[0].Cleanable)
 	}
 }
 

@@ -759,6 +759,34 @@ func (s *ScannerService) UninstallTrashResidues(paths []string) string {
 	return string(b)
 }
 
+// UninstallDeleteResidues 将选中的残留路径永久删除（不可恢复）。
+// 与 UninstallTrashResidues 相同的白名单校验：只接受 Residues() 返回的路径，
+// 前端传入的任意路径一律拒绝。调用方（前端）负责强确认。
+func (s *ScannerService) UninstallDeleteResidues(paths []string) string {
+	s.mu.Lock()
+	tool, last := s.unTool, s.last
+	s.mu.Unlock()
+	if tool == "" {
+		b, _ := json.Marshal(map[string]any{"error": i18n.T("un.noTool")})
+		return string(b)
+	}
+	all := uninstall.Residues(tool, last)
+	want := map[string]bool{}
+	for _, p := range paths {
+		want[p] = true
+	}
+	var sel []uninstall.Residue
+	for _, r := range all {
+		if want[r.Path] {
+			sel = append(sel, r)
+		}
+	}
+	deleted, errs := uninstall.RemoveResidues(sel, tool)
+	s.Scan() // 后台重扫，让主界面刷新
+	b, _ := json.Marshal(map[string]any{"deleted": deleted, "errors": errs})
+	return string(b)
+}
+
 // syncBuf 是并发安全的输出缓冲（子进程 stdout/stderr 双写）
 type syncBuf struct {
 	mu sync.Mutex

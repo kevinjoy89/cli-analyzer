@@ -92,7 +92,8 @@ func resolveRule(dr rules.DataDirRule) string {
 }
 
 // TrashResidues 将残留项移入内置回收站（可恢复）。返回成功移入的路径与失败项。
-// 这是 USER 级数据唯一允许的删除路径：本包不提供永久删除变体。
+// 这是残留处置的默认路径；应用自身不再以"安全门槛"替用户裁决，但可恢复的
+// 回收站仍是默认去向（永久删除需用户显式选择 RemoveResidues）。
 func TrashResidues(res []Residue, tool string) (deleted []string, errs []error) {
 	for _, r := range res {
 		if err := trash.Trash(r.Path, trash.Item{
@@ -100,6 +101,19 @@ func TrashResidues(res []Residue, tool string) (deleted []string, errs []error) 
 			Kind:  r.Kind,
 			Bytes: r.Bytes,
 		}); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		deleted = append(deleted, r.Path)
+	}
+	return
+}
+
+// RemoveResidues 永久删除残留项（不可恢复）。调用方（GUI/CLI）必须已向用户
+// 明确确认；默认处置仍应走 TrashResidues（可恢复）。
+func RemoveResidues(res []Residue, tool string) (deleted []string, errs []error) {
+	for _, r := range res {
+		if err := os.RemoveAll(r.Path); err != nil {
 			errs = append(errs, err)
 			continue
 		}

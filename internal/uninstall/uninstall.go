@@ -4,8 +4,8 @@
 //   - 标准卸载命令按安装来源映射，仅 brew/npm/pipx/cargo 可代跑；
 //     go/pyenv/versioned/other 只给提示，不做整包强卸。
 //   - 残留 = 规则表数据目录 ∪ 扫描快照归因目录，卸载后仍存在者。
-//   - 残留清理是唯一允许触碰 USER 级数据的路径，硬约束为必须经内置
-//     回收站（可恢复）；本包不提供任何永久删除变体。
+//   - 残留默认处置为移入内置回收站（可恢复，TrashResidues）；永久删除
+//     （RemoveResidues）是用户的显式选择，调用方必须确认。
 package uninstall
 
 import (
