@@ -42,7 +42,7 @@ func SaveCache(res *ScanResult) error {
 		os.Remove(tmpName)
 		return err
 	}
-	return os.Rename(tmpName, cachePath())
+	return platform.RenameReplace(tmpName, cachePath())
 }
 
 // LoadCache reads the last scan result, or returns an error when absent.

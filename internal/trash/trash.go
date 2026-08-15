@@ -324,7 +324,7 @@ func writeInfo(itemDir string, meta Item) error {
 		os.Remove(tmpName)
 		return err
 	}
-	return os.Rename(tmpName, infoPathOf(itemDir))
+	return platform.RenameReplace(tmpName, infoPathOf(itemDir))
 }
 
 // writeInfoFn 可被测试替换，用于模拟元数据落盘失败（磁盘满/权限）场景

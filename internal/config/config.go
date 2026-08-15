@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"cli-analyzer/internal/platform"
 )
@@ -116,8 +117,15 @@ func Load() *Config {
 	return cfg
 }
 
+// saveMu 串行化进程内 Save：GUI 自动检查缓存回写与用户在首选项保存会
+// 并发触发，进程内互斥消除同进程的 rename 竞争（跨进程由 RenameReplace
+// 的 Windows 退避重试兜底）。
+var saveMu sync.Mutex
+
 // Save 将配置原子写回 config.json（先写临时文件再 rename）
 func Save(c *Config) error {
+	saveMu.Lock()
+	defer saveMu.Unlock()
 	if c == nil {
 		c = Default()
 	}
@@ -152,7 +160,7 @@ func Save(c *Config) error {
 		os.Remove(tmpName)
 		return err
 	}
-	return os.Rename(tmpName, Path())
+	return platform.RenameReplace(tmpName, Path())
 }
 
 // normalize 将非法值回退到默认

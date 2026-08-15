@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -52,6 +53,11 @@ func itemIDs(t *testing.T) []string {
 // 删除也失败（权限）时，info.json 与项目目录必须保留（待下次重试）——
 // 此前忽略 RemoveAll 错误仍删 info，数据变成不可见也不可恢复的孤儿。
 func TestRemoveExpiredFallbackKeepsInfoOnFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// chmod 0o555 依赖 POSIX 权限语义（Windows 目录的只读位不阻止
+		// RemoveDirectory），Windows 上无法用此方式模拟删除失败
+		t.Skip("POSIX 权限语义用例")
+	}
 	withTrashRoot(t)
 	origSys := systemTrashFn
 	systemTrashFn = func(string) error { return errors.New("no system trash") }

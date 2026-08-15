@@ -337,16 +337,18 @@ func TestVersionedMatchSkipsNvmLayout(t *testing.T) {
 
 // TestBrewCellarPrefixTrailingSlash 验证 HOMEBREW_PREFIX 带尾斜杠时
 // Cellar 前缀不产生双斜杠（手拼 pre+"/Cellar/" 会让 brew 归因全部失效）。
+// 期望值用 filepath.Join 构造：Windows 上分隔符为反斜杠且 Join 会把
+// "/opt/homebrew" 规范化为 "\opt\homebrew"，与实现同构才能比较。
 func TestBrewCellarPrefixTrailingSlash(t *testing.T) {
-	sep := string(filepath.Separator)
-	if got := brewCellarPrefix("/opt/homebrew"); got != "/opt/homebrew"+sep+"Cellar"+sep {
-		t.Errorf("无尾斜杠前缀: got %q", got)
+	want := filepath.Join("/opt", "homebrew", "Cellar") + string(filepath.Separator)
+	if got := brewCellarPrefix("/opt/homebrew"); got != want {
+		t.Errorf("无尾斜杠前缀: got %q want %q", got, want)
 	}
-	if got := brewCellarPrefix("/opt/homebrew/"); got != "/opt/homebrew"+sep+"Cellar"+sep {
-		t.Errorf("带尾斜杠前缀应规范化: got %q", got)
+	if got := brewCellarPrefix("/opt/homebrew/"); got != want {
+		t.Errorf("带尾斜杠前缀应规范化: got %q want %q", got, want)
 	}
 	// 真实路径匹配验证：前缀后跟公式名应命中
-	real := brewCellarPrefix("/opt/homebrew/") + "python/3.13/bin/python3"
+	real := brewCellarPrefix("/opt/homebrew/") + filepath.Join("python", "3.13", "bin", "python3")
 	if !strings.HasPrefix(real, brewCellarPrefix("/opt/homebrew")) {
 		t.Error("带尾斜杠 vs 无尾斜杠的前缀应一致匹配")
 	}

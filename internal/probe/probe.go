@@ -189,7 +189,7 @@ func Save() {
 		os.Remove(tmpName)
 		return
 	}
-	_ = os.Rename(tmpName, p)
+	_ = platform.RenameReplace(tmpName, p)
 }
 
 // CachedOrRun 优先命中缓存（键 = real path + size + mtime）；未命中则探测并
