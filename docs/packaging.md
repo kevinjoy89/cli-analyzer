@@ -1,5 +1,7 @@
 # 打包与发布
 
+> 发布操作流程（版本号 → 验证 → tag → release notes → 发布）见 [release-process.md](release-process.md)；本文档讲各平台的打包细节。
+
 CLI Analyzer 是单一二进制双接口（CLI + GUI）。CLI 部分为纯 Go，可任意交叉编译；GUI 部分依赖各平台原生 webview（macOS WebViewKit / Windows WebView2 / Linux WebKitGTK），**必须用目标平台的构建环境**（本机或 CI 原生 runner）执行 `wails build`。因此跨平台打包的核心是：每个平台各打包一次这一个可执行文件。
 
 ## 版本与安装来源注入（重要）
