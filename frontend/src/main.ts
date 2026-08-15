@@ -802,7 +802,7 @@ function startDownload() {
         <div class="update-actions"><button class="btn" id="updCancel">${esc(t('upd.cancel'))}</button></div>`;
     el('updCancel').onclick = () => { CancelDownload(); };
     DownloadUpdate().then(err => {
-        if (err) { showToast(t('upd.startFailed', {err}), true); el('updateModal').classList.add('hidden'); return; }
+        if (err) { showUpdateFailed(t('upd.startFailed', {err}), lastUpdateResult?.releaseURL ?? ''); return; }
         startDownloadPoll(); // 进度轮询（事件在 macOS 不可靠）
     });
 }
@@ -838,6 +838,23 @@ function showUpdateVerifyFailed(err: string, releaseURL: string) {
             <button class="btn" id="updRelease">${esc(t('upd.releasePage'))}</button>
         </div>`;
     el('updClose').onclick = () => el('updateModal').classList.add('hidden');
+    el('updRelease').onclick = () => OpenURL(releaseURL || 'https://github.com/kevinjoy89/cli-analyzer/releases');
+}
+
+// 下载失败：保留面板展示错误信息，提供重试与 Release 页跳转（不自动关闭）
+function showUpdateFailed(err: string, releaseURL: string) {
+    updateState = 'idle';
+    const body = el('updateBody');
+    body.innerHTML = `
+        <p class="warn">${esc(t('upd.downloadFailed'))}</p>
+        <p class="muted">${esc(err)}</p>
+        <div class="update-actions">
+            <button class="btn" id="updClose">${esc(t('upd.close'))}</button>
+            <button class="btn" id="updRetry">${esc(t('upd.download'))}</button>
+            <button class="btn" id="updRelease">${esc(t('upd.releasePage'))}</button>
+        </div>`;
+    el('updClose').onclick = () => el('updateModal').classList.add('hidden');
+    el('updRetry').onclick = () => startDownload();
     el('updRelease').onclick = () => OpenURL(releaseURL || 'https://github.com/kevinjoy89/cli-analyzer/releases');
 }
 
@@ -1232,11 +1249,11 @@ async function init() {
         el('updateModal').classList.add('hidden');
         showToast(t('ui.downloadCancelled'));
     });
-    EventsOn('update:error', (p: {error: string}) => {
+    EventsOn('update:error', (p: {error: string; releaseURL?: string}) => {
         stopDownloadPoll();
         updateState = 'idle';
-        el('updateModal').classList.add('hidden');
-        showToast(t('ui.updateFailed', {err: p.error}), true);
+        // 失败面板保留弹窗：展示错误 + 重试 + Release 页跳转（不自动关闭）
+        showUpdateFailed(p.error, p.releaseURL ?? '');
     });
 
     // 初始化 i18n（拉取字典 + SetLanguage 握手），再渲染界面

@@ -387,7 +387,8 @@ func (s *ScannerService) GetUpdateStatus() string {
 
 // DownloadUpdate 开始下载最新版安装包（异步）。下载进度经 "update:progress"
 // 推送；完成后自动校验 SHA256，成功推 "update:downloaded"，校验失败推
-// "update:verify-failed"，取消推 "update:cancelled"，其他错误推 "update:error"。
+// "update:verify-failed"，取消推 "update:cancelled"，其他错误推 "update:error"
+// （载荷含 error 与 releaseURL，供前端渲染失败面板并提供 Release 页跳转）。
 func (s *ScannerService) DownloadUpdate() string {
 	s.mu.Lock()
 	// 检查与占位在锁内原子完成，杜绝双启动竞态（两次调用各起一个下载 goroutine
@@ -446,7 +447,7 @@ func (s *ScannerService) runDownload(ctx context.Context, res updater.CheckResul
 	// 重新拉取 release 以拿到 checksums.txt 附件（检查阶段只缓存了摘要）
 	release, err := updater.LatestRelease(ctx, nil)
 	if err != nil {
-		runtime.EventsEmit(s.ctx, "update:error", map[string]any{"error": err.Error()})
+		runtime.EventsEmit(s.ctx, "update:error", map[string]any{"error": err.Error(), "releaseURL": res.ReleaseURL})
 		return
 	}
 	asset, err := updater.SelectAsset(release, goruntime.GOOS, goruntime.GOARCH, res.InstallSource)
@@ -466,7 +467,7 @@ func (s *ScannerService) runDownload(ctx context.Context, res updater.CheckResul
 		if errors.Is(err, context.Canceled) {
 			runtime.EventsEmit(s.ctx, "update:cancelled", map[string]any{})
 		} else {
-			runtime.EventsEmit(s.ctx, "update:error", map[string]any{"error": err.Error()})
+			runtime.EventsEmit(s.ctx, "update:error", map[string]any{"error": err.Error(), "releaseURL": res.ReleaseURL})
 		}
 		return
 	}
