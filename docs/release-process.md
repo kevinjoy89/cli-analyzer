@@ -86,6 +86,8 @@ Release 自动创建的是**空 notes 草稿**——必须手写双语说明并�
 gh release edit v0.3.7.2 --notes-file /tmp/release-notes.md --draft=false
 ```
 
+> **血泪教训（v0.3.8）**：无 `gh` CLI 时若改用 GitHub API 提交 notes，**禁用 PowerShell `Invoke-RestMethod` 的字符串 body**——PS 5.1 发送字符串时默认编码非 UTF-8，中文全部变 `?`（英文无损，极易漏检）。必须用 `curl.exe --data-binary @payload.json`（payload 由 node `JSON.stringify` 生成、UTF-8 落盘）或 node `fetch` 提交；提交后 MUST 回读 body 验证含 CJK 字符（如 `node -e` 统计 `[\u4e00-\u9fff]` 数量），而非只看资产与状态码。
+>
 > **血泪教训**：v0.3.7 曾只推 tag 就以为完成——release 是空 notes 的 draft，
 > 用户看不到任何说明。**draft=false（发布）+ notes 文件（双语）缺一不可**。
 
