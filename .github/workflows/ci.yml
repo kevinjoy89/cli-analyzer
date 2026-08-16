@@ -88,3 +88,39 @@ jobs:
 
       - name: Build GUI app
         run: wails build
+
+  # Verify the full Wails GUI pipeline on Windows too: Windows is a first-class
+  # platform for this app (NSIS packaging, WebView2, icon/manifest issues only
+  # surface here), so a plain `wails build` must be green on windows-latest.
+  wails-build-windows:
+    name: Wails GUI build (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend (generates embedded assets)
+        working-directory: frontend
+        run: npm run build
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+
+      - name: Build GUI app
+        run: wails build
