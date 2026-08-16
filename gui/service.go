@@ -68,8 +68,9 @@ func (s *ScannerService) Startup(ctx context.Context) {
 		s.last = res
 	}
 	s.mu.Unlock()
-	// 启动扫描由前端驱动（init 渲染缓存后调 Scan）：保证扫描动效与按钮禁用
-	// 状态与手动扫描一致，也避免 scan:done 事件早于前端监听注册而丢失。
+	// 启动扫描由前端驱动（init 渲染缓存后调 ScanIfChanged）：指纹未变化时
+	// 秒回缓存（无全量 IO），变化时自动全量；scan:done 事件在监听注册后
+	// 才发射（前端 await 调用），不会丢失。
 	// 自动检查更新：异步执行；配置关闭、命中 4h 缓存或网络失败时均静默无提示
 	go s.autoCheck()
 }
@@ -107,24 +108,24 @@ func (s *ScannerService) Scan() {
 }
 
 // ScanIfChanged 启动时使用：指纹未变化时直接返回缓存结果（不执行全量
-// 扫描、不追加历史、不重探测），否则走完整扫描。事件契约与 Scan 一致。
+// 扫描、不追加历史），否则走完整扫描；版本探测始终执行（probe 缓存秒回，
+// 缓存命中启动也补齐版本列）。事件契约与 Scan 一致。
 func (s *ScannerService) ScanIfChanged() {
 	go func() {
-		res, err := scanner.ScanIfUnchanged(scanner.Options{})
+		res, scanned, err := scanner.ScanIfUnchanged(scanner.Options{})
 		if err != nil {
 			runtime.EventsEmit(s.ctx, "scan:done", map[string]any{"error": err.Error()})
 			return
 		}
-		// 仅真实扫描（结果变化）追加历史快照与版本探测；缓存命中不重复记录
+		// 仅真实扫描追加历史快照（scanned 由 ScanIfUnchanged 权威判定：
+		// CLI 先扫描后本进程命中新缓存时不会重复记录）；探测与历史解耦。
 		s.mu.Lock()
-		prev := s.last
 		s.last = res
 		s.mu.Unlock()
-		realScan := prev == nil || prev.ScannedAt != res.ScannedAt
-		if realScan {
+		if scanned {
 			_ = history.Record(res)
-			go s.probeAll()
 		}
+		go s.probeAll()
 		b, _ := json.Marshal(res)
 		runtime.EventsEmit(s.ctx, "scan:done", string(b))
 	}()

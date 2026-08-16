@@ -250,6 +250,10 @@ async function init() {
     // 每次打开软件都触发一次异步扫描：指纹未变化时直接复用缓存（秒开、
     // 无全量 IO），数据变化时自动全量。手动"重新扫描"按钮仍走 rescan()
     // （强制全量，main.ts 中 rescanBtn 的 onclick 不变）。
+    // 先进入 busy 状态：与手动重扫一致的按钮禁用/转圈（数据变化触发全量
+    // 扫描时用户有反馈，也防止扫描期间触发并发扫描）；scan:done 处理器首行
+    // setScanning(false) 复位，错误路径 catch 同样复位。
+    flows.setScanning(true, t('ui.scanning'));
     try {
         await ScanIfChanged();
     } catch (e) {

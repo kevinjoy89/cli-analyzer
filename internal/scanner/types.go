@@ -156,8 +156,6 @@ type CleanReport struct {
 
 // Options controls a scan.
 type Options struct {
-	// Refresh ignores the on-disk cache and rescans.
-	Refresh bool
 	// NoCache skips writing the on-disk cache.
 	NoCache bool
 	// ToolFilter, when non-empty, restricts results to tools whose name or

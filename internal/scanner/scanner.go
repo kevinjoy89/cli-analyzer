@@ -17,22 +17,26 @@ import (
 
 // Scan 执行完整扫描管线（GUI 手动"重新扫描"、CLI --refresh 使用）。
 func Scan(opts Options) (*ScanResult, error) {
-	return scan(opts, false)
+	res, _, err := scan(opts, false)
+	return res, err
 }
 
 // ScanIfUnchanged 优先返回缓存的扫描结果：指纹（mtime+size）未变化时
 // 跳过全量扫描（GUI 启动 / CLI 非 --refresh 路径），否则执行全量扫描。
 // 指纹文件缺失（首次运行）时保守走全量。手动"重新扫描"请用 Scan（强制全量）。
-func ScanIfUnchanged(opts Options) (*ScanResult, error) {
+// 第二个返回值报告是否执行了全量扫描（缓存命中为 false）——调用方据此
+// 决定是否追加历史快照，避免缓存命中（含 CLI 先扫描后 GUI 命中新缓存）
+// 重复记录。
+func ScanIfUnchanged(opts Options) (*ScanResult, bool, error) {
 	return scan(opts, true)
 }
 
-func scan(opts Options, skipIfUnchanged bool) (*ScanResult, error) {
-	if skipIfUnchanged && !opts.Refresh {
+func scan(opts Options, skipIfUnchanged bool) (*ScanResult, bool, error) {
+	if skipIfUnchanged {
 		if cached, err := LoadCache(); err == nil {
 			cur := ComputeFingerprint(cached)
 			if saved, err := LoadFingerprint(); err == nil && FingerprintsEqual(cur, saved) {
-				return cached, nil // 无变更：直接返回缓存，不扫描、不写历史
+				return cached, false, nil // 无变更：直接返回缓存，不扫描、不写历史
 			}
 		}
 	}
@@ -136,7 +140,7 @@ func scan(opts Options, skipIfUnchanged bool) (*ScanResult, error) {
 		// 的 cached 计算，与 ScanIfUnchanged 的缓存命中判定保持一致。
 		_ = SaveFingerprint(ComputeFingerprint(cached))
 	}
-	return res, nil
+	return res, true, nil
 }
 
 // findUnattributed walks every top-level dir under the data roots that no tool

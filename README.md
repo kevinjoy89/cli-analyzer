@@ -134,7 +134,7 @@ The app no longer auto-deletes anything, so nothing is "refused". These director
 
 - Hard-linked files are counted once per path (sizes slightly inflated); future: inode-based dedup
 - Scan results are a snapshot; run `--refresh` (or hit "Rescan" in the GUI) after files change
-- Startup/`scan` skip a full rescan when nothing changed (mtime-based fingerprint); in-place file edits inside a data dir may not trigger a rescan — "Rescan" or `scan --refresh` always forces one
+- Startup/`scan` skip a full rescan when nothing changed (mtime-based fingerprint); the fingerprint covers every measured path plus the PATH discovery dirs, so newly installed tools / new binaries in PATH dirs do trigger a rescan. Only in-place edits inside a data dir (parent dir mtime unchanged) may be missed — "Rescan" or `scan --refresh` always forces one
 
 ## Project layout
 

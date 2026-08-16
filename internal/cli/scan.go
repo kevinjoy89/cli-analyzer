@@ -46,17 +46,23 @@ func runScan(args []string) int {
 		}
 	} else {
 		// 非 --refresh：指纹未变化直接返回缓存（秒回）；变化则自动全量。
-		// --no-cache 时跳过指纹捷径（调用方明确不要缓存语义）。
+		// --no-cache 时跳过指纹捷径（调用方明确不要缓存语义），视为真实扫描。
 		opts := scanner.Options{NoCache: *noCache, ToolFilter: filters}
+		scanned := true
 		var err error
 		if *noCache {
 			res, err = scanner.Scan(opts)
 		} else {
-			res, err = scanner.ScanIfUnchanged(opts)
+			res, scanned, err = scanner.ScanIfUnchanged(opts)
 		}
 		if err != nil {
 			fmt.Fprintf(stderr(), "%s\n", i18n.T("cli.scanFailed", map[string]any{"err": err}))
 			return 1
+		}
+		// 真实扫描（含指纹变化触发的自动重扫与 --no-cache）才追加历史，
+		// 与 --refresh 路径一致；过滤扫描不写（避免污染整体趋势/增量排行）。
+		if scanned && len(filters) == 0 {
+			_ = history.Record(res)
 		}
 	}
 	if len(filters) > 0 {

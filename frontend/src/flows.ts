@@ -4,6 +4,7 @@ import {el, esc, showToast} from './dom';
 import {appVersion, downloadPoll, isMac, lastShownPct, lastUpdateResult, orphanSel, reminderTools, result, selectedCleanIds, trashItems, updateState, uninstallPoll} from './state';
 import {setDownloadPoll, setLastShownPct, setLastUpdateResult, setReminderTools, setTrashItems, setUpdateState, setUninstallPoll} from './state';
 import * as render from './render';
+import {KIND_TONE, RESTORE_ICON, TRASH_ICON} from './render';
 import type {PickItem} from './render';
 import {applyCleanLocally} from './lib/clean';
 import {hb} from './lib/format';
@@ -219,7 +220,6 @@ export async function refreshTrashList() {
     });
 }
 
-import {KIND_TONE, RESTORE_ICON, TRASH_ICON} from './render';
 // 下载进度改用轮询（GetDownloadProgress）：macOS WKWebView 对跨桥事件不可靠，
 // 事件推进度在 Mac 上完全不显示，轮询与 GetUpdateStatus 同一套路（已验证有效）。
 export function stopDownloadPoll() {
