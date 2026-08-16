@@ -6,12 +6,13 @@
 
 ## 1. 新增 wails-build-windows job
 
-- [ ] 1.1 `.github/workflows/ci.yml` 追加 `wails-build-windows` job（镜像现有 macOS wails-build）：windows-latest / checkout / Go（go-version-file + cache）/ Node 22（npm ci + npm run build）/ `go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0` / `wails build`
-- [ ] 1.2 提交：`ci: add Windows Wails GUI build job`
+- [x] 1.1 `.github/workflows/ci.yml` 追加 `wails-build-windows` job（镜像现有 macOS wails-build）：windows-latest / checkout / Go（go-version-file + cache）/ Node 22（npm ci + npm run build）/ `go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0` / `wails build`
+- [x] 1.2 提交：`ci: add Windows Wails GUI build job`
 
 ## 2. 观察 CI 并处置 fsync 用例
 
 - [ ] 2.1 推送分支触发 CI，观察：`Test (windows-latest)` 的 trash/cleaner/uninstall fsync 用例；`Wails GUI build (Windows)` job
+  > 状态（2026-08-15 实施会话）：`git push origin main` 成功（commit d257333 已推送，CI 已触发）；但本会话无法查看 GitHub Actions 结果（无 gh CLI、API 403 限流）。**待用户在 GitHub 上确认两个 job 结果后打勾**；若 `Test (windows-latest)` 的 fsync 用例失败，执行 2.2+2.4；若 `Wails GUI build (Windows)` 失败，执行 2.3。
 - [ ] 2.2 若 fsync 用例在真实 runner 失败：给 `internal/trash/trash_test.go`、`internal/cleaner/cleaner_test.go`、`internal/uninstall/*_test.go` 受影响用例加 `probeFSync` 探针 + `t.Skip`（跳过不弱化断言）
 - [ ] 2.3 若 wails-build-windows 失败：按 D1 风险预案处置（如 `-skipbindings`），记录原因
 - [ ] 2.4 提交（如有修复）：`test: skip fsync cases when environment lacks fsync support`

@@ -1,49 +1,33 @@
-# 扫描增量优化（mtime 指纹变更检测）
+﻿# 鎵弿澧為噺浼樺寲锛坢time 鎸囩汗鍙樻洿妫€娴嬶級
 
-> 变更目录：2026-08-15-scan-change-detection；能力：scan-change-detection（新）
+> 鍙樻洿鐩綍锛?026-08-15-scan-change-detection锛涜兘鍔涳細scan-change-detection锛堟柊锛?
+> **鎵ц鐜锛堝繀璇伙級**锛氭湰浠撳簱鍦?DSH 娌欑涓嬪伐浣滐紝鎵€鏈?`pwsh` 鍛戒护锛坓o test / gofmt / go vet / git / npx / npm 绛夛級褰撳墠琚矙绠辨嫤鎴紙`SetNamedSecurityInfoW failed: grantWrite`锛夈€傚疄鏂芥椂姣忎竴姝ラ獙璇?鎻愪氦鍛戒护缁?`pwsh` 鎵ц浼氬脊鍑烘巿鏉冭姹傗€斺€旀壒鍑?`workspace-write`锛堜釜鍒懡浠ら渶 `danger-full-access`锛夊嵆鍙斁琛岋紱鎺堟潈涓轰細璇濈骇锛屾壒鍑嗗悗鍚庣画鍛戒护閫氬父涓嶅啀閲嶅寮圭獥銆傛湰鍙樻洿鏃犳枃浠跺垹闄ゆ搷浣溿€?
+## 1. 鎸囩汗鏍稿績锛圱DD锛?
+- [x] 1.1 鍐欏け璐ユ祴璇?`internal/scanner/fingerprint_test.go`锛歍estComputeFingerprintAndEqual锛堜复鏃剁洰褰曟瀯閫犵粨鏋滐紱绛夊€?椤哄簭鏃犲叧/鏉＄洰缂哄け/mtime 鍙樺寲/size 鍙樺寲/鐪熷疄 stat 涓€鑷存€э級
+- [x] 1.2 杩愯纭澶辫触锛坲ndefined: ComputeFingerprint锛?- [ ] 1.3 瀹炵幇 `internal/scanner/fingerprint.go`锛欶ingerprintEntry / statEntry / measurePaths / ComputeFingerprint锛堟帓搴忥級/ FingerprintsEqual
+- [x] 1.4 杩愯纭閫氳繃 + gofmt 骞插噣
+- [x] 1.5 鎻愪氦锛歚feat(scanner): add mtime-based fingerprint for change detection`
 
-> **执行环境（必读）**：本仓库在 DSH 沙箱下工作，所有 `pwsh` 命令（go test / gofmt / go vet / git / npx / npm 等）当前被沙箱拦截（`SetNamedSecurityInfoW failed: grantWrite`）。实施时每一步验证/提交命令经 `pwsh` 执行会弹出授权请求——批准 `workspace-write`（个别命令需 `danger-full-access`）即可放行；授权为会话级，批准后后续命令通常不再重复弹窗。本变更无文件删除操作。
+## 2. 鎸囩汗鎸佷箙鍖栵紙TDD锛?
+- [x] 2.1 杩藉姞澶辫触娴嬭瘯 `cache_test.go`锛歍estFingerprintRoundTrip锛堥殧绂?XDG_CACHE_HOME + LOCALAPPDATA锛汼ave/Load 寰€杩旓紱ClearCache 鑱斿姩娓呮寚绾癸級
+- [x] 2.2 杩愯纭澶辫触锛坲ndefined: SaveFingerprint锛?- [ ] 2.3 瀹炵幇 `cache.go`锛氭娊 `writeJSONAtomic`锛圫aveCache 鏀圭敤瀹冿級锛沗SaveFingerprint`/`LoadFingerprint`锛坙ast-scan.fp.json锛夛紱`ClearCache` 杩炲甫娓呮寚绾?- [ ] 2.4 杩愯纭閫氳繃锛堝惈鏃㈡湁 cache 娴嬭瘯锛? gofmt 骞插噣
+- [x] 2.5 鎻愪氦锛歚feat(scanner): persist fingerprint file, clear it with cache --clear`
 
-## 1. 指纹核心（TDD）
+## 3. ScanIfUnchanged锛圱DD锛?
+- [x] 3.1 鍐欏け璐ユ祴璇?`internal/scanner/unchanged_test.go`锛歍estScanIfUnchangedCacheHit锛堥缃紦瀛?鎸囩汗锛岃繑鍥炵紦瀛樹笖 ScannedAt 涓嶅彉锛夛紱TestScanIfUnchangedNoFingerprintFallsBack锛堟棤鎸囩汗璧板叏閲忥紝ScannedAt 鍙樺寲锛?- [ ] 3.2 杩愯纭澶辫触锛坲ndefined: ScanIfUnchanged锛?- [ ] 3.3 瀹炵幇 `scanner.go`锛歚Scan` 涓讳綋鎶戒负鍐呴儴 `scan(opts, skipIfUnchanged)`锛涙柊澧?`ScanIfUnchanged`锛涚紦瀛樺啓鍏ュ杩藉姞 `SaveFingerprint(ComputeFingerprint(cached))`锛坈ached 涓烘湭杩囨护缁撴灉锛?- [ ] 3.4 杩愯纭閫氳繃锛堝惈鏃㈡湁 scan/classify/attribute 娴嬭瘯锛? gofmt 骞插噣
+- [x] 3.5 鎻愪氦锛歚feat(scanner): ScanIfUnchanged skips full rescan when fingerprint is unchanged`
 
-- [ ] 1.1 写失败测试 `internal/scanner/fingerprint_test.go`：TestComputeFingerprintAndEqual（临时目录构造结果；等值/顺序无关/条目缺失/mtime 变化/size 变化/真实 stat 一致性）
-- [ ] 1.2 运行确认失败（undefined: ComputeFingerprint）
-- [ ] 1.3 实现 `internal/scanner/fingerprint.go`：FingerprintEntry / statEntry / measurePaths / ComputeFingerprint（排序）/ FingerprintsEqual
-- [ ] 1.4 运行确认通过 + gofmt 干净
-- [ ] 1.5 提交：`feat(scanner): add mtime-based fingerprint for change detection`
+## 4. GUI 鎺ュ叆
 
-## 2. 指纹持久化（TDD）
+- [x] 4.1 `gui/service.go` 鏂板 `ScanIfChanged()`锛氬唴閮?`scanner.ScanIfUnchanged`锛涗粎鐪熷疄鎵弿锛坧rev==nil 鎴?ScannedAt 鍙樺寲锛夋墠 history.Record + probeAll锛涗簨浠跺绾︿笌 Scan 涓€鑷?- [ ] 4.2 閲嶆柊鐢熸垚 wails 缁戝畾锛坄wails generate module`锛夛紱纭 `frontend/wailsjs/go/gui/ScannerService.js` 涓?`.d.ts` 鍚?ScanIfChanged锛涙棤娉曡窇 wails 鏃舵墜宸ヨˉ鍚屾瀯鏉＄洰
+- [x] 4.3 `frontend/src/main.ts`锛歩mport 鍔?ScanIfChanged锛沗init()` 鏈熬 `rescan()` 鈫?`ScanIfChanged()`锛況escanBtn onclick 涓嶅彉锛堝己鍒跺叏閲忥級
+- [x] 4.4 楠岃瘉锛歚npx tsc --noEmit` + `npm test` + `go vet ./gui/` + `go build ./...`
+- [x] 4.5 鐪熸満鍐掔儫锛氶鍚叏閲忊啋鍐嶅惎绉掑紑锛堟棤鍏ㄩ噺 IO/鏃犳壂鎻忛棯鐑侊級锛涙墜鍔ㄩ噸鎵粛鍏ㄩ噺锛涘畨瑁?鍒犻櫎宸ュ叿鍚庡惎鍔ㄨ嚜鍔ㄥ叏閲?- [ ] 4.6 鎻愪氦锛歚feat(gui): startup scan uses change detection, manual rescan stays full`
 
-- [ ] 2.1 追加失败测试 `cache_test.go`：TestFingerprintRoundTrip（隔离 XDG_CACHE_HOME + LOCALAPPDATA；Save/Load 往返；ClearCache 联动清指纹）
-- [ ] 2.2 运行确认失败（undefined: SaveFingerprint）
-- [ ] 2.3 实现 `cache.go`：抽 `writeJSONAtomic`（SaveCache 改用它）；`SaveFingerprint`/`LoadFingerprint`（last-scan.fp.json）；`ClearCache` 连带清指纹
-- [ ] 2.4 运行确认通过（含既有 cache 测试）+ gofmt 干净
-- [ ] 2.5 提交：`feat(scanner): persist fingerprint file, clear it with cache --clear`
+## 5. CLI 鎺ュ叆
 
-## 3. ScanIfUnchanged（TDD）
+- [x] 5.1 `internal/cli/scan.go`锛歚--refresh` 璧?Scan锛涢潪 `--refresh` 璧?ScanIfUnchanged锛坄--no-cache` 鏃剁洿鎺?Scan锛夛紱鍘嗗彶浠呯湡瀹炴壂鎻忚拷鍔?- [ ] 5.2 楠岃瘉锛歚go build ./...` + `go test ./internal/cli/` + 鎵嬪姩涓夋锛堥鎵啋绉掑洖鈫抰ouch 瑙﹀彂閲嶆壂锛?- [ ] 5.3 鎻愪氦锛歚feat(cli): scan without --refresh auto-rescans when fingerprint changed`
 
-- [ ] 3.1 写失败测试 `internal/scanner/unchanged_test.go`：TestScanIfUnchangedCacheHit（预置缓存+指纹，返回缓存且 ScannedAt 不变）；TestScanIfUnchangedNoFingerprintFallsBack（无指纹走全量，ScannedAt 变化）
-- [ ] 3.2 运行确认失败（undefined: ScanIfUnchanged）
-- [ ] 3.3 实现 `scanner.go`：`Scan` 主体抽为内部 `scan(opts, skipIfUnchanged)`；新增 `ScanIfUnchanged`；缓存写入处追加 `SaveFingerprint(ComputeFingerprint(cached))`（cached 为未过滤结果）
-- [ ] 3.4 运行确认通过（含既有 scan/classify/attribute 测试）+ gofmt 干净
-- [ ] 3.5 提交：`feat(scanner): ScanIfUnchanged skips full rescan when fingerprint is unchanged`
+## 6. 鏂囨。
 
-## 4. GUI 接入
-
-- [ ] 4.1 `gui/service.go` 新增 `ScanIfChanged()`：内部 `scanner.ScanIfUnchanged`；仅真实扫描（prev==nil 或 ScannedAt 变化）才 history.Record + probeAll；事件契约与 Scan 一致
-- [ ] 4.2 重新生成 wails 绑定（`wails generate module`）；确认 `frontend/wailsjs/go/gui/ScannerService.js` 与 `.d.ts` 含 ScanIfChanged；无法跑 wails 时手工补同构条目
-- [ ] 4.3 `frontend/src/main.ts`：import 加 ScanIfChanged；`init()` 末尾 `rescan()` → `ScanIfChanged()`；rescanBtn onclick 不变（强制全量）
-- [ ] 4.4 验证：`npx tsc --noEmit` + `npm test` + `go vet ./gui/` + `go build ./...`
-- [ ] 4.5 真机冒烟：首启全量→再启秒开（无全量 IO/无扫描闪烁）；手动重扫仍全量；安装/删除工具后启动自动全量
-- [ ] 4.6 提交：`feat(gui): startup scan uses change detection, manual rescan stays full`
-
-## 5. CLI 接入
-
-- [ ] 5.1 `internal/cli/scan.go`：`--refresh` 走 Scan；非 `--refresh` 走 ScanIfUnchanged（`--no-cache` 时直接 Scan）；历史仅真实扫描追加
-- [ ] 5.2 验证：`go build ./...` + `go test ./internal/cli/` + 手动三步（首扫→秒回→touch 触发重扫）
-- [ ] 5.3 提交：`feat(cli): scan without --refresh auto-rescans when fingerprint changed`
-
-## 6. 文档
-
-- [ ] 6.1 README.md / README.zh-CN.md：Known limitations 追加指纹盲区说明；`scan` 行注释更新（auto-rescans when files changed）
-- [ ] 6.2 提交：`docs: document fingerprint-based skip of unchanged scans`
+- [x] 6.1 README.md / README.zh-CN.md锛欿nown limitations 杩藉姞鎸囩汗鐩插尯璇存槑锛沗scan` 琛屾敞閲婃洿鏂帮紙auto-rescans when files changed锛?- [ ] 6.2 鎻愪氦锛歚docs: document fingerprint-based skip of unchanged scans`
