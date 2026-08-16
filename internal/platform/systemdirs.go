@@ -39,6 +39,10 @@ var windowsSystemDataDirs = map[string]bool{
 	"connecteddevicesplatform":  true,
 	"placeholdertilelogofolder": true,
 	"squirreltemp":              true,
+	// VS Installer / WiX Burn 引导器包缓存（%LocalAppData%\Package Cache）：
+	// 缓存安装/修复/卸载所需的 MSI 与 exe 载荷，删除会破坏已装产品的修复与
+	// 卸载，属于安装器基础设施而非任何工具数据。
+	"package cache": true,
 }
 
 // IsSystemDataDir 报告数据根（root 参数）顶层目录名是否为系统/共享结构

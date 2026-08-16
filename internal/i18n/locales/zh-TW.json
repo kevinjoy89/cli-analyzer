@@ -204,6 +204,7 @@
   "tool.desc.yarn": "JavaScript 套件管理員",
   "tool.desc.pnpm": "高效率的 JavaScript 套件管理員",
   "tool.desc.gh": "GitHub 标准卸载命令列工具",
+  "tool.desc.clink": "為 cmd 增強 Bash 風格行編輯、歷史搜尋與目錄補全",
   "tool.desc.uv": "極速 Python 套件與專案管理員",
   "tool.desc.huggingface": "機器學習模型與資料集平台",
   "tool.desc.docker": "容器引擎",

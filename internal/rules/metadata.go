@@ -21,6 +21,7 @@ var metaByName = map[string]Meta{
 	"yarn":          {"https://yarnpkg.com", "tool.desc.yarn"},
 	"pnpm":          {"https://pnpm.io", "tool.desc.pnpm"},
 	"gh":            {"https://cli.github.com", "tool.desc.gh"},
+	"clink":         {"https://github.com/chrisant996/clink", "tool.desc.clink"},
 	"uv":            {"https://docs.astral.sh/uv", "tool.desc.uv"},
 	"huggingface":   {"https://huggingface.co", "tool.desc.huggingface"},
 	"docker":        {"https://docs.docker.com/engine", "tool.desc.docker"},

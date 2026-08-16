@@ -204,6 +204,7 @@
   "tool.desc.yarn": "JavaScript package manager",
   "tool.desc.pnpm": "Efficient JavaScript package manager",
   "tool.desc.gh": "GitHub's standard command-line tool",
+  "tool.desc.clink": "Enhances cmd.exe with bash-style line editing, history search and directory completion",
   "tool.desc.uv": "Fast Python package and project manager",
   "tool.desc.huggingface": "Machine learning models and datasets platform",
   "tool.desc.docker": "Container engine",

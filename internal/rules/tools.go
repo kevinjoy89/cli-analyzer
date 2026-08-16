@@ -79,6 +79,15 @@ var curated = []Rule{
 		},
 	},
 	{
+		Name: "clink", Installer: "other",
+		DataDirs: []DataDirRule{
+			// clink（cmd 增强）安装目录即数据目录：clink.exe 与历史/日志共存于
+			// %LocalAppData%\clink，二进制经注册表注入 cmd 不在 PATH（发现由
+			// platform.augmentUserDirs windows 补充）。
+			dd(platform.LocalAppData, "clink", TierUser, "data"),
+		},
+	},
+	{
 		Name: "uv", Installer: "other",
 		DataDirs: []DataDirRule{
 			dd(platform.XDGData, "uv", TierUser, "data"),
