@@ -15,10 +15,27 @@ import (
 	"cli-analyzer/internal/trash"
 )
 
-// Scan runs the full pipeline: discover PATH executables, classify them into
-// tools, attribute data dirs + install roots, size everything in parallel and
-// classify cleanables. Unless Options.NoCache is set, the result is cached.
+// Scan 执行完整扫描管线（GUI 手动"重新扫描"、CLI --refresh 使用）。
 func Scan(opts Options) (*ScanResult, error) {
+	return scan(opts, false)
+}
+
+// ScanIfUnchanged 优先返回缓存的扫描结果：指纹（mtime+size）未变化时
+// 跳过全量扫描（GUI 启动 / CLI 非 --refresh 路径），否则执行全量扫描。
+// 指纹文件缺失（首次运行）时保守走全量。手动"重新扫描"请用 Scan（强制全量）。
+func ScanIfUnchanged(opts Options) (*ScanResult, error) {
+	return scan(opts, true)
+}
+
+func scan(opts Options, skipIfUnchanged bool) (*ScanResult, error) {
+	if skipIfUnchanged && !opts.Refresh {
+		if cached, err := LoadCache(); err == nil {
+			cur := ComputeFingerprint(cached)
+			if saved, err := LoadFingerprint(); err == nil && FingerprintsEqual(cur, saved) {
+				return cached, nil // 无变更：直接返回缓存，不扫描、不写历史
+			}
+		}
+	}
 	start := time.Now()
 	// 顺带清除内置回收站的过期项（静默，失败不影响扫描）
 	trash.Sweep()
@@ -115,6 +132,9 @@ func Scan(opts Options) (*ScanResult, error) {
 			cached.Unattributed = res.Unattributed
 		}
 		_ = SaveCache(cached)
+		// 指纹与缓存同写：仅当实际写入缓存时（NoCache 不写）；基于未过滤
+		// 的 cached 计算，与 ScanIfUnchanged 的缓存命中判定保持一致。
+		_ = SaveFingerprint(ComputeFingerprint(cached))
 	}
 	return res, nil
 }
