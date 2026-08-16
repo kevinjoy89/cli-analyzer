@@ -43,14 +43,3 @@ export function kindLabel(kind: string): string {
     const k = KIND_LABEL_KEY[kind];
     return k ? t(k) : kind;
 }
-
-// 别名行展示判定：家族合并工具 →「包含工具」；普通工具 →「别名」；
-// 普通工具别名过多（>3 条，pyenv 等 shims 推入几十个命令名）不展示——
-// 那既不是别名也不是包含工具，展示纯属噪音（二进制区逐条可见）。
-// 返回 null 表示不渲染别名行。
-export function aliasMeta(tool: {family?: string; aliases?: string[]}): {labelKey: string} | null {
-    const aliases = tool.aliases ?? [];
-    if (!aliases.length) return null;
-    if (tool.family) return {labelKey: 'ui.bundledTools'};
-    return aliases.length <= 3 ? {labelKey: 'ui.aliases'} : null;
-}

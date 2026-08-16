@@ -28,6 +28,15 @@ export function setScanning(busy: boolean, label = '') {
     btn.disabled = busy;
     btn.classList.toggle('scanning', busy);
     btn.innerHTML = busy ? `<span class="btn-spin"></span>${esc(label)}` : esc(t('menu.rescan'));
+    // 扫描进行中隐藏旧结果的「扫描用时/遍历错误」（这些来自上一次扫描，
+    // 扫描期间展示是误导）；平台信息是静态系统信息，保持可见。扫描完成
+    // 由 renderSummary 填充新值；失败/取消路径恢复旧摘要，避免状态栏空白。
+    const info = el('statusInfo');
+    if (busy) {
+        info.querySelectorAll('span[data-role="scanTime"], span[data-role="walkErrors"]').forEach(s => s.remove());
+    } else if (!info.querySelector('span[data-role="scanTime"]')) {
+        render.renderSummary();
+    }
 }
 
 // ---- scan flow ----
@@ -406,6 +415,13 @@ export function showUninstallConfirm(info: import('./state').UninstallStartInfo)
     };
     const runBtn = document.getElementById('unRun') as HTMLButtonElement | null;
     if (runBtn) runBtn.onclick = async () => {
+        // 标准卸载会移除程序文件：执行前必须二次确认（此前直接执行）
+        const ok = await confirmDialog({
+            title: t('un.guiRunMain'),
+            message: t('un.guiRunConfirm'),
+            confirmText: t('un.guiRunMain'),
+        });
+        if (!ok) return;
         runBtn.disabled = true;
         const err = await UninstallRunOfficial();
         if (err) { showToast(err, true); runBtn.disabled = false; return; }
@@ -441,14 +457,27 @@ export function startUninstallPoll() {
 }
 
 // 残留检测 → 列表（全选默认、凭证标红）→ 移入回收站
+// 检测可能需数秒（扫描大数据目录，如 uv 缓存 7GB+）：先渲染进行中状态，
+// 避免点击后无反馈像假死；完成后替换为残留列表。
 export async function showUninstallResidue() {
+    const body = el('uninstallBody');
+    el('uninstallTitle').textContent = t('un.guiResidueTitle');
+    body.innerHTML = `<p class="muted">${esc(t('un.guiResidueScanning'))}</p><p class="muted un-residue-hint">${esc(t('un.guiResidueScanningHint'))}</p>`;
     let rr: import('./state').UninstallResidueItem[] = [];
     try {
         const parsed = JSON.parse(await UninstallResidue());
         rr = Array.isArray(parsed) ? parsed : [];
-    } catch { showToast(t('un.residueNone'), true); return; }
-    if (!rr.length) { showToast(t('un.guiResidueNone')); return; }
-    const body = el('uninstallBody');
+    } catch {
+        const msg = t('un.residueNone');
+        body.innerHTML = `<p class="muted">${esc(msg)}</p>`;
+        showToast(msg, true);
+        return;
+    }
+    if (!rr.length) {
+        body.innerHTML = `<p class="muted">${esc(t('un.guiResidueNone'))}</p>`;
+        showToast(t('un.guiResidueNone'));
+        return;
+    }
     el('uninstallTitle').textContent = t('un.guiResidueTitle');
     body.innerHTML = `
         ${rr.map((r, i) => `
@@ -456,10 +485,10 @@ export async function showUninstallResidue() {
                 <input type="checkbox" data-idx="${i}" checked/>
                 <span class="${r.tier === 'user' ? 'un-credential' : ''}">${esc(r.path)} · ${hb(r.bytes)}${r.tier === 'user' ? ' · ' + esc(t('un.guiResidueCredential')) : ''}</span>
             </label>`).join('')}
-        <div class="update-actions">
+        <div class="update-actions un-actions">
             <button class="btn" id="unCancel2">${esc(t('ui.cancel'))}</button>
             <button class="btn danger" id="unDeletePerm">${esc(t('un.guiDeletePermanent'))}</button>
-            <button class="btn danger" id="unTrash">${esc(t('un.guiTrashConfirm'))}</button>
+            <button class="btn danger" id="unTrash"><span class="btn-main">${esc(t('un.guiTrashMain'))}</span><span class="btn-sub">${esc(t('un.guiTrashSub'))}</span></button>
         </div>`;
     el('uninstallModal').classList.remove('hidden');
     el('unCancel2').onclick = () => el('uninstallModal').classList.add('hidden');

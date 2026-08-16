@@ -736,6 +736,9 @@ body.platform-linux #header { padding-top: 10px; }
     margin-top: 16px;
 }
 .update-actions .btn + .btn { margin-left: 0; }
+/* uninstall residue actions: 短标签按钮不得换行（取消/永久删除），
+ * 主按钮（移入内置回收站）两行文案由 .btn-main/.btn-sub 承载 */
+.un-actions .btn { white-space: nowrap; }
 .progress {
     height: 8px;
     border-radius: 4px;

@@ -5,7 +5,7 @@ import {describe, expect, it} from 'vitest';
 import en from '../../../internal/i18n/locales/en.json';
 import tw from '../../../internal/i18n/locales/zh-TW.json';
 import zh from '../../../internal/i18n/locales/zh-CN.json';
-import {KIND_LABEL_KEY, ROOT_LABEL_KEY, aliasMeta} from './labels';
+import {KIND_LABEL_KEY, ROOT_LABEL_KEY} from './labels';
 
 const DICTS: Array<{lang: string; dict: Record<string, string>}> = [
     {lang: 'zh-CN', dict: zh},
@@ -39,25 +39,5 @@ describe('labels 与 locale 字典一致性', () => {
                 }
             }
         }
-    });
-});
-
-describe('aliasMeta 别名行展示判定', () => {
-    it('家族合并工具 →「包含工具」', () => {
-        expect(aliasMeta({family: 'nodejs', aliases: ['node', 'npm', 'npx', 'corepack', 'node-gyp']})).toEqual({labelKey: 'ui.bundledTools'});
-    });
-
-    it('普通工具 ≤3 条别名 →「别名」', () => {
-        expect(aliasMeta({aliases: ['claude-code']})).toEqual({labelKey: 'ui.aliases'});
-        expect(aliasMeta({aliases: ['a', 'b', 'c']})).toEqual({labelKey: 'ui.aliases'});
-    });
-
-    it('普通工具 >3 条别名 → 不展示（shims 噪音）', () => {
-        expect(aliasMeta({aliases: ['python', 'pip', 'pytest', 'pipx']})).toBeNull();
-    });
-
-    it('无别名 → 不展示', () => {
-        expect(aliasMeta({aliases: []})).toBeNull();
-        expect(aliasMeta({})).toBeNull();
     });
 });

@@ -7,7 +7,7 @@ import {setPanelView, setSelected, setSortDir, setSortKey} from './state';
 import type {SortKey} from './state';
 import {hb} from './lib/format';
 import {fmtTime, t} from './lib/i18n';
-import {aliasMeta, kindLabel, orphanRootLabel} from './lib/labels';
+import {kindLabel, orphanRootLabel} from './lib/labels';
 import {computeTrendPaths} from './lib/trends';
 import type {Cleanable, DataDir, Grower, Point, Tool} from './lib/types';
 import {OpenURL, UninstallBlocked} from '../wailsjs/go/gui/ScannerService';
@@ -40,14 +40,17 @@ export function renderSummary() {
     el('lastScan').textContent = result.scannedAt ? t('ui.lastScan', {time: fmtTime(result.scannedAt)}) : '';
     const status = el('statusInfo');
     status.innerHTML = '';
-    const parts: Array<[string, string]> = [
-        [t('ui.scanTime'), result.scanTimeMs > 0 ? `${(result.scanTimeMs / 1000).toFixed(1)} s` : t('ui.scanCache')],
-        [t('ui.walkErrors'), String(result.walkErrors)],
-        [t('ui.platform'), result.platform],
+    // data-role 标记各字段：扫描进行中 setScanning 会移除 scanTime/walkErrors
+    // （旧结果数据），保留 platform（静态系统信息）
+    const parts: Array<{role: string; labelKey: string; value: string}> = [
+        {role: 'scanTime', labelKey: 'ui.scanTime', value: result.scanTimeMs > 0 ? `${(result.scanTimeMs / 1000).toFixed(1)} s` : t('ui.scanCache')},
+        {role: 'walkErrors', labelKey: 'ui.walkErrors', value: String(result.walkErrors)},
+        {role: 'platform', labelKey: 'ui.platform', value: result.platform},
     ];
-    for (const [k, v] of parts) {
+    for (const {role, labelKey, value} of parts) {
         const span = document.createElement('span');
-        span.textContent = `${k}: ${v}`;
+        span.dataset.role = role;
+        span.textContent = `${t(labelKey)}: ${value}`;
         status.appendChild(span);
     }
 }
@@ -274,14 +277,6 @@ export function renderDetail() {
     if (sourceName) metaItems.push(`<span class="meta-item">${esc(t('ui.installerSource'))} <b>${esc(sourceName)}</b></span>`);
     if (tool.version) metaItems.push(`<span class="meta-item">${esc(t('ui.version'))} <b>${esc(tool.version)}</b></span>`);
     if (tool.updatedAt) metaItems.push(`<span class="meta-item">${esc(t('ui.updatedAt'))} <b>${fmtTime(tool.updatedAt)}</b></span>`);
-    // 家族合并工具（nodejs 等）：aliases 即其包含的命令，标签用「包含工具」；
-    // 普通工具的 aliases 只是别名（claude→claude-code），仅在小列表时展示——
-    // pyenv 等工具的 shims 会推入几十个命令名（python/pip/pytest…），那既不是
-    // 别名也不是包含工具，展示为「别名」纯属噪音（它们在下方的二进制区逐条可见）
-    const am = aliasMeta(tool);
-    if (am) {
-        metaItems.push(`<span class="meta-item">${esc(t(am.labelKey))} <b>${esc(tool.aliases.join(' · '))}</b></span>`);
-    }
     const metaHtml = (tool.description || tool.homepage || metaItems.length)
         ? `<div class="detail-meta">
             ${tool.description ? `<div class="meta-desc">${esc(tool.description)}</div>` : ''}
