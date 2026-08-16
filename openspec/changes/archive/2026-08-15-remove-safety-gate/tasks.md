@@ -45,3 +45,8 @@
 - [x] 7.1 Go 侧：gofmt 合规（全部修改文件）+ `go vet ./...` 通过 + `go test ./...` 全绿（唯一例外：预存在的 `TestCollectBackupsSkipsSymlinkTarget` 在本机 Windows 无开发者模式权限下无法创建符号链接而失败，属环境限制、与本次改动无关；GitHub CI 的 windows runner 默认开启符号链接权限，不受影响）。验证工具链临时解压于 `.go-toolchain/`（已加入 .gitignore）
 - [x] 7.2 前端：`npm test` 19/19 通过；`tsc --noEmit` 通过
 - [x] 7.3 i18n 键集三语一致（345 键，node 脚本比对）
+
+## 8. 同步与归档
+
+- [x] 8.1 能力规格同步（apply）：`tool-attribution`（新增"归因目录均为可处置项，Tier 为信息标签"需求）、`trash-recycle-bin`（SAFE 措辞 → 处置；永久删除为显式选择）、`tool-uninstall`（残留处置默认回收站 + 永久删除显式选择 + 白名单约束）、`usage-trends`（cleanable → 可处置口径）
+- [x] 8.2 归档：本 change 移入 `openspec/changes/archive/2026-08-15-remove-safety-gate/`
