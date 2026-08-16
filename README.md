@@ -21,6 +21,8 @@ Cleanup tools like CleanMyMac show how much disk your **desktop apps** use — b
 
 CLI Analyzer scans every CLI tool installed on your machine and attributes its **total** disk footprint (executable + package dirs + data/cache dirs). Every attributed directory is **labeled** (cache / config / data / old version / …) — but whether it should be removed is **your call**: the app never judges "safe to delete" on your behalf. One binary, two interfaces: a terminal CLI and a native dark-mode GUI (Wails v2).
 
+<!-- Screenshots pending: restore this table once docs/screenshots/app-light-en.png and app-dark-en.png exist -->
+
 | Light theme | Dark theme |
 |---|---|
 | ![Light](./docs/screenshots/app-light-en.png) | ![Dark](./docs/screenshots/app-dark-en.png) |
@@ -84,7 +86,7 @@ cli-analyzer trends [days]           # usage trends over the last N days (defaul
 cli-analyzer update check           # check for a new version (exit: 0 up-to-date / 2 update / 1 error)
 cli-analyzer uninstall <tool>       # standard uninstall + residue cleanup (built-in trash by default)
 cli-analyzer uninstall <tool> --permanent  # permanently delete residue (unrecoverable)
-cli-analyzer version                # show version and install source (e.g. 0.3.3 (darwin, dmg))
+cli-analyzer version                # show version and install source (e.g. 0.3.8 (darwin, dmg))
 cli-analyzer cache --clear           # clear the scan cache
 cli-analyzer                         # open the GUI
 ```

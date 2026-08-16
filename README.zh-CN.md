@@ -21,6 +21,8 @@
 
 CLI Analyzer 扫描系统上安装的 CLI 工具，归因每个工具的总磁盘占用（可执行文件 + 包目录 + 数据/缓存目录），并对每个归因目录打上类型标签（缓存/配置/数据/旧版本…）。**是否删除由你决定**——应用不再替你裁决"可安全清理"。同一二进制既是 CLI 也是原生 GUI（Wails v2，暗色界面）。
 
+<!-- 截图待补：docs/screenshots/app-light.png / app-dark.png 生成后恢复此表 -->
+
 | 浅色主题 | 深色主题 |
 |---|---|
 | ![浅色](./docs/screenshots/app-light.png) | ![深色](./docs/screenshots/app-dark.png) |
@@ -82,7 +84,7 @@ cli-analyzer trends [天数]           # 查看最近 N 天占用趋势（默认
 cli-analyzer update check           # 检查新版本（退出码：0 已是最新 / 2 有更新 / 1 错误）
 cli-analyzer uninstall <工具>       # 标准卸载 + 残留清理（默认走内置回收站）
 cli-analyzer uninstall <工具> --permanent  # 残留永久删除（不可恢复）
-cli-analyzer version                # 显示版本与安装来源（如 0.3.3 (darwin, dmg)）
+cli-analyzer version                # 显示版本与安装来源（如 0.3.8 (darwin, dmg)）
 cli-analyzer cache --clear           # 清除扫描缓存
 cli-analyzer                         # 打开 GUI
 ```
