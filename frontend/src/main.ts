@@ -1,6 +1,6 @@
 import './style.css';
 
-import {CancelDownload, CheckForUpdates, Clean, DownloadUpdate, GetDownloadProgress, GetLanguage, GetLastResult, GetReminderConfig, GetTranslations, GetTrashConfig, GetUninstallStatus, GetUpdateStatus, GetTrends, GetUpdateConfig, GetVersion, IgnoreVersion, InstallUpdate, OpenURL, OrphanTrash, PurgeNow, Restore, Scan, SetLanguage, SetLanguagePreference, SetReminderConfig, SetTheme, SetTrashConfig, SetUpdateConfig, TrashInfo, TrashList, UninstallBlocked, UninstallDeleteResidues, UninstallResidue, UninstallRunOfficial, UninstallStart, UninstallTrashResidues} from '../wailsjs/go/gui/ScannerService';
+import {CancelDownload, CheckForUpdates, Clean, DownloadUpdate, GetDownloadProgress, GetLanguage, GetLastResult, GetReminderConfig, GetTranslations, GetTrashConfig, GetUninstallStatus, GetUpdateStatus, GetTrends, GetUpdateConfig, GetVersion, IgnoreVersion, InstallUpdate, OpenURL, OrphanTrash, PurgeNow, Restore, Scan, ScanIfChanged, SetLanguage, SetLanguagePreference, SetReminderConfig, SetTheme, SetTrashConfig, SetUpdateConfig, TrashInfo, TrashList, UninstallBlocked, UninstallDeleteResidues, UninstallResidue, UninstallRunOfficial, UninstallStart, UninstallTrashResidues} from '../wailsjs/go/gui/ScannerService';
 import {Environment, EventsOn, Quit} from '../wailsjs/runtime/runtime';
 import {applyCleanLocally} from './lib/clean';
 import {hb} from './lib/format';
@@ -1440,9 +1440,15 @@ async function init() {
     refreshTrashInfo();
     refreshReminder();
 
-    // 每次打开软件都触发一次异步扫描：缓存保证秒开，扫描动效/禁用按钮与
-    // 手动扫描一致，完成后 scan:done 用最新结果刷新界面。
-    rescan();
+    // 每次打开软件都触发一次异步扫描：指纹未变化时直接复用缓存（秒开、
+    // 无全量 IO），数据变化时自动全量。手动"重新扫描"按钮仍走 rescan()
+    // （强制全量，main.ts 中 rescanBtn 的 onclick 不变）。
+    try {
+        await ScanIfChanged();
+    } catch (e) {
+        setScanning(false);
+        showToast(t('ui.scanStartFailed', {err: String(e)}), true);
+    }
 }
 
 init();

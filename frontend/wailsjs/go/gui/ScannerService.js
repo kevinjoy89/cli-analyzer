@@ -94,6 +94,10 @@ export function Scan() {
   return window['go']['gui']['ScannerService']['Scan']();
 }
 
+export function ScanIfChanged() {
+  return window['go']['gui']['ScannerService']['ScanIfChanged']();
+}
+
 export function SetLanguage(arg1) {
   return window['go']['gui']['ScannerService']['SetLanguage'](arg1);
 }

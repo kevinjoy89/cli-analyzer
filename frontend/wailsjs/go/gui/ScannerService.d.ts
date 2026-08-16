@@ -48,6 +48,8 @@ export function Restore(arg1:string):Promise<string>;
 
 export function Scan():Promise<void>;
 
+export function ScanIfChanged():Promise<void>;
+
 export function SetLanguage(arg1:string):Promise<string>;
 
 export function SetLanguagePreference(arg1:string):Promise<string>;

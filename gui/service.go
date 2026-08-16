@@ -106,6 +106,30 @@ func (s *ScannerService) Scan() {
 	}()
 }
 
+// ScanIfChanged 启动时使用：指纹未变化时直接返回缓存结果（不执行全量
+// 扫描、不追加历史、不重探测），否则走完整扫描。事件契约与 Scan 一致。
+func (s *ScannerService) ScanIfChanged() {
+	go func() {
+		res, err := scanner.ScanIfUnchanged(scanner.Options{})
+		if err != nil {
+			runtime.EventsEmit(s.ctx, "scan:done", map[string]any{"error": err.Error()})
+			return
+		}
+		// 仅真实扫描（结果变化）追加历史快照与版本探测；缓存命中不重复记录
+		s.mu.Lock()
+		prev := s.last
+		s.last = res
+		s.mu.Unlock()
+		realScan := prev == nil || prev.ScannedAt != res.ScannedAt
+		if realScan {
+			_ = history.Record(res)
+			go s.probeAll()
+		}
+		b, _ := json.Marshal(res)
+		runtime.EventsEmit(s.ctx, "scan:done", string(b))
+	}()
+}
+
 // probeAll 为版本未知的工具后台探测版本（--version/-V/--help，超时+缓存），
 // 完成后用更新后的结果发射 probe:done 事件。缓存命中时秒回；挂起工具按
 // 3s 超时中断。失败静默，不产生错误事件。
