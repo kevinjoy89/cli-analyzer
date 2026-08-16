@@ -72,7 +72,7 @@ Cross-platform installers (macOS dmg / Windows installer / Linux deb + AppImage)
 ## Usage
 
 ```bash
-cli-analyzer scan                    # scan (first run is slower, cached afterwards)
+cli-analyzer scan                    # scan (cached when nothing changed; auto-rescans when files changed)
 cli-analyzer scan --refresh --json   # force a rescan, JSON output (includes unattributed + probed versions)
 cli-analyzer clean                   # interactive, per-item disposal (into built-in trash)
 cli-analyzer clean --dry-run --all   # show the plan only, delete nothing
@@ -134,6 +134,7 @@ The app no longer auto-deletes anything, so nothing is "refused". These director
 
 - Hard-linked files are counted once per path (sizes slightly inflated); future: inode-based dedup
 - Scan results are a snapshot; run `--refresh` (or hit "Rescan" in the GUI) after files change
+- Startup/`scan` skip a full rescan when nothing changed (mtime-based fingerprint); in-place file edits inside a data dir may not trigger a rescan — "Rescan" or `scan --refresh` always forces one
 
 ## Project layout
 

@@ -70,7 +70,7 @@ wails build        # → build/bin/cli-analyzer
 ## 用法
 
 ```bash
-cli-analyzer scan                    # 扫描（首次较慢，之后读缓存秒开）
+cli-analyzer scan                    # 扫描（无变化时读缓存秒回；数据变化时自动重扫）
 cli-analyzer scan --refresh --json   # 强制重扫并输出 JSON
 cli-analyzer clean                   # 交互式逐项确认处置（先入内置回收站）
 cli-analyzer clean --dry-run --all   # 只显示处置计划，不删除
@@ -132,6 +132,7 @@ pyenv        -   759.8 MB  0 B        759.8 MB  pyenv
 
 - 硬链接文件按路径重复计数（大小略偏高）；后续可用 inode 去重
 - 扫描结果为快照；文件变更后需 `--refresh` 或 GUI 里点"重新扫描"
+- 启动/`scan` 在数据未变化时跳过全量重扫（mtime 指纹）；数据目录内文件被原地修改可能不触发重扫——"重新扫描"或 `scan --refresh` 永远强制全量
 
 ## 项目结构
 
