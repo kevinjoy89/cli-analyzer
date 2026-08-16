@@ -18,6 +18,14 @@
 
 ## 1. 本地全量验证（提交前 MUST，CI 会原样跑一遍）
 
+一键执行（等价于下方手工命令 + tsc + 三平台编译 + 可选版本一致性）：
+
+```bash
+./scripts/release/check.sh            # 全量检查；传 tag 时额外校验 wails.json productVersion
+```
+
+手工等价命令（Windows 无 Git Bash 时逐条执行）：
+
 ```bash
 gofmt -l .                    # 必须为空！CI "Check formatting" 步骤会失败
 go vet ./...
@@ -35,9 +43,11 @@ cd .. && for os in windows linux darwin; do GOOS=$os go build ./...; done  # 三
 `wails.json` 的 `productVersion` 是唯一版本来源（与 tag 保持一致）：
 
 ```bash
-sed -i '' 's/"productVersion": "[^"]*"/"productVersion": "0.3.7.2"/' wails.json
+./scripts/release/bump-version.sh 0.3.7.2
 git add wails.json && git commit -m "chore: bump version to 0.3.7.2"
 ```
+
+手工等价命令（脚本不可用时）：`sed -i '' 's/"productVersion": "[^"]*"/"productVersion": "0.3.7.2"/' wails.json`。
 
 > CI 构建前会用 tag 自动覆写 wails.json（防漂移），但本地提交保持一致是规范。
 > 不升级版本号、只发 tag 会导致安装包元数据与 tag 不符（v0.3.4 曾因此产物缺失）。
@@ -70,7 +80,30 @@ for i in $(seq 1 14); do sleep 30; gh release view v0.3.7.2 2>&1 | head -2 | gre
 
 ## 5. 双语 release notes（MUST，勿忘！）
 
-Release 自动创建的是**空 notes 草稿**——必须手写双语说明并正式发布。
+Release 自动创建的是**空 notes 草稿**——必须写双语说明并正式发布。
+
+1. 从模板复制并填写（先写 notes 文件，脚本负责自检与提交）：
+
+```bash
+mkdir -p docs/release-notes
+cp scripts/release/notes-template.md docs/release-notes/v0.3.7.2.md
+# 编辑 docs/release-notes/v0.3.7.2.md：中文段（标题/变更分节/下载逐项/未签名提示）
+# + --- 分隔 + 完整 English 段
+```
+
+2. 本地自检（不提交、不联网）：
+
+```bash
+GH_PAT=<token> node scripts/release/notes.js v0.3.7.2 --verify
+```
+
+3. 提交并发布（draft → published）：
+
+```bash
+GH_PAT=<token> node scripts/release/notes.js v0.3.7.2
+```
+
+脚本内置校验：源文件必须含 CJK 字符、含 `---` 中英分隔与下载产物清单，否则拒绝；提交后回读 body 校验含 CJK（防乱码回归）。
 
 格式参照历史版本（`gh release view v0.3.7.1`）：
 
@@ -82,11 +115,13 @@ Release 自动创建的是**空 notes 草稿**——必须手写双语说明并�
    - 更新说明（v0.3.0+ 启动时提示）
 2. `---` 分隔后附完整 **English** 版（对应翻译）
 
+无脚本时的手工等价命令：
+
 ```bash
-gh release edit v0.3.7.2 --notes-file /tmp/release-notes.md --draft=false
+gh release edit v0.3.7.2 --notes-file docs/release-notes/v0.3.7.2.md --draft=false
 ```
 
-> **血泪教训（v0.3.8）**：无 `gh` CLI 时若改用 GitHub API 提交 notes，**禁用 PowerShell `Invoke-RestMethod` 的字符串 body**——PS 5.1 发送字符串时默认编码非 UTF-8，中文全部变 `?`（英文无损，极易漏检）。必须用 `curl.exe --data-binary @payload.json`（payload 由 node `JSON.stringify` 生成、UTF-8 落盘）或 node `fetch` 提交；提交后 MUST 回读 body 验证含 CJK 字符（如 `node -e` 统计 `[\u4e00-\u9fff]` 数量），而非只看资产与状态码。
+> **血泪教训（v0.3.8）**：无 `gh` CLI 时若改用 GitHub API 提交 notes，**禁用 PowerShell `Invoke-RestMethod` 的字符串 body**——PS 5.1 发送字符串时默认编码非 UTF-8，中文全部变 `?`（英文无损，极易漏检）。必须用 `curl.exe --data-binary @payload.json`（payload 由 node `JSON.stringify` 生成、UTF-8 落盘）或 node `fetch` 提交；提交后 MUST 回读 body 验证含 CJK 字符（如 `node -e` 统计 `[\u4e00-\u9fff]` 数量），而非只看资产与状态码。`notes.js` 已内置以上全部校验。
 >
 > **血泪教训**：v0.3.7 曾只推 tag 就以为完成——release 是空 notes 的 draft，
 > 用户看不到任何说明。**draft=false（发布）+ notes 文件（双语）缺一不可**。
