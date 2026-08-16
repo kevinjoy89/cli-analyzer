@@ -136,8 +136,8 @@ pyenv        -   759.8 MB  0 B        759.8 MB  pyenv
 ```
 main.go             # argv 分发：scan/clean/cache/trash/trends/version → CLI；否则 Wails GUI
 gui/service.go      # Wails 绑定（唯一 import wails 的文件）
-internal/scanner/   # 发现→分类→归因→可清理判定（纯核心）
-internal/rules/     # 两级规则表 + 通用解析器
+internal/scanner/   # 发现→分类→归因→可处置判定（纯核心）
+internal/rules/     # curated + 通用归因规则表
 internal/platform/  # 各 OS 数据根目录与可执行检测（build tags）
 internal/disk/      # 并行目录大小测量（无 du 依赖）
 internal/cleaner/   # 完整性守卫 + 延迟删除（内置回收站）

@@ -108,7 +108,7 @@ Total  -     31.5 GB  19.9 GB     11.7 GB   -
 
 **Disposal model**: the app attributes and labels each directory (cache / config / data / old version / backup / toolchain…); deletion is your call. `clean --all` batches only cleanup-kind items (cache / old-version / backup / download) by default — config/data/state need an explicit `--include-data`. Old-version disposal always keeps the current version (e.g. the symlink target for `claude`); the cleaner's integrity guards still refuse system roots, `..` paths, the trash root, and the current version path.
 
-**Deferred deletion**: SAFE items are moved into the app's built-in trash first — same filesystem, instant, and recoverable. They stay there for the retention window (default 7 days, configurable in Preferences) and are then purged: by default into the OS trash, or permanently if configured. The GUI status bar shows the trash occupancy and the earliest expiry, so "cleaned" and "space released" stay distinct. Use `clean --permanent` to bypass the built-in trash.
+**Deferred deletion**: disposed items are moved into the app's built-in trash first — same filesystem, instant, and recoverable. They stay there for the retention window (default 7 days, configurable in Preferences) and are then purged: by default into the OS trash, or permanently if configured. The GUI status bar shows the trash occupancy and the earliest expiry, so "disposed" and "space released" stay distinct. Use `clean --permanent` to bypass the built-in trash.
 
 ### Disposal guidance — labeled, not judged
 
@@ -139,7 +139,7 @@ The app no longer auto-deletes anything, so nothing is "refused". These director
 main.go             # argv dispatch: scan/clean/cache/trash/trends/version → CLI; otherwise Wails GUI
 gui/service.go      # Wails bindings (the only file importing wails)
 internal/scanner/   # discover → classify → attribute → cleanability (pure core)
-internal/rules/     # two-level rules table + generic parser
+internal/rules/     # curated + generic attribution rules
 internal/platform/  # per-OS data roots & executable detection (build tags)
 internal/disk/      # parallel directory size measurement (no du dependency)
 internal/cleaner/   # integrity guards + deferred deletion (built-in trash)
