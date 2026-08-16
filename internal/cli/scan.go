@@ -31,12 +31,7 @@ func runScan(args []string) int {
 	filters := fs.Args()
 
 	var res *scanner.ScanResult
-	if !*refresh {
-		if cached, err := scanner.LoadCache(); err == nil {
-			res = cached
-		}
-	}
-	if res == nil {
+	if *refresh {
 		var err error
 		res, err = scanner.Scan(scanner.Options{NoCache: *noCache, ToolFilter: filters})
 		if err != nil {
@@ -49,7 +44,22 @@ func runScan(args []string) int {
 		if len(filters) == 0 {
 			_ = history.Record(res)
 		}
-	} else if len(filters) > 0 {
+	} else {
+		// 非 --refresh：指纹未变化直接返回缓存（秒回）；变化则自动全量。
+		// --no-cache 时跳过指纹捷径（调用方明确不要缓存语义）。
+		opts := scanner.Options{NoCache: *noCache, ToolFilter: filters}
+		var err error
+		if *noCache {
+			res, err = scanner.Scan(opts)
+		} else {
+			res, err = scanner.ScanIfUnchanged(opts)
+		}
+		if err != nil {
+			fmt.Fprintf(stderr(), "%s\n", i18n.T("cli.scanFailed", map[string]any{"err": err}))
+			return 1
+		}
+	}
+	if len(filters) > 0 {
 		res = filterResult(res, filters)
 	}
 
