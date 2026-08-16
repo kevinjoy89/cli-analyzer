@@ -67,6 +67,7 @@ var curated = []Rule{
 		Cleanables: []CleanRule{
 			cl(platform.Home, ".npm", TierSafe, "cache", "", "npm cache (~/.npm) — safe to clear with npm cache clean or deleting the dir"),
 			cl(platform.LocalAppData, "npm-cache", TierSafe, "cache", "", "npm cache (%LocalAppData%\\npm-cache) — safe to clear with npm cache clean"),
+			cl(platform.LocalAppData, "node-addon-native-custom-loader", TierSafe, "cache", "", "node-addon-require-builtin native addon cache (%LocalAppData%\\node-addon-native-custom-loader) — safe to delete, re-downloaded on demand"),
 		},
 	},
 	{
