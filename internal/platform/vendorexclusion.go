@@ -67,6 +67,10 @@ var vendorExclusions = []VendorExclusion{
 	{Pattern: "uuremote"}, // 远程控制客户端
 	{Pattern: "warp"},     // Warp 终端（GUI；其 CLI 为伴侣）
 	{Pattern: "apple"},
+	// VS Code：安装目录（bin 下 code.cmd/code-tunnel.exe 是其 GUI 命令行伴侣）
+	// 双向拦。DataOnly 的 "code" 只覆盖 %APPDATA%\Code 数据目录。
+	{Pattern: "microsoft vs code"},
+	{Pattern: "vs code"}, // 便携/自定义布局（如 D:\tools\VS Code\bin）
 	{"code", nil, true}, // VS Code 数据目录；仅数据上下文（避免拦掉真实 PATH 目录）
 
 	// ---- 高频 GUI 产品扩充（产品级 DataOnly：只影响孤儿过滤，不拦 exe 发现）----
@@ -157,6 +161,10 @@ var vendorExclusions = []VendorExclusion{
 	{Pattern: "calibre", DataOnly: true},
 	{Pattern: "anki", DataOnly: true},
 	{Pattern: "evernote", DataOnly: true},
+
+	// VS Code 用户数据（配置/扩展/远程服务端）；仅数据语境
+	{Pattern: ".vscode", DataOnly: true},
+	{Pattern: ".vscode-server", DataOnly: true},
 
 	// ---- Windows 实测漏网 GUI 产品（2026-08 Windows 实机孤儿扫描补充）----
 	// 远程/远控

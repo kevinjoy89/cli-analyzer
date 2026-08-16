@@ -8,7 +8,7 @@ import (
 // TestVendorExclusionsDataOnly 验证 DataOnly 模式仅拦截数据目录归因
 // （孤儿过滤），不拦截 exe 发现——短名/产品名可能是真实 PATH 目录。
 func TestVendorExclusionsDataOnly(t *testing.T) {
-	dataOnlyEntries := []string{"iterm2", "raycast", "mozilla", "code", "amd", "360", "tabby", "rufus", "iobit", "awesun"}
+	dataOnlyEntries := []string{"iterm2", "raycast", "mozilla", "code", "amd", "360", "tabby", "rufus", "iobit", "awesun", ".vscode", ".vscode-server"}
 	for _, pat := range dataOnlyEntries {
 		p := filepath.Join("/Users/wei/.config", pat)
 		if !ExcludedByVendorData(p, "whatever") {
@@ -83,6 +83,26 @@ func TestVendorExclusionsExpanded(t *testing.T) {
 	} {
 		if !ExcludedByVendor(c.path, c.name) {
 			t.Errorf("ExcludedByVendor(%q): want hit (bidirectional vendor)", c.path)
+		}
+	}
+	// VS Code：安装目录/bin 下的 GUI 命令行伴侣必须在 exe 发现语境被拦
+	for _, c := range []struct{ path, name string }{
+		{`C:\Users\wei\AppData\Local\Programs\Microsoft VS Code\bin`, "code.cmd"},
+		{`C:\Users\wei\AppData\Local\Programs\Microsoft VS Code\bin`, "code-tunnel.exe"},
+		{`D:\tools\VS Code\bin`, "code.cmd"},
+	} {
+		if !ExcludedByVendor(c.path, c.name) {
+			t.Errorf("ExcludedByVendor(%q): VS Code 伴侣必须被拦", c.path)
+		}
+	}
+	// VS Code 用户数据目录：数据语境拦，exe 语境不拦（目录本身不是 PATH 目录）
+	for _, c := range []struct{ path, name string }{
+		{`C:\Users\wei\.vscode`, "x"},
+		{`C:\Users\wei\.vscode-server`, "x"},
+		{`/Users/wei/.vscode`, "x"},
+	} {
+		if !ExcludedByVendorData(c.path, c.name) {
+			t.Errorf("ExcludedByVendorData(%q): VS Code 用户数据目录必须被拦", c.path)
 		}
 	}
 }
