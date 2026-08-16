@@ -14,7 +14,8 @@ import (
 // （probeOrder，版本探测取运行时版本）。
 //
 // 注意：PathDirs 会追加 augmentUserDirs 的固定目录（/usr/local/bin、
-// ~/.local/bin 等，GUI 启动 PATH 补齐的产品设计），故不断言工具总数，
+// /opt/homebrew/bin 等，GUI 启动 PATH 补齐的产品设计；HOME 已隔离到
+// 临时目录，home 下的补齐目录不再生效），故不断言工具总数，
 // 只断言 nodejs 工具的合并契约。
 func TestScanNodejsFamilyEndToEnd(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -22,6 +23,17 @@ func TestScanNodejsFamilyEndToEnd(t *testing.T) {
 		// PATHEXT 语义，由 classify 单测覆盖同目录布局合并）
 		t.Skip("unix-only PATH 注入用例")
 	}
+	// 全量隔离数据根（同 filtered_cache_test）：否则 nodejs 归因会测量真实
+	// ~/.npm / ~/.cache 等数据目录（本机实测扫描用时数十秒），且造成并发
+	// 包（probe）超时抖动。
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Setenv("APPDATA", t.TempDir())
 	dir := t.TempDir()
 	for _, name := range []string{"node", "npm.cmd", "npx.cmd", "corepack.cmd"} {
 		p := filepath.Join(dir, name)

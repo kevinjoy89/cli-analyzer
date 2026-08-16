@@ -152,21 +152,25 @@ func (s *ScannerService) probeAll() {
 	)
 	for i := range res.Tools {
 		t := &res.Tools[i]
-		// 安全门：仅探测已知 CLI 安装器来源的工具（不执行 InstOther——
-		// GUI 应用内部件执行时可能触发 macOS 通讯录等 TCC 权限提示）
-		if t.Version != "" || len(t.Binaries) == 0 || !scanner.ProbeSafeInstaller(scanner.Installer(t.Installer)) {
+		if t.Version != "" || len(t.Binaries) == 0 {
 			continue
 		}
 		b := t.Binaries[0]
+		// 安全门：仅探测已知 CLI 安装器来源的工具；InstOther 需要二进制
+		// 不在 .app 包内（GUI 应用内部件执行可能触发 macOS 通讯录等 TCC
+		// 权限提示）或命令名是公认 CLI（OrbStack 的 docker/kubectl）。
+		if !scanner.ProbeSafeBinary(scanner.Installer(t.Installer), b.Real, b.Name) {
+			continue
+		}
 		wg.Add(1)
 		sem <- struct{}{}
-		go func(i int, real string, size int64) {
+		go func(i int, real, execPath string, size int64) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			if v, ok := probe.CachedOrRun(real, size); ok && v != "" {
+			if v, ok := probe.CachedOrRun(real, execPath, size); ok && v != "" {
 				results[i] = upd{i, v}
 			}
-		}(i, b.Real, b.Size)
+		}(i, b.Real, b.Path, b.Size)
 	}
 	wg.Wait()
 	probe.Save()

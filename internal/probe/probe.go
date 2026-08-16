@@ -122,12 +122,27 @@ func cleanOutput(b []byte) string {
 	return sb.String()
 }
 
-// extractVersion 返回输出的首个非空行（trim 后）。
+// versionRe 提取语义版本号：可选字母前缀（go1.22.5）与 v 前缀（v5.1.2），
+// 2 或 3 段数字（0.12.5 / 1.18）。要求版本前是行首或空白，避免从长单词
+// （aarch64、Python.framework）中间截取。
+var versionRe = regexp.MustCompile(`(?:^|\s)(?:[A-Za-z]+)?(v?\d+\.\d+(?:\.\d+)?)`)
+
+// extractVersion 从探测输出中提取版本号：扫描前 3 个非空行，返回首个
+// 语义版本串（去 v 前缀）。找不到版本返回空——帮助回退不再把 usage 首行
+// 当版本（kubectl 等工具的 help 没有版本号，宁可不赋值）。
 func extractVersion(b []byte) string {
+	lines := 0
 	for _, line := range strings.Split(cleanOutput(b), "\n") {
 		line = strings.TrimSpace(line)
-		if line != "" {
-			return line
+		if line == "" {
+			continue
+		}
+		lines++
+		if lines > 3 {
+			break
+		}
+		if m := versionRe.FindStringSubmatch(line); m != nil {
+			return strings.TrimPrefix(m[1], "v")
 		}
 	}
 	return ""
@@ -141,6 +156,15 @@ type entry struct {
 	Version string `json:"version,omitempty"`
 	Ok      bool   `json:"ok"`
 }
+
+// cacheVersion 是探测缓存格式版本：extractVersion 规则变化（如版本串归一化）
+// 后旧缓存里的原始输出字符串不再正确，必须整体失效重新探测。
+type cacheFile struct {
+	V       int              `json:"v"`
+	Entries map[string]entry `json:"entries"`
+}
+
+const cacheVersion = 2
 
 var (
 	cacheOnce sync.Once
@@ -156,16 +180,20 @@ func loadCache() {
 		if err != nil {
 			return
 		}
-		if err := json.Unmarshal(b, &cache); err != nil {
-			cache = map[string]entry{}
+		var cf cacheFile
+		if err := json.Unmarshal(b, &cf); err != nil || cf.V != cacheVersion {
+			cache = map[string]entry{} // 旧格式/旧版本：整体失效
+			return
 		}
+		cache = cf.Entries
 	})
 }
 
 // Save 把缓存写回磁盘（在探测批次完成后调用一次，避免逐条写盘）。
 func Save() {
 	cacheMu.Lock()
-	b, err := json.Marshal(cache)
+	cf := cacheFile{V: cacheVersion, Entries: cache}
+	b, err := json.Marshal(cf)
 	cacheMu.Unlock()
 	if err != nil {
 		return
@@ -192,9 +220,11 @@ func Save() {
 	_ = platform.RenameReplace(tmpName, p)
 }
 
-// CachedOrRun 优先命中缓存（键 = real path + size + mtime）；未命中则探测并
-// 写回内存缓存。ok=false 表示失败（失败结果同样缓存，二进制不变不重探）。
-func CachedOrRun(real string, size int64) (string, bool) {
+// CachedOrRun 优先命中缓存（键 = real path + size + mtime）；未命中则以
+// execPath 执行探测并写回内存缓存。execPath 通常与 real 相同；对按 argv[0]
+// 分派的调度器（OrbStack xbin/docker-tools 等）必须用 PATH 入口（符号链接
+// 名）执行，否则调度器拒绝（unsupported argv0 "docker-tools"）。
+func CachedOrRun(real, execPath string, size int64) (string, bool) {
 	st, err := os.Stat(real)
 	if err != nil {
 		return "", false
@@ -207,7 +237,7 @@ func CachedOrRun(real string, size int64) (string, bool) {
 	if hit && e.Size == size && e.MtimeNs == mtime {
 		return e.Version, e.Ok
 	}
-	v, ok := ProbeVersion(real)
+	v, ok := ProbeVersion(execPath)
 	cacheMu.Lock()
 	cache[real] = entry{Size: size, MtimeNs: mtime, Version: v, Ok: ok}
 	cacheMu.Unlock()

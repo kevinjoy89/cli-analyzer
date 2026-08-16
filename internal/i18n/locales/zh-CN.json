@@ -265,7 +265,8 @@
   "un.deletedPermanentN_other": "已永久删除 {n} 项",
   "un.guiOfficialCmd": "标准卸载命令",
   "un.guiResidueTitle": "残留检测",
-  "un.guiTrashConfirm": "确认将选中残留移入内置回收站？（可恢复）",
+  "un.guiTrashMain": "移入内置回收站",
+  "un.guiTrashSub": "有效期内可恢复",
   "un.guiDeletePermanent": "永久删除",
   "un.guiDeletePermanentConfirm": "确认永久删除选中的残留？此操作不可恢复。",
   "un.guiResidueDonePermanent": "残留已永久删除",
@@ -294,8 +295,10 @@
   "ui.installer.rustup": "rustup",
   "ui.installer.versioned": "版本化安装器",
   "ui.installer.other": "其他",
+  "ui.installer.local-bin": "官方脚本安装",
   "un.guiRunMain": "标准卸载",
   "un.guiRunSub": "卸载后自动检测残留",
+  "un.guiRunConfirm": "确认执行标准卸载？将运行官方卸载命令移除程序，之后自动检测残留。",
   "un.guiSkipMain": "残留检测",
   "un.guiSkipSub": "跳过卸载流程",
   "un.copied": "已复制",
@@ -344,5 +347,7 @@
   "cln.guardCurrent": "拒绝删除当前版本",
   "cln.guardNotInside": "路径不在其可处置项内",
   "cln.unknownItem": "未知项目",
-  "cli.scanFailed": "扫描失败: {err}"
+  "cli.scanFailed": "扫描失败: {err}",
+  "un.guiResidueScanning": "正在检测残留…",
+  "un.guiResidueScanningHint": "检测中，数据目录较大时可能需要数秒"
 }

@@ -22,16 +22,23 @@ var curated = []Rule{
 		Name: "kimi", Aliases: []string{"kimi-code"}, Installer: "other",
 		DataDirs: []DataDirRule{
 			dd(platform.Home, ".kimi-code", TierUser, "data"), // config.toml, sessions, telemetry, install mix
+			// 伴随命令的独立目录（kimi-webbridge 浏览器桥 / kimi-slides），
+			// 由 companion 家族归并进 kimi 后随行认领
+			dd(platform.Home, ".kimi-webbridge", TierUser, "data"),
+			dd(platform.Home, ".kimi-work", TierUser, "data"),
 		},
 	},
 	{
-		Name: "mimocode", Installer: "other",
+		Name: "mimocode", Aliases: []string{"mimo"}, Installer: "other",
 		DataDirs: []DataDirRule{
 			dd(platform.XDGData, "mimocode", TierUser, "data"),
 			dd(platform.XDGConfig, "mimocode", TierUser, "config"),
 			// mimocode is an opencode fork and stores its plugins in the cache
 			// dir the same way — treat as USER data, not cleanable cache.
 			dd(platform.XDGCache, "mimocode", TierUser, "data"),
+			// 安装目录（bin + node_modules + package.json，143MB 级）：
+			// mimo 二进制经 companion 家族归并进 mimocode，安装目录随行认领
+			dd(platform.Home, ".mimocode", TierUser, "install"),
 		},
 	},
 	{
@@ -46,6 +53,9 @@ var curated = []Rule{
 			// manifest). Deleting it breaks those plugins and loses the manifest,
 			// so it must stay USER (never auto-deletable).
 			dd(platform.XDGCache, "opencode", TierUser, "data"),
+			// 安装目录（bin + node_modules，194MB 级）：opencode-plugins 等
+			// 伴随命令经 companion 家族归并后随行认领
+			dd(platform.Home, ".opencode", TierUser, "install"),
 		},
 	},
 	{
@@ -88,7 +98,7 @@ var curated = []Rule{
 		},
 	},
 	{
-		Name: "uv", Installer: "other",
+		Name: "uv", Installer: "local-bin",
 		DataDirs: []DataDirRule{
 			dd(platform.XDGData, "uv", TierUser, "data"),
 			dd(platform.XDGCache, "uv", TierSafe, "cache"),
@@ -163,6 +173,31 @@ var curated = []Rule{
 		Cleanables: []CleanRule{
 			cl(platform.XDGCache, "puppeteer", TierSafe, "download", "", "Puppeteer Chromium binary (re-downloadable)"),
 		},
+	},
+	{
+		// codegraph 双安装形态归一：~/.codegraph/versions 版本化安装（binary
+		// 名 codegraph，installer versioned）与 npm @colbymchenry/codegraph
+		// 归并为一行（classify 两侧映射）。数据/运行状态在 ~/.codegraph。
+		Name: "codegraph", Installer: "versioned",
+		DataDirs: []DataDirRule{
+			dd(platform.Home, ".codegraph", TierUser, "data"), // current/daemons/telemetry/update-check
+		},
+	},
+	{
+		Name: "dsh", Installer: "npm",
+		DataDirs: []DataDirRule{
+			dd(platform.Home, ".dsh", TierUser, "data"), // profiles/sessions/agent/telemetry
+		},
+	},
+	{
+		Name: "pi", Installer: "npm",
+		DataDirs: []DataDirRule{
+			dd(platform.Home, ".pi", TierUser, "data"),
+		},
+	},
+	{
+		// oh-my-pi 的 CLI（@oh-my-pi/pi-coding-agent，binary 名 omp）
+		Name: "omp", Aliases: []string{"oh-my-pi"}, Installer: "npm",
 	},
 	{
 		Name: "codex", Installer: "other",

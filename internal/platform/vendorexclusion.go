@@ -60,7 +60,10 @@ var vendorExclusions = []VendorExclusion{
 	{Pattern: "qclaw"},
 	{Pattern: "sase"}, // 企业安全代理（DLP 类，内部件会触达通讯录等 TCC 资源）
 	{Pattern: "parallels desktop"},
-	{Pattern: "orbstack"},
+	// OrbStack（GUI Docker 桌面）：内部工具（docker-tools 等）排除；docker/
+	// kubectl/docker-compose 是标准 CLI 产品（/usr/local/bin 与 ~/.orbstack/bin
+	// 的符号链接都指向其 xbin），保留
+	{Pattern: "orbstack", Allow: []string{"docker", "docker-compose", "kubectl"}},
 	{Pattern: "uuremote"}, // 远程控制客户端
 	{Pattern: "warp"},     // Warp 终端（GUI；其 CLI 为伴侣）
 	{Pattern: "apple"},
@@ -261,12 +264,14 @@ func (v *VendorExclusion) IsAllowedCLI(name string) bool {
 }
 
 // pathSegments 把路径拆成目录片段（兼容 / 与 \ 分隔符），小写化。
+// macOS 的 .app 包目录片段带扩展名（"Trae CN.app"），与排除表的
+// 产品名模式（"trae cn"）精确匹配不上——剥掉 ".app" 后缀后再匹配。
 func pathSegments(path string) []string {
 	path = filepath.Clean(path)
 	path = strings.ReplaceAll(path, "\\", "/")
 	segs := strings.Split(path, "/")
 	for i := range segs {
-		segs[i] = strings.ToLower(segs[i])
+		segs[i] = strings.ToLower(strings.TrimSuffix(segs[i], ".app"))
 	}
 	return segs
 }

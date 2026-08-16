@@ -78,6 +78,7 @@ func TestOfficialCommand(t *testing.T) {
 		{scanner.InstCargo, "sd", "cargo uninstall sd", true},
 		{scanner.InstGo, "x", "", false}, // go 来源命令包含 bin 名，单独断言
 		{scanner.InstVersioned, "claude", "", false},
+		{scanner.InstLocalBin, "uv", "", true}, // 命令含 bin 目录，单独断言
 		{scanner.InstOther, "kimi", "", false},
 	}
 	for _, c := range cases {
@@ -85,6 +86,12 @@ func TestOfficialCommand(t *testing.T) {
 		if c.installer == scanner.InstGo {
 			if !strings.Contains(off.Command, "binx") || off.Runnable {
 				t.Errorf("go: command=%q runnable=%v", off.Command, off.Runnable)
+			}
+			continue
+		}
+		if c.installer == scanner.InstLocalBin {
+			if !strings.Contains(off.Command, "binx") || !off.Runnable || off.Bin != "rm" {
+				t.Errorf("local-bin: command=%q bin=%q runnable=%v", off.Command, off.Bin, off.Runnable)
 			}
 			continue
 		}

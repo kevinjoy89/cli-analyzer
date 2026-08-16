@@ -56,6 +56,13 @@ func scan(opts Options, skipIfUnchanged bool) (*ScanResult, bool, error) {
 			tools[id] = tb
 			order = append(order, id)
 		}
+		// 同一真实文件经多个 PATH 目录（/usr/local/bin 与 ~/.orbstack/bin 的
+		// docker 符号链接都指向 OrbStack xbin）会重复入列——按 Real 去重
+		for _, e := range tb.binaries {
+			if e.Real == b.Real {
+				return
+			}
+		}
 		if tb.installer == "" || (tb.installer == InstOther && installer != InstOther) ||
 			installer == InstPyenv || installer == InstRustup {
 			tb.installer = installer

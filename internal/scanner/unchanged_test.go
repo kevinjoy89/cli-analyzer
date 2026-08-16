@@ -10,8 +10,16 @@ import (
 // 预置缓存 + 指纹后，ScanIfUnchanged 在无变更时应直接返回缓存
 // （不执行全量扫描，结果 ScannedAt 与缓存一致），scanned 为 false。
 func TestScanIfUnchangedCacheHit(t *testing.T) {
+	// 全量隔离数据根：HOME/XDG/APPDATA 指向临时目录，防止扫描真实用户数据
+	// （~/.config、~/.npm、~/Library…），保证测试快速且不依赖机器环境。
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Setenv("APPDATA", t.TempDir())
 
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "tool")
@@ -51,8 +59,16 @@ func TestScanIfUnchangedCacheHit(t *testing.T) {
 
 // 指纹文件缺失（首次运行）时保守走全量扫描：结果不应是假缓存。
 func TestScanIfUnchangedNoFingerprintFallsBack(t *testing.T) {
+	// 全量隔离数据根（同 TestScanIfUnchangedCacheHit）：无指纹回退走全量扫描，
+	// 若不隔离 HOME 会扫描真实用户数据目录，拖慢测试并造成机器级 I/O 负载。
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Setenv("APPDATA", t.TempDir())
 
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "tool")
@@ -84,8 +100,16 @@ func TestScanIfUnchangedNoFingerprintFallsBack(t *testing.T) {
 // 新工具安装检测：PATH 临时目录新增二进制（目录 mtime 变化）→ 指纹不一致
 // → 自动全量扫描（scanned=true）。PATH 指向隔离临时目录，避免依赖机器 PATH。
 func TestScanIfUnchangedDetectsNewPathBinary(t *testing.T) {
+	// 全量隔离数据根（同 TestScanIfUnchangedCacheHit）：PATH 保留真实目录
+	// 用于指纹变更检测，但数据测量必须指向临时 HOME，避免全量扫描真实数据。
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Setenv("APPDATA", t.TempDir())
 
 	pathDir := t.TempDir()
 	oldPath := os.Getenv("PATH")

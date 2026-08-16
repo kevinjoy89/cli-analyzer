@@ -41,6 +41,18 @@ func TestExcludedByVendor(t *testing.T) {
 	if !platform.ExcludedByVendor(`C:\Users\me\AppData\Roaming\NetSarang Computer`, "NetSarang Computer") {
 		t.Error("data dir with vendor segment should be excluded")
 	}
+	// macOS .app 包目录：段带 .app 后缀（"Trae CN.app"），剥后缀后命中产品名
+	if !platform.ExcludedByVendor(`/Applications/Trae CN.app/Contents/Resources/app/bin`, "trae-cn") {
+		t.Error("Trae CN.app internal bin should be excluded")
+	}
+	// OrbStack .app 同样命中厂商模式
+	if !platform.ExcludedByVendor(`/Applications/OrbStack.app/Contents/MacOS/xbin`, "docker-tools") {
+		t.Error("OrbStack.app internal bin should be excluded")
+	}
+	// 非 .app 目录不受影响
+	if platform.ExcludedByVendor(`/Applications/CLI Tools/bin`, "mytool") {
+		t.Error("plain dir should not be excluded")
+	}
 }
 
 func TestStructuralSignals(t *testing.T) {
@@ -84,13 +96,34 @@ func TestVendorDataOnlyContext(t *testing.T) {
 }
 
 func TestProbeSafeInstaller(t *testing.T) {
-	for _, i := range []Installer{InstBrew, InstNpm, InstPipx, InstCargo, InstGo, InstPyenv, InstVersioned, InstRustup} {
+	for _, i := range []Installer{InstBrew, InstNpm, InstPipx, InstCargo, InstGo, InstPyenv, InstVersioned, InstRustup, InstLocalBin, InstPip} {
 		if !ProbeSafeInstaller(i) {
 			t.Errorf("ProbeSafeInstaller(%q) = false, want true", i)
 		}
 	}
 	if ProbeSafeInstaller(InstOther) {
 		t.Error("ProbeSafeInstaller(other) must be false — never execute unknown-origin binaries")
+	}
+}
+
+func TestProbeSafeBinary(t *testing.T) {
+	// InstOther + 不在 .app 包内 → 安全（opencode/kimi 等 CLI 安装目录）
+	if !ProbeSafeBinary(InstOther, "/Users/x/.opencode/bin/opencode", "opencode") {
+		t.Error("~/.opencode/bin/opencode 应可探测")
+	}
+	// InstOther + .app 包内 → 不安全（GUI 内部件，TCC 风险）
+	if ProbeSafeBinary(InstOther, "/Applications/Trae CN.app/Contents/Resources/app/bin/trae-cn", "trae-cn") {
+		t.Error(".app 内部件不应探测")
+	}
+	// InstOther + .app 包内但命令名是公认 CLI → 安全（OrbStack 的 docker/kubectl）
+	for _, n := range []string{"docker", "docker-compose", "kubectl"} {
+		if !ProbeSafeBinary(InstOther, "/Applications/OrbStack.app/Contents/MacOS/xbin/"+n, n) {
+			t.Errorf("%s（.app 内 CLI）应可探测", n)
+		}
+	}
+	// 已知安装器不受 .app 限制
+	if !ProbeSafeBinary(InstBrew, "/Applications/Weird.app/Contents/bin/x", "x") {
+		t.Error("已知安装器应始终可探测")
 	}
 }
 

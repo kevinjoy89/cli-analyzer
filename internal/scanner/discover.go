@@ -74,6 +74,13 @@ func resolveSymlinkExec(full, name string) []execEntry {
 	if err != nil {
 		return nil
 	}
+	// 符号链接把命令从厂商目录引到 PATH（/usr/local/bin/trae-cn →
+	// Trae CN.app/...）：PATH 目录本身没有厂商片段，排除检查必须对
+	// 真实路径再做一次，否则 GUI 应用内部件绕过非 CLI 排除体系。
+	// （OrbStack 的 docker/kubectl 经 Allow 保留。）
+	if platform.ExcludedByVendor(filepath.Dir(real), name) {
+		return nil
+	}
 	st, err := os.Stat(real)
 	if err != nil {
 		return nil

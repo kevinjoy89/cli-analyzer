@@ -31,9 +31,52 @@ func TestClassifyBrew(t *testing.T) {
 }
 
 func TestClassifyNpmScoped(t *testing.T) {
+	// @anthropic-ai/claude-code → claude（npmToolID 映射：规则行与 npm 行归并）
 	c := classify(filepath.Join(brewPrefix(), "lib/node_modules/@anthropic-ai/claude-code/bin/claude"), "claude")
-	if c.ToolID != "@anthropic-ai/claude-code" || c.Installer != InstNpm {
+	if c.ToolID != "claude" || c.Installer != InstNpm {
 		t.Errorf("npm scoped: %+v", c)
+	}
+	// 未映射的 scoped 包保持包名
+	c2 := classify(filepath.Join(brewPrefix(), "lib/node_modules/@openai/codex/bin/codex.js"), "codex")
+	if c2.ToolID != "codex" || c2.Installer != InstNpm {
+		t.Errorf("npm scoped codex: %+v", c2)
+	}
+}
+
+// TestClassifyPipFamily 验证 pip/pip3/pip3.x 命令归并为一条 pip（含 brew
+// Cellar 里的 pip3——家族检查在 brew 分支之前）。pyenv shims 的 pip3 保留给 pyenv。
+func TestClassifyPipFamily(t *testing.T) {
+	for _, name := range []string{"pip", "pip3", "pip3.9", "pip3.12"} {
+		c := classify(filepath.Join("/opt/homebrew/Cellar/python@3.12/3.12.13_4/bin", name), name)
+		if c.ToolID != "pip" || c.Installer != InstPip || c.Family != "pip" {
+			t.Errorf("%s → %+v, want pip/%s family=pip", name, c, InstPip)
+		}
+	}
+	if c := classify(filepath.Join(pyenvShimsPath(), "pip3"), "pip3"); c.ToolID != "pyenv" {
+		t.Errorf("pyenv pip3 → %+v, want pyenv", c)
+	}
+	// pipx/pipenv 等独立产品不归并
+	for _, name := range []string{"pipx", "pipenv"} {
+		if _, ok := pipFamilyRoot(name); ok {
+			t.Errorf("%s 不应归入 pip 家族", name)
+		}
+	}
+}
+
+// TestClassifyCompanionFamily 验证伴随命令归并：mimo→mimocode、
+// kimi-webbridge/kimi-slides→kimi、opencode-plugins→opencode。
+func TestClassifyCompanionFamily(t *testing.T) {
+	cases := map[string]string{
+		"mimo":             "mimocode",
+		"kimi-webbridge":   "kimi",
+		"kimi-slides":      "kimi",
+		"opencode-plugins": "opencode",
+	}
+	for name, want := range cases {
+		c := classify(filepath.Join("/Users/x/."+name+"/bin", name), name)
+		if c.ToolID != want || c.Family != want || c.Installer != InstOther {
+			t.Errorf("%s → %+v, want %s family=%s other", name, c, want, want)
+		}
 	}
 }
 
@@ -56,7 +99,12 @@ func TestClassifyGoCargoOther(t *testing.T) {
 		t.Errorf("cargo: %+v", c)
 	}
 	home, _ := os.UserHomeDir()
-	if c := classify(filepath.Join(home, ".local/bin/mytool"), "mytool"); c.ToolID != "mytool" || c.Installer != InstOther {
+	// ~/.local/bin 是官方脚本安装落点（astral uv、poetry 等）→ InstLocalBin；
+	// 其他散放路径仍是 InstOther
+	if c := classify(filepath.Join(home, ".local/bin/mytool"), "mytool"); c.ToolID != "mytool" || c.Installer != InstLocalBin {
+		t.Errorf("local bin: %+v", c)
+	}
+	if c := classify(filepath.Join(home, "bin/mytool"), "mytool"); c.ToolID != "mytool" || c.Installer != InstOther {
 		t.Errorf("other: %+v", c)
 	}
 }

@@ -33,6 +33,11 @@ func TestAttributeMergesCuratedAliases(t *testing.T) {
 // nodejs 规则带 node/npm/npx/corepack/node-gyp 清单，但那只是家族命令清单，
 // 并入会把未安装的 node-gyp 也算进「包含工具」（家族别名来自实际发现的二进制）。
 func TestAttributeSkipsFamilyCuratedAliases(t *testing.T) {
+	// 隔离 HOME：nodejs 规则的 ~/.npm 等数据目录解析到临时目录，
+	// 避免测量真实 npm 缓存（本机实测 12s+，且加重并发包负载）。
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Setenv("LOCALAPPDATA", t.TempDir())
 	tbl := rules.Load()
 	tools := map[string]*toolBuilder{
 		"nodejs": {name: "nodejs", family: "nodejs", aliases: map[string]bool{},

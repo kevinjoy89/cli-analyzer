@@ -92,6 +92,20 @@ func OfficialCommand(installer scanner.Installer, name, binName string) Official
 	case scanner.InstPyenv:
 		// pyenv 托管的解释器：在对应版本内卸载包（仅提示）
 		return Official{Command: "pyenv 版本内执行 pip uninstall / pipx uninstall（提示，不代跑）"}
+	case scanner.InstLocalBin:
+		// 官方脚本安装（astral uv、poetry 等）：无包管理器，卸载 = 删除用户
+		// bin 目录下的二进制（uv 官方文档即此方式）；数据目录由残留检测接管。
+		if binName == "" {
+			return Official{Command: "rm <用户 bin 目录>/<命令名>"}
+		}
+		dir := platform.LocalBinDir()
+		if dir == "" {
+			return Official{Command: "rm ~/.local/bin/" + binName}
+		}
+		return Official{
+			Command:  fmt.Sprintf("rm %s/%s", dir, binName),
+			Runnable: true, Bin: "rm", Args: []string{"-f", filepath.Join(dir, binName)},
+		}
 	default: // versioned / other / rustup 等：无统一标准卸载命令
 		return Official{}
 	}

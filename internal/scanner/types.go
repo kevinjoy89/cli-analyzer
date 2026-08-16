@@ -4,7 +4,10 @@
 // only its JSON contract).
 package scanner
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Tier classifies an item by what kind of directory it is. Since the two-tier
 // gate was removed it is an informational label only — the cleaner never
@@ -39,7 +42,15 @@ const (
 	// node/npm/npx/corepack/node-gyp 归并为一条 "nodejs"，避免 Windows 上
 	// 同一目录被扫出多个互不相干的小工具。
 	InstNodejs Installer = "nodejs"
-	InstOther  Installer = "other"
+	// InstLocalBin 是官方脚本安装（astral uv、poetry、rye 等）：二进制直接
+	// 放入用户 bin 目录（~/.local/bin 或 XDG_BIN_HOME），无包管理器，
+	// 卸载 = 删除该二进制；数据目录由残留检测接管。
+	InstLocalBin Installer = "local-bin"
+	// InstPip 是 pip 家族（pip/pip3/pip3.x 命令）的安装来源：二进制通常由
+	// brew python / python.org 安装器提供，但用户心智中 pip 是独立工具，
+	// 家族归并后 pip 行持有二进制与版本。
+	InstPip   Installer = "pip"
+	InstOther Installer = "other"
 )
 
 // ProbeSafeInstaller 报告安装来源是否属于已知 CLI 生态（可安全执行其二进制
@@ -47,10 +58,39 @@ const (
 // Warp 等）常以 InstOther 出现，执行其二进制可能触发系统权限（TCC）提示。
 func ProbeSafeInstaller(i Installer) bool {
 	switch i {
-	case InstBrew, InstNpm, InstPipx, InstCargo, InstGo, InstPyenv, InstVersioned, InstRustup, InstNodejs:
+	case InstBrew, InstNpm, InstPipx, InstCargo, InstGo, InstPyenv, InstVersioned, InstRustup, InstNodejs, InstLocalBin, InstPip:
 		return true
 	}
 	return false
+}
+
+// ProbeSafeBinary 报告对 (installer, real, name) 二进制做版本探测是否安全：
+// 已知 CLI 安装器来源总是安全；InstOther（未知来源）仅在二进制不在 GUI
+// 应用包内（.app/Contents 内部件执行可能触发 macOS TCC 权限提示）或命令名
+// 是公认 CLI（OrbStack 把 docker/kubectl 放在 .app 包内但确实是命令行）
+// 时允许。调用方（GUI probeAll / CLI FillVersions）用二进制路径判断，
+// 而非仅安装来源。
+func ProbeSafeBinary(i Installer, real, name string) bool {
+	if ProbeSafeInstaller(i) {
+		return true
+	}
+	if i != InstOther {
+		return false
+	}
+	if !underAppBundle(real) {
+		return true
+	}
+	switch strings.ToLower(name) {
+	case "docker", "docker-compose", "kubectl":
+		return true
+	}
+	return false
+}
+
+// underAppBundle 报告路径是否位于 GUI 应用包内（.app 目录下）。
+func underAppBundle(p string) bool {
+	low := strings.ToLower(p)
+	return strings.Contains(low, ".app/") || strings.HasSuffix(low, ".app")
 }
 
 // Binary is one executable on PATH attributed to a tool.

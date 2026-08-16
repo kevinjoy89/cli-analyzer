@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"cli-analyzer/internal/platform"
 )
 
 // classification is the outcome of resolving one PATH executable.
@@ -40,6 +42,15 @@ func classify(real, entryName string) classification {
 		return classification{ToolID: "pyenv", Installer: InstPyenv, InstallRoot: pyenvVersionsPath()}
 	}
 
+	// pip 家族：pip/pip3/pip3.x 命令归并为一条 "pip"。pip3 通常由 brew
+	// python 公式或 python.org 安装器提供，但用户心智中 pip 是独立工具——
+	// 不归并的话 pip3 会散成 phantom 行（pip3/pip3.9）且 pip 行永远没有
+	// 二进制/版本。必须放在 brew 分支之前（Cellar 里的 pip3 也归 pip）。
+	// pyenv shims 的 pip3 已在上面保留给 pyenv（版本化解释器生态）。
+	if id, ok := pipFamilyRoot(entryName); ok {
+		return classification{ToolID: id, Installer: InstPip, Family: id}
+	}
+
 	// brew: /<prefix>/Cellar/<formula>/<ver>/...
 	// 注意：brew 公式 node 保持原名（Cellar/node 已把 node/npm/npx/corepack
 	// 合并为一条），改名会破坏 "brew uninstall node" 的公式名。
@@ -51,7 +62,7 @@ func classify(real, entryName string) classification {
 	// versioned installers: .../<base>/versions/<v>/<bin> (claude, mavis…).
 	if base, v, ok := versionedMatch(real); ok {
 		return classification{
-			ToolID: filepath.Base(base), Installer: InstVersioned,
+			ToolID: versionedToolID(filepath.Base(base)), Installer: InstVersioned,
 			CurrentVersion: v, InstallRoot: filepath.Join(base, "versions"),
 		}
 	}
@@ -62,6 +73,12 @@ func classify(real, entryName string) classification {
 		// node_modules 包）→ 合并为一条 "nodejs"。
 		if id, ok := nodejsFamilyRoot(pkg); ok {
 			return classification{ToolID: id, Installer: InstNodejs, InstallRoot: root, Family: id}
+		}
+		// npm 包名 → 工具名映射：规则名与包名不同的同产品（codex 的规则行
+		// 无二进制、@openai/codex 的 npm 行无规则数据，拆成两行都残缺），
+		// 映射后归并为规则名一行。
+		if id, ok := npmToolID[pkg]; ok {
+			return classification{ToolID: id, Installer: InstNpm, InstallRoot: root}
 		}
 		return classification{ToolID: pkg, Installer: InstNpm, InstallRoot: root}
 	}
@@ -123,6 +140,22 @@ func classify(real, entryName string) classification {
 			ToolID: id, Installer: InstOther, Family: id,
 			InstallRoot: gitInstallRoot(filepath.Dir(real)),
 		}
+	}
+
+	// 伴随命令家族：同一产品的独立命令（mimo→mimocode、kimi-webbridge/
+	// kimi-slides→kimi、opencode-plugins→opencode），与 git/nodejs 家族不同，
+	// 它们不在同一目录（~/.mimocode、~/.kimi-webbridge 各自独立安装），
+	// 归并后数据目录由各自主工具的规则补全。
+	if id, ok := companionFamilyRoot(entryName); ok {
+		return classification{ToolID: id, Installer: InstOther, Family: id}
+	}
+
+	// 官方脚本安装（astral uv、poetry、rye 等）：二进制直接放入用户 bin 目录
+	// （~/.local/bin 或 XDG_BIN_HOME）。pipx 已在更早分支命中（真实路径在
+	// ~/.local/pipx/venvs），npm shims、git/node 家族也在其上——只有真正
+	// 的"脚本落点"二进制走到这里。
+	if p := platform.LocalBinDir(); p != "" && under(real, p) {
+		return classification{ToolID: entryName, Installer: InstLocalBin}
 	}
 
 	return classification{ToolID: entryName, Installer: InstOther}
@@ -233,6 +266,50 @@ func nodeOnlyDir(dir string) bool {
 }
 
 // ---- Git 家族 ----
+
+// pipFamily 是 pip 命令家族：pip / pip3 / pip3.x（x 为 Python 小版本号）。
+// 它们由不同 Python 安装提供（brew 公式、python.org、系统 python），但
+// 用户心智中同属一个 pip 工具。pipx/pipenv 等独立产品不归并。
+var pipFamily = map[string]bool{
+	"pip": true, "pip3": true, "pip3.9": true, "pip3.10": true, "pip3.11": true,
+	"pip3.12": true, "pip3.13": true, "pip3.14": true,
+}
+
+func pipFamilyRoot(entryName string) (string, bool) {
+	n := normEntryName(entryName)
+	if pipFamily[n] {
+		return "pip", true
+	}
+	return "", false
+}
+
+// companionFamily 是"同一产品的伴随命令"映射：主工具 → 命令名。与
+// git/nodejs 家族不同，伴随命令不在同一目录（~/.mimocode、~/.kimi-webbridge
+// 各自独立安装目录），归并后数据目录由主工具规则补全。
+var companionFamily = map[string]string{
+	"mimo":             "mimocode", // mimo CLI（二进制名 mimo，产品 mimocode）
+	"kimi-webbridge":   "kimi",     // kimi 浏览器桥
+	"kimi-slides":      "kimi",     // kimi 幻灯片伴侣
+	"opencode-plugins": "opencode", // opencode 插件命令
+}
+
+func companionFamilyRoot(entryName string) (string, bool) {
+	id, ok := companionFamily[normEntryName(entryName)]
+	return id, ok
+}
+
+// npmToolID 是 npm 全局包名 → 工具名映射：包名与规则名不同的同产品。
+// 不映射时 "codex" 规则行（无二进制、无版本）与 "@openai/codex" npm 行
+// （有二进制但无规则数据目录）拆成两行，都残缺。
+var npmToolID = map[string]string{
+	"@openai/codex":                   "codex",
+	"@anthropic-ai/claude-code":       "claude",
+	"@colbymchenry/codegraph":         "codegraph",
+	"@deepseek-ai/dsh":                "dsh",
+	"@earendil-works/pi-coding-agent": "pi",
+	"@oh-my-pi/pi-coding-agent":       "omp",
+	"@fission-ai/openspec":            "openspec",
+}
 
 // gitFamily 是随 Git 分发的命令：Git for Windows 的 cmd/ 目录（git.exe、
 // git-lfs.exe、scalar.exe、tig.exe、git-receive-pack.exe、git-upload-pack.exe、
@@ -421,6 +498,21 @@ func versionedMatch(real string) (base, v string, ok bool) {
 		return base, v, true
 	}
 	return "", "", false
+}
+
+// versionedToolID 映射版本化安装基础目录名 → 工具名：
+// .codegraph 的版本化安装（~/.codegraph/versions/...）与 npm
+// @colbymchenry/codegraph 是同一产品——两套安装并存时归入 codegraph 一行。
+func versionedToolID(base string) string {
+	if id, ok := versionedBaseToolID[base]; ok {
+		return id
+	}
+	return base
+}
+
+// versionedBaseToolID 是版本化安装基础目录 → 工具名的映射。
+var versionedBaseToolID = map[string]string{
+	".codegraph": "codegraph",
 }
 
 // isVersionDir 报告目录名是否为版本目录形态（数字开头或 v+数字开头）。

@@ -265,7 +265,8 @@
   "un.deletedPermanentN_other": "Permanently deleted {n} items",
   "un.guiOfficialCmd": "Standard uninstall command",
   "un.guiResidueTitle": "Residue detection",
-  "un.guiTrashConfirm": "Move the selected residue into the built-in trash? (recoverable)",
+  "un.guiTrashMain": "Move to built-in trash",
+  "un.guiTrashSub": "recoverable within retention",
   "un.guiDeletePermanent": "Delete permanently",
   "un.guiDeletePermanentConfirm": "Permanently delete the selected residue? This cannot be undone.",
   "un.guiResidueDonePermanent": "Residue deleted permanently",
@@ -294,8 +295,10 @@
   "ui.installer.rustup": "rustup",
   "ui.installer.versioned": "Versioned installer",
   "ui.installer.other": "Other",
+  "ui.installer.local-bin": "Official script install",
   "un.guiRunMain": "Standard uninstall",
   "un.guiRunSub": "auto-detects residue after",
+  "un.guiRunConfirm": "Confirm standard uninstall? The official uninstall command will remove the program, then residue detection runs automatically.",
   "un.guiSkipMain": "Detect residue",
   "un.guiSkipSub": "skips the uninstall",
   "un.copied": "Copied",
@@ -344,5 +347,7 @@
   "cln.guardCurrent": "refusing to delete the current version",
   "cln.guardNotInside": "path is not inside its actionable item",
   "cln.unknownItem": "unknown item",
-  "cli.scanFailed": "scan failed: {err}"
+  "cli.scanFailed": "scan failed: {err}",
+  "un.guiResidueScanning": "Detecting residue…",
+  "un.guiResidueScanningHint": "may take a few seconds on large data dirs"
 }
