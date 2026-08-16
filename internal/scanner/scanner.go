@@ -106,7 +106,7 @@ func Scan(opts Options) (*ScanResult, error) {
 		// `scan npm` must not clobber the snapshot the GUI starts from.
 		cached := res
 		if len(opts.ToolFilter) > 0 {
-			cached = finalize(tools, order, Options{Full: opts.Full})
+			cached = finalize(tools, order, Options{})
 			// finalize 生成的是新 ScanResult：必须补上主流程计算、filter
 			// 无关的字段——ScanTimeMS（扫描耗时）与 Unattributed（孤儿
 			// 列表）。此前漏补导致 `scan <filter> --refresh` 写出的缓存

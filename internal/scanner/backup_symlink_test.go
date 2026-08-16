@@ -16,8 +16,10 @@ func TestCollectBackupsSkipsSymlinkTarget(t *testing.T) {
 	if err := os.WriteFile(realFile, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// Windows 无特权环境（非管理员/未开开发者模式）创建符号链接会被拒绝，
+	// 该用例依赖 symlink 语义，环境不支持时显式跳过而非失败
 	if err := os.Symlink(realFile, filepath.Join(dir, "kimi")); err != nil {
-		t.Fatal(err)
+		t.Skipf("symlink not permitted in this environment: %v", err)
 	}
 	// 再放一个真·备份文件（无命令引用），应正常列为 backup
 	orphanBak := filepath.Join(dir, "orphan.old")

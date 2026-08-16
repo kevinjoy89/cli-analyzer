@@ -18,7 +18,6 @@ func runScan(args []string) int {
 	fs := flag.NewFlagSet("scan", flag.ContinueOnError)
 	jsonOut := fs.Bool("j", false, "output JSON")
 	fs.BoolVar(jsonOut, "json", false, "output JSON")
-	full := fs.Bool("full", false, "unattributed data dirs are always measured now; kept for compatibility")
 	refresh := fs.Bool("refresh", false, "ignore the cache and rescan")
 	noCache := fs.Bool("no-cache", false, "do not write the cache")
 	order := fs.String("order", "size", "sort order: size|name")
@@ -39,7 +38,7 @@ func runScan(args []string) int {
 	}
 	if res == nil {
 		var err error
-		res, err = scanner.Scan(scanner.Options{Full: *full, NoCache: *noCache, ToolFilter: filters})
+		res, err = scanner.Scan(scanner.Options{NoCache: *noCache, ToolFilter: filters})
 		if err != nil {
 			fmt.Fprintf(stderr(), "%s\n", i18n.T("cli.scanFailed", map[string]any{"err": err}))
 			return 1

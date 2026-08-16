@@ -156,9 +156,6 @@ type CleanReport struct {
 
 // Options controls a scan.
 type Options struct {
-	// Full measures unmatched entries under each data root and reports them
-	// in Unattributed.
-	Full bool
 	// Refresh ignores the on-disk cache and rescans.
 	Refresh bool
 	// NoCache skips writing the on-disk cache.
