@@ -71,7 +71,7 @@ var vendorExclusions = []VendorExclusion{
 	// 双向拦。DataOnly 的 "code" 只覆盖 %APPDATA%\Code 数据目录。
 	{Pattern: "microsoft vs code"},
 	{Pattern: "vs code"}, // 便携/自定义布局（如 D:\tools\VS Code\bin）
-	{"code", nil, true}, // VS Code 数据目录；仅数据上下文（避免拦掉真实 PATH 目录）
+	{"code", nil, true},  // VS Code 数据目录；仅数据上下文（避免拦掉真实 PATH 目录）
 
 	// ---- 高频 GUI 产品扩充（产品级 DataOnly：只影响孤儿过滤，不拦 exe 发现）----
 	// 浏览器/邮件
