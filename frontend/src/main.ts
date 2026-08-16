@@ -1,53 +1,25 @@
 import './style.css';
 
-import {CancelDownload, CheckForUpdates, Clean, DownloadUpdate, GetDownloadProgress, GetLanguage, GetLastResult, GetReminderConfig, GetTranslations, GetTrashConfig, GetUninstallStatus, GetUpdateStatus, GetTrends, GetUpdateConfig, GetVersion, IgnoreVersion, InstallUpdate, OpenURL, OrphanTrash, PurgeNow, Restore, Scan, ScanIfChanged, SetLanguage, SetLanguagePreference, SetReminderConfig, SetTheme, SetTrashConfig, SetUpdateConfig, TrashInfo, TrashList, UninstallBlocked, UninstallDeleteResidues, UninstallResidue, UninstallRunOfficial, UninstallStart, UninstallTrashResidues} from '../wailsjs/go/gui/ScannerService';
-import {Environment, EventsOn, Quit} from '../wailsjs/runtime/runtime';
-import {applyCleanLocally} from './lib/clean';
-import {hb} from './lib/format';
-import {activeLocale, fmtTime, normalizeNavigator, setDict, t} from './lib/i18n';
-import {aliasMeta, kindLabel, orphanRootLabel} from './lib/labels';
-import {computeTrendPaths} from './lib/trends';
-import {Cleanable, DataDir, Grower, Point, ReminderConfig, ScanResult, Tool, TrendsResult} from './lib/types';
-
-// ---- types mirroring the Go JSON contract ----
-interface CleanReport { dryRun: boolean; deleted: string[]; freedBytes: number; skipped: string[]; errors: string[] }
-interface TrashInfoData { items: number; totalBytes: number; earliestExpiresAt: string }
-interface TrashItem { id: string; original: string; tool: string; kind: string; bytes: number; trashedAt: string; expiresAt: string }
-interface TrashConfig { retentionDays: number; expireAction: string; useTrash: boolean }
-interface UpdateConfig { checkUpdates?: boolean; lastCheckAt?: string; ignoredVersion?: string }
-interface UpdateResult { current: string; latest: string; updateAvailable: boolean; assetName?: string; downloadURL?: string; releaseURL?: string; installSource?: string; error?: string }
-interface UpdateDownloaded { path: string; releaseURL: string; executablePath: string; installSource: string }
-
-// ---- state ----
-let result: ScanResult | null = null;
-let probing = false; // 健康探测进行中（版本列显示 …）
-let selected: string | null = null;
-let appVersion = '';
-let filterText = '';
-let selectedCleanIds = new Set<string>();
-let expandedCleanIds = new Set<string>(); // cleanable ids whose sub-breakdown is expanded
-type SortKey = 'name' | 'version' | 'footprint' | 'cleanable' | 'user';
-let sortKey: SortKey = 'footprint';
-let sortDir: 1 | -1 = -1;
+import {Environment, EventsOn} from '../wailsjs/runtime/runtime';
+import {GetLastResult, GetLanguage, GetTranslations, GetUpdateStatus, GetVersion, OpenURL, PurgeNow, ScanIfChanged, SetLanguage, SetTheme} from '../wailsjs/go/gui/ScannerService';
+import {el, showToast} from './dom';
+import * as state from './state';
+import {activeLocale, normalizeNavigator, setDict, t} from './lib/i18n';
+import {initMenuBar} from './menu';
+import * as flows from './flows';
+import * as render from './render';
+import {rescan} from './flows';
 
 // ---- theme ----
-type ThemeMode = 'system' | 'light' | 'dark';
-let themeMode: ThemeMode = 'system';
-const THEME_META: Record<ThemeMode, {icon: string; labelKey: string}> = {
-    system: {icon: '◐', labelKey: 'ui.themeSystem'},
-    light: {icon: '☀', labelKey: 'ui.themeLight'},
-    dark: {icon: '☾', labelKey: 'ui.themeDark'},
-};
-
 function systemDark(): boolean {
     return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
-function applyTheme(mode: ThemeMode) {
-    themeMode = mode;
+function applyTheme(mode: state.ThemeMode) {
+    state.setThemeMode(mode);
     const resolved = mode === 'system' ? (systemDark() ? 'dark' : 'light') : mode;
     document.documentElement.setAttribute('data-theme', resolved);
-    const meta = THEME_META[mode];
+    const meta = state.THEME_META[mode];
     el('themeIcon').textContent = meta.icon;
     el('themeBtn').title = t('ui.themeBtnTitle', {label: t(meta.labelKey)});
     // 同步 Windows 原生标题栏/菜单栏主题（macOS/Linux 由系统与 CSS 处理）
@@ -55,7 +27,6 @@ function applyTheme(mode: ThemeMode) {
 }
 
 // ---- i18n ----
-let isMac = false;
 // 解析生效语言：显式配置优先，否则 navigator.language → 回退 zh-CN
 async function resolveLocale(): Promise<string> {
     let cfgLang = '';
@@ -92,1187 +63,17 @@ function applyI18n() {
     document.querySelectorAll<HTMLInputElement>('[data-i18n-placeholder]').forEach(n => {
         n.placeholder = t(n.dataset.i18nPlaceholder!);
     });
-    applyTheme(themeMode);
-    renderSummary(); renderToolList();
-    renderDetail(); // 无条件重渲染：无选中时的空态也是 JS 生成的，必须覆盖
-    refreshTrashInfo(); refreshReminder();
-    if (!el('prefsModal').classList.contains('hidden')) openPrefs();
-    if (!el('updateModal').classList.contains('hidden') && updateState === 'idle' && lastUpdateResult?.updateAvailable) {
-        showUpdateAvailable(lastUpdateResult);
+    applyTheme(state.themeMode);
+    render.renderSummary(); render.renderToolList();
+    render.renderDetail(); // 无条件重渲染：无选中时的空态也是 JS 生成的，必须覆盖
+    flows.refreshTrashInfo(); flows.refreshReminder();
+    if (!el('prefsModal').classList.contains('hidden')) flows.openPrefs();
+    if (!el('updateModal').classList.contains('hidden') && state.updateState === 'idle' && state.lastUpdateResult?.updateAvailable) {
+        flows.showUpdateAvailable(state.lastUpdateResult);
     }
 }
 
-// ---- helpers ----
-function el<T extends HTMLElement>(id: string): T {
-    const e = document.getElementById(id);
-    if (!e) throw new Error(`missing element #${id}`);
-    return e as T;
-}
-
-function showToast(msg: string, isError = false) {
-    const t = el<HTMLDivElement>('toast');
-    t.textContent = msg;
-    t.className = 'toast' + (isError ? ' error' : '');
-    window.clearTimeout((t as unknown as { _t?: number })._t);
-    (t as unknown as { _t?: number })._t = window.setTimeout(() => { t.className = 'toast hidden'; }, 2800);
-}
-
-// 扫描状态（方案 B+C 结合）：
-// - 「重新扫描」按钮自身变为加载态：灰色中性 + 小转圈 + 「扫描中…」，禁用
-// - 底部状态栏同步显示 转圈 + 「扫描中…」（与扫描用时/遍历错误同区）
-function setScanning(busy: boolean, label = '') {
-    const s = el('scanState');
-    s.className = 'scan-state' + (busy ? ' busy' : ' hidden');
-    s.innerHTML = busy ? `<span class="btn-spin"></span>${esc(label)}` : '';
-    const btn = el('rescanBtn') as HTMLButtonElement;
-    btn.disabled = busy;
-    btn.classList.toggle('scanning', busy);
-    btn.innerHTML = busy ? `<span class="btn-spin"></span>${esc(label)}` : esc(t('menu.rescan'));
-}
-
-// ---- summary ----
-function renderSummary() {
-    if (!result) return;
-    el('sumFootprint').textContent = hb(result.totals.footprintBytes);
-    el('sumCleanable').textContent = hb(result.totals.cleanableBytes);
-    el('sumUser').textContent = hb(result.totals.userBytes);
-    el('sumTools').textContent = String(result.tools.length);
-    // 未认领数据统计卡：常驻顶部，静态展示占用大小（琥珀色）
-    const orphans = result.unattributed ?? [];
-    const oTotal = orphans.reduce((a, o) => a + (o.bytes || 0), 0);
-    const ost = el('orphanStat');
-    if (orphans.length) {
-        ost.classList.remove('hidden');
-        el('sumOrphan').textContent = hb(oTotal);
-    } else {
-        ost.classList.add('hidden');
-    }
-    el('lastScan').textContent = result.scannedAt ? t('ui.lastScan', {time: fmtTime(result.scannedAt)}) : '';
-    const status = el('statusInfo');
-    status.innerHTML = '';
-    const parts: Array<[string, string]> = [
-        [t('ui.scanTime'), result.scanTimeMs > 0 ? `${(result.scanTimeMs / 1000).toFixed(1)} s` : t('ui.scanCache')],
-        [t('ui.walkErrors'), String(result.walkErrors)],
-        [t('ui.platform'), result.platform],
-    ];
-    for (const [k, v] of parts) {
-        const span = document.createElement('span');
-        span.textContent = `${k}: ${v}`;
-        status.appendChild(span);
-    }
-}
-
-// ---- tool list ----
-// Only 总占用 / 可清理 are sortable; the rest are plain column labels.
-const COLUMNS: Array<{key: SortKey; labelKey: string; sortable: boolean}> = [
-    {key: 'name', labelKey: 'ui.colTool', sortable: false},
-    {key: 'version', labelKey: 'ui.colVersion', sortable: false},
-    {key: 'footprint', labelKey: 'ui.colFootprint', sortable: true},
-    {key: 'cleanable', labelKey: 'ui.colCleanable', sortable: true},
-    {key: 'user', labelKey: 'ui.colUser', sortable: true},
-];
-
-function sortTools(tools: Tool[]): Tool[] {
-    const dir = sortDir;
-    const val = (t: Tool, k: SortKey): number | string => {
-        switch (k) {
-            case 'name': return t.name;
-            case 'version': return t.version;
-            case 'footprint': return t.footprintBytes;
-            case 'cleanable': return t.cleanableBytes;
-            case 'user': return t.userBytes;
-        }
-    };
-    return tools.slice().sort((x, y) => {
-        const vx = val(x, sortKey);
-        const vy = val(y, sortKey);
-        if (typeof vx === 'string' && typeof vy === 'string') return vx.localeCompare(vy) * dir;
-        return (Number(vx) - Number(vy)) * dir;
-    });
-}
-
-function renderToolList() {
-    renderPanelTabs();
-    const list = el('toolList');
-    list.innerHTML = '';
-    if (!result) {
-        list.innerHTML = '<div class="empty">' + esc(t('ui.noData')) + '</div>';
-        return;
-    }
-    // 未认领数据视图：数据清空后自动回到工具视图
-    if (panelView === 'orphans' && !(result.unattributed ?? []).length) panelView = 'tools';
-    if (panelView === 'orphans') {
-        renderOrphanView(list);
-        return;
-    }
-    const q = filterText.toLowerCase();
-    const tools = sortTools(result.tools.filter(t => !q || t.name.toLowerCase().includes(q) || t.aliases.some(a => a.toLowerCase().includes(q))));
-    const head = document.createElement('div');
-    head.className = 'tool-header';
-    head.innerHTML = COLUMNS.map(({key, labelKey, sortable}) => {
-        if (!sortable) return `<span class="h">${esc(t(labelKey))}</span>`;
-        const arrow = key === sortKey ? (sortDir === -1 ? ' ▼' : ' ▲') : '';
-        return `<button class="h" data-key="${key}">${esc(t(labelKey))}${arrow}</button>`;
-    }).join('');
-    list.appendChild(head);
-    head.querySelectorAll<HTMLButtonElement>('button.h').forEach(btn => {
-        btn.onclick = () => {
-            const k = btn.dataset.key as SortKey;
-            if (k === sortKey) {
-                sortDir = sortDir === -1 ? 1 : -1;
-            } else {
-                sortKey = k;
-                sortDir = (k === 'name') ? 1 : -1;
-            }
-            renderToolList();
-        };
-    });
-    // 未认领数据有独立标签页，不再混排在工具列表里。
-    for (const tool of tools) {
-        const row = document.createElement('div');
-        row.className = 'tool-row' + (tool.name === selected ? ' selected' : '');
-        const clean = tool.cleanableBytes > 0 ? `<span class="cleanable-flag">✓</span>` : '';
-        row.innerHTML = `
-            <span class="tool-name" title="${esc(tool.name)}">${esc(tool.name)}</span>
-            <span class="ver">${esc(tool.version || (probing ? '…' : '—'))}</span>
-            <span class="num">${hb(tool.footprintBytes)}</span>
-            <span class="num clean">${hb(tool.cleanableBytes)}${clean}</span>
-            <span class="num user">${hb(tool.userBytes)}</span>`;
-        row.onclick = () => { selected = tool.name; selectedCleanIds.clear(); expandedCleanIds.clear(); renderToolList(); renderDetail(); };
-        list.appendChild(row);
-    }
-}
-
-// ---- 未认领数据（标签页视图）----
-// 面板顶部 tab：工具 | 未认领数据。未认领数据 = 数据根下未被任何工具认领
-// 的目录（USER 级），唯一处置是移入内置回收站（可恢复），绝不永久删除。
-let panelView: 'tools' | 'orphans' = 'tools';
-let orphanSel = new Set<string>(); // 已勾选的未认领路径
-
-// 极简垃圾桶图标（线性描边，与卸载复制按钮风格一致）；状态栏回收站按钮与
-// 未认领数据行共用同一标识，避免 emoji 风格不统一且视觉过重。
-const TRASH_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
-// 恢复（撤销回退箭头）图标，回收站行内操作按钮用
-const RESTORE_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>';
-
-// 类型 → 标签色（方形色块）：未认领数据=蓝、缓存=绿、日志=琥珀，其余灰
-const KIND_TONE: Record<string, string> = {
-    'cache': 'green',
-    'logs': 'amber',
-    'data': 'blue',
-    'download': 'blue',
-    'old-version': 'gray',
-    'backup': 'gray',
-    'toolchain': 'gray',
-    'config': 'gray',
-    'state': 'gray',
-    'install': 'gray',
-};
-
-// 数据根 / 类型标签的本地化映射见 lib/labels.ts（labels.test.ts 守护两端不漂移）
-
-// 渲染面板顶部的标签控件；无未认领数据时不显示（工具视图即全部内容）
-function renderPanelTabs() {
-    const wrap = el('panelTabs');
-    const orphans = result?.unattributed ?? [];
-    if (!orphans.length) {
-        wrap.innerHTML = '';
-        return;
-    }
-    const tab = (v: 'tools' | 'orphans', label: string) =>
-        `<button class="tab${panelView === v ? ' active' : ''}" data-v="${v}">${esc(label)}</button>`;
-    wrap.innerHTML = tab('tools', t('ui.tabTools')) + tab('orphans', t('ui.tabOrphans'));
-    wrap.querySelectorAll<HTMLButtonElement>('button.tab').forEach(btn => {
-        btn.onclick = () => { panelView = btn.dataset.v as 'tools' | 'orphans'; renderToolList(); };
-    });
-}
-
-function filteredOrphans(): DataDir[] {
-    return (result?.unattributed ?? []).filter(o => !filterText || o.path.toLowerCase().includes(filterText.toLowerCase()));
-}
-
-// 未认领数据视图：工具栏（计数/全选/批量移入）+ 按数据根分组列表
-function renderOrphanView(list: HTMLElement) {
-    const orphans = filteredOrphans();
-    if (!orphans.length) {
-        list.innerHTML = '<div class="empty">' + esc(t(filterText ? 'ui.orphanNoneMatch' : 'ui.orphanEmpty')) + '</div>';
-        return;
-    }
-    const total = orphans.reduce((a, o) => a + (o.bytes || 0), 0);
-    // 按数据根分组，组内按大小降序；组按总大小降序
-    const byRoot = new Map<string, DataDir[]>();
-    for (const o of orphans) {
-        const k = o.root || '';
-        if (!byRoot.has(k)) byRoot.set(k, []);
-        byRoot.get(k)!.push(o);
-    }
-    const groups = [...byRoot.entries()].map(([root, items]) => {
-        items.sort((a, b) => (b.bytes || 0) - (a.bytes || 0));
-        const gTotal = items.reduce((s, o) => s + (o.bytes || 0), 0);
-        // 组标题展示数据根的真实路径（~/.config 等），而非 xdg-config 这类
-        // 技术规范名；roots 缺失时回退为空（仅显示分类标签）
-        const base = result?.roots?.[root]?.[0] ?? '';
-        return {root, items, total: gTotal, base};
-    }).sort((a, b) => b.total - a.total);
-
-    const selected = orphans.filter(o => orphanSel.has(o.path)).length;
-    list.innerHTML = `
-        <div class="otool">
-            <span class="ot">${esc(t('ui.orphanCount', {n: orphans.length, size: hb(total)}))}</span>
-            <label class="selall"><input type="checkbox" id="orphanSelAll" ${selected === orphans.length ? 'checked' : ''}/> ${esc(t('ui.orphanSelectAll'))}</label>
-            <button class="btn mini danger" id="orphanTrashSel" ${selected ? '' : 'disabled'}>${esc(t('ui.orphanMoveToTrash', {n: selected}))}</button>
-        </div>
-        ${groups.map(g => `
-            <div class="ogroup">
-                <span class="og-name">${esc(orphanRootLabel(g.root))}</span>
-                ${g.base ? `<span class="og-root" title="${esc(g.base)}">${esc(g.base)}</span>` : ''}
-                <span class="og-size">${hb(g.total)} · ${g.items.length}</span>
-            </div>
-            ${g.items.map(o => `
-                <div class="oitem">
-                    <input type="checkbox" data-orphan="${esc(o.path)}" ${orphanSel.has(o.path) ? 'checked' : ''}/>
-                    <span class="op" title="${esc(o.path)}">${esc(o.path)}</span>
-                    <span class="os">${hb(o.bytes || 0)}</span>
-                    <button class="otrash" data-trash="${esc(o.path)}" title="${esc(t('ui.orphanTrash'))}">${TRASH_ICON}</button>
-                </div>`).join('')}
-        `).join('')}`;
-
-    // 同步批量按钮与全选状态（不整体重渲染，避免勾选闪烁）
-    const syncBar = () => {
-        const n = filteredOrphans().filter(o => orphanSel.has(o.path)).length;
-        const btn = el('orphanTrashSel') as HTMLButtonElement;
-        btn.textContent = t('ui.orphanMoveToTrash', {n});
-        btn.disabled = n === 0;
-        (el('orphanSelAll') as HTMLInputElement).checked = n === orphans.length;
-    };
-    el('orphanSelAll').onchange = (e) => {
-        const on = (e.target as HTMLInputElement).checked;
-        if (on) for (const o of orphans) orphanSel.add(o.path);
-        else for (const o of orphans) orphanSel.delete(o.path);
-        syncBar();
-    };
-    list.querySelectorAll<HTMLInputElement>('input[data-orphan]').forEach(cb => {
-        cb.onchange = () => {
-            const p = cb.dataset.orphan!;
-            if (cb.checked) orphanSel.add(p); else orphanSel.delete(p);
-            syncBar();
-        };
-    });
-    // 批量按钮与单条按钮都先走二次确认（showOrphanConfirm）
-    el('orphanTrashSel').onclick = () => showOrphanConfirm(orphans.filter(o => orphanSel.has(o.path)).map(o => o.path));
-    list.querySelectorAll<HTMLButtonElement>('button[data-trash]').forEach(btn => {
-        btn.onclick = () => showOrphanConfirm([btn.dataset.trash!]);
-    });
-}
-
-// 移入内置回收站（可恢复）；成功后本地移除已移入项，后台重扫兜底校准。
-async function trashPaths(paths: string[]) {
-    if (!paths.length) return;
-    try {
-        const rep = JSON.parse(await OrphanTrash(paths)) as {trashed?: string[]; errors?: string[]};
-        const hasErr = (rep.errors ?? []).length > 0;
-        showToast((rep.trashed?.length ? t('ui.orphanTrash') + ' ✓' : '') + (hasErr ? t('un.runFailed') : ''), hasErr);
-        for (const p of rep.trashed ?? []) orphanSel.delete(p);
-        if (result && (rep.trashed ?? []).length) {
-            const gone = new Set(rep.trashed);
-            result.unattributed = (result.unattributed ?? []).filter(o => !gone.has(o.path));
-            renderSummary(); renderToolList();
-        }
-        refreshTrashInfo(); // 立即刷新右下角回收站占用
-    } catch (e) { showToast(String(e), true); }
-}
-
-// 应用内确认弹窗（复用工具风格 #modal，替代原生 confirm()）：
-// macOS WKWebView 不支持 window.confirm（点击永远无反应），Windows WebView2
-// 的 confirm 是网页风格弹窗，与工具 UI 不一致。返回 Promise<boolean>。
-function confirmDialog(opts: {title: string; message: string; confirmText: string}): Promise<boolean> {
-    return new Promise(resolve => {
-        el('modalTitle').textContent = opts.title;
-        el('modalBody').innerHTML = `<p class="warn">${esc(opts.message)}</p>`;
-        el('modalConfirm').textContent = opts.confirmText;
-        const done = (ok: boolean) => {
-            el('modal').classList.add('hidden');
-            resolve(ok);
-        };
-        el('modalConfirm').onclick = () => done(true);
-        el('modalCancel').onclick = () => done(false);
-        el('modal').classList.remove('hidden');
-    });
-}
-
-// 二次确认：展示待移入项（路径 + 大小）与可恢复说明，确认后才真正移入回收站
-function showOrphanConfirm(paths: string[]) {
-    if (!paths.length) return;
-    const items = paths.map(p => {
-        const o = (result?.unattributed ?? []).find(x => x.path === p);
-        return {path: p, bytes: o?.bytes ?? 0};
-    });
-    const total = items.reduce((a, i) => a + i.bytes, 0);
-    el('modalTitle').textContent = t('ui.orphanConfirmTitle', {n: items.length, size: hb(total)});
-    const MAX = 15;
-    const shown = items.slice(0, MAX);
-    const more = items.length - shown.length;
-    el('modalBody').innerHTML = shown.map(i =>
-        `<div class="clean-row">
-            <span class="path" style="flex:1;font-family:var(--mono);font-size:11px;white-space:normal;word-break:break-all">${esc(i.path)}</span>
-            <span class="size" style="font-family:var(--mono);color:var(--muted);white-space:nowrap">${hb(i.bytes)}</span>
-        </div>`).join('')
-        + (more > 0 ? `<div class="sub-more">${esc(t('ui.moreSubitems', {n: more}))}</div>` : '')
-        + `<div class="warn">${esc(t('ui.orphanConfirmNote'))}</div>`;
-    el('modal').classList.remove('hidden');
-    el('modalConfirm').textContent = t('ui.orphanConfirmBtn');
-    el('modalConfirm').onclick = async () => {
-        el('modal').classList.add('hidden');
-        await trashPaths(paths);
-    };
-    el('modalCancel').onclick = () => el('modal').classList.add('hidden');
-}
-
-// ---- detail ----
-function renderDetail() {
-    const body = el('detailBody');
-    if (!result || !selected) {
-        body.innerHTML = '<div class="empty">' + esc(t('ui.selectTool')) + '</div>';
-        return;
-    }
-    const tool = result.tools.find(x => x.name === selected);
-    if (!tool) return;
-
-    const installer = tool.installer ? `<span class="badge installer">${esc(tool.installer)}</span>` : '';
-    const metaItems: string[] = [];
-    // 安装来源：本地化名称（未知来源回退原始值）
-    let sourceName = '';
-    if (tool.installer) {
-        const localized = t('ui.installer.' + tool.installer);
-        sourceName = localized !== 'ui.installer.' + tool.installer ? localized : tool.installer;
-    }
-    if (sourceName) metaItems.push(`<span class="meta-item">${esc(t('ui.installerSource'))} <b>${esc(sourceName)}</b></span>`);
-    if (tool.version) metaItems.push(`<span class="meta-item">${esc(t('ui.version'))} <b>${esc(tool.version)}</b></span>`);
-    if (tool.updatedAt) metaItems.push(`<span class="meta-item">${esc(t('ui.updatedAt'))} <b>${fmtTime(tool.updatedAt)}</b></span>`);
-    // 家族合并工具（nodejs 等）：aliases 即其包含的命令，标签用「包含工具」；
-    // 普通工具的 aliases 只是别名（claude→claude-code），仅在小列表时展示——
-    // pyenv 等工具的 shims 会推入几十个命令名（python/pip/pytest…），那既不是
-    // 别名也不是包含工具，展示为「别名」纯属噪音（它们在下方的二进制区逐条可见）
-    const am = aliasMeta(tool);
-    if (am) {
-        metaItems.push(`<span class="meta-item">${esc(t(am.labelKey))} <b>${esc(tool.aliases.join(' · '))}</b></span>`);
-    }
-    const metaHtml = (tool.description || tool.homepage || metaItems.length)
-        ? `<div class="detail-meta">
-            ${tool.description ? `<div class="meta-desc">${esc(tool.description)}</div>` : ''}
-            <div class="meta-row">${metaItems.join('')}${tool.homepage ? `<a class="meta-link" id="hpLink" href="#">${esc(t('ui.homepage'))}</a>` : ''}</div>
-          </div>`
-        : '';
-    const binaries = tool.binaries.length
-        ? `<div class="detail-list">${tool.binaries.map(b =>
-            `<div class="detail-item"><span class="badge safe">bin</span><span class="path" title="${esc(b.real)}">${esc(b.real)}</span><span class="size">${hb(b.size)}</span></div>`).join('')}</div>`
-        : '<div class="detail-list"><div class="detail-item"><span class="muted">' + esc(t('ui.noBinary')) + '</span></div></div>';
-
-    // 安装根（Kind install）仅展示，不列为可处置项：删除安装根 = 卸载工具，
-    // 走独立的卸载流程（详情页「卸载」按钮）。
-    const installDirs = tool.dataDirs.filter(d => d.kind === 'install');
-    const installHtml = installDirs.length
-        ? `<div class="detail-list">${installDirs.map(d =>
-            `<div class="detail-item"><span class="badge ${d.tier}">${d.tier}</span><span class="path" title="${esc(d.path)}">${esc(d.path)}</span><span class="size ${d.tier}">${hb(d.bytes)}</span><span class="keep">${esc(kindLabel(d.kind))}</span></div>`).join('')}</div>`
-        : '';
-
-    // 全部归因目录（安装根除外）都是可处置项：kind/tier 是信息标签，
-    // 勾选即代表用户决策，应用不再替用户裁决"能不能删"。
-    const cleanables = tool.cleanables;
-    const cleanHtml = cleanables.length
-        ? `<div class="detail-list">${cleanables.map(c => {
-            const checked = selectedCleanIds.has(c.id) ? 'checked' : '';
-            const expanded = expandedCleanIds.has(c.id);
-            const hasSub = (c.sub ?? []).length > 0;
-            const toggle = hasSub
-                ? `<button class="sub-toggle${expanded ? ' expanded' : ''}" data-id="${esc(c.id)}" title="${esc(t('ui.expandCollapse'))}"><span class="st-caret"></span></button>`
-                : `<span class="sub-toggle spacer"></span>`;
-            return `<div class="clean-block">
-                <div class="detail-item clean-row">
-                    ${toggle}
-                    <input type="checkbox" data-id="${esc(c.id)}" ${checked}/>
-                    <span class="badge safe">${esc(kindLabel(c.kind))}</span>
-                    <span class="path" title="${esc(c.path)}">${esc(c.path)}</span>
-                    <span class="size clean">${hb(c.bytes)}</span>
-                    <span class="keep">${c.keep ? esc(c.keep) : ''}</span>
-                </div>${expanded ? subRows(c, selectedCleanIds.has(c.id)) : ''}
-            </div>`;
-        }).join('')}</div>`
-        : '<div class="detail-list"><div class="detail-item"><span class="muted">' + esc(t('ui.noCleanable')) + '</span></div></div>';
-
-    body.innerHTML = `
-        <div class="detail-head"><h2>${esc(tool.name)}</h2>${installer}</div>
-        ${metaHtml}
-        <div class="detail-section"><h4>${esc(t('ui.sectionBinaries'))}</h4>${binaries}</div>
-        ${installHtml ? `<div class="detail-section"><h4>${esc(t('ui.sectionInstallRoot'))}</h4>${installHtml}</div>` : ''}
-        <div class="detail-section"><h4>${esc(t('ui.sectionSafe'))}</h4>${cleanHtml}</div>
-        <div class="detail-actions">
-            <button id="cleanBtn" class="btn danger">${esc(t('ui.cleanSelected'))}</button>
-            <button id="uninstallBtn" class="btn" title="${esc(t('un.guiUninstall'))}">${esc(t('un.guiUninstall'))}</button>
-            <span class="sel-info" id="selInfo">${esc(t('ui.selectedCount', {n: selectedCleanIds.size}))}</span>
-        </div>`;
-
-    const hp = body.querySelector<HTMLAnchorElement>('#hpLink');
-    if (hp) hp.onclick = (e) => { e.preventDefault(); OpenURL(tool.homepage); };
-
-    body.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach(cb => {
-        cb.onchange = () => {
-            const id = cb.dataset.id!;
-            const parentId = cb.dataset.parent;
-            if (parentId) {
-                // child: selecting it deselects the whole-dir parent
-                if (cb.checked) { selectedCleanIds.delete(parentId); selectedCleanIds.add(id); }
-                else selectedCleanIds.delete(id);
-            } else {
-                // whole dir: selecting it deselects all its children
-                if (cb.checked) {
-                    const c = cleanables.find(x => x.id === id);
-                    if (c) for (const sid of subIdsOf(c)) selectedCleanIds.delete(sid);
-                    selectedCleanIds.add(id);
-                } else {
-                    selectedCleanIds.delete(id);
-                }
-            }
-            renderDetail();
-        };
-    });
-    body.querySelectorAll<HTMLButtonElement>('button.sub-toggle').forEach(btn => {
-        btn.onclick = () => {
-            const id = btn.dataset.id!;
-            if (expandedCleanIds.has(id)) expandedCleanIds.delete(id); else expandedCleanIds.add(id);
-            renderDetail();
-        };
-    });
-    const cleanBtn = el<HTMLButtonElement>('cleanBtn');
-    cleanBtn.disabled = selectedCleanIds.size === 0;
-    cleanBtn.onclick = () => {
-        if (selectedCleanIds.size === 0) return;
-        showConfirmModal(selectedItems(tool));
-    };
-    el<HTMLButtonElement>('uninstallBtn').onclick = () => startUninstall(tool.name);
-    // 黑名单工具禁用卸载按钮（UninstallBlocked 来自服务层）
-    UninstallBlocked(tool.name).then(raw => {
-        try {
-            const b = JSON.parse(raw) as {blocked: boolean};
-            el<HTMLButtonElement>('uninstallBtn').disabled = !!b.blocked;
-        } catch { /* 忽略 */ }
-    });
-}
-
-function esc(s: string): string {
-    return s.replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]!));
-}
-
-// One level of size breakdown for a cleanable (its direct children), rendered
-// as indented rows below the checkbox row. Children with an id are individually
-// selectable (0 字节子项也可勾选，清理空文件/空目录）；当父项（整目录）被
-// 勾选时子项禁用。Capped to keep wide dirs readable.
-const SUB_CAP = 20;
-function subRows(c: Cleanable, parentSelected: boolean): string {
-    const sub = c.sub ?? [];
-    if (!sub.length) return '';
-    const shown = sub.slice(0, SUB_CAP);
-    const more = sub.length - shown.length;
-    // 分隔符随平台：Windows 路径为反斜杠（Go 端 filepath.Join），unix 为正斜杠；
-    // 固定用 '/' 拼接会让反斜杠路径的子项退化为显示完整路径。
-    const sep = c.path.includes('\\') ? '\\' : '/';
-    const base = c.path.endsWith(sep) ? c.path : c.path + sep;
-    const rows = shown.map(s => {
-        const rel = s.path.startsWith(base) ? s.path.slice(base.length) : s.path;
-        const selectable = !!s.id;
-        if (!selectable) {
-            return `<div class="detail-item sub-row">
-                <span class="sub-path" title="${esc(s.path)}">${esc(rel)}</span>
-                <span class="size muted">${hb(s.bytes)}</span>
-            </div>`;
-        }
-        const checked = selectedCleanIds.has(s.id) ? 'checked' : '';
-        const disabled = parentSelected ? 'disabled' : '';
-        // 子项类型与父项不同时（如 ~/.npm/_logs → 日志）标注精确类型；
-        // logs 类（_logs/*.log 是缓存目录的组成部分）不额外贴「日志」标签，
-        // 避免在安全清理项里看起来像独立类别
-        const kindTag = s.kind && s.kind !== c.kind && s.kind !== 'logs'
-            ? `<span class="sub-kind">${esc(kindLabel(s.kind))}</span>` : '';
-        return `<div class="detail-item sub-row">
-            <input type="checkbox" class="sub-cb" data-id="${esc(s.id)}" data-parent="${esc(c.id)}" ${checked} ${disabled}/>
-            <span class="sub-path" title="${esc(s.path)}">${esc(rel)}</span>
-            ${kindTag}
-            <span class="size clean">${hb(s.bytes)}</span>
-        </div>`;
-    }).join('');
-    const moreHtml = more > 0 ? `<div class="sub-more">${esc(t('ui.moreSubitems', {n: more}))}</div>` : '';
-    return `<div class="sub-list">${rows}${moreHtml}</div>`;
-}
-
-// subIdsOf returns the selectable sub-entry ids under a cleanable.
-function subIdsOf(c: Cleanable): string[] {
-    return (c.sub ?? []).map(s => s.id).filter(Boolean);
-}
-
-// selectedItems resolves the currently checked ids (whole cleanables and/or
-// their children) into a flat list for the confirm dialog and Clean call.
-interface PickItem { id: string; path: string; bytes: number; kind: string }
-function selectedItems(t: Tool): PickItem[] {
-    const out: PickItem[] = [];
-    for (const c of t.cleanables) {
-        if (selectedCleanIds.has(c.id)) {
-            out.push({id: c.id, path: c.path, bytes: c.bytes, kind: c.kind});
-            continue;
-        }
-        for (const s of c.sub ?? []) {
-            // 子项用精确类型（_logs → 日志），未携带时继承父项
-            if (s.id && selectedCleanIds.has(s.id)) out.push({id: s.id, path: s.path, bytes: s.bytes, kind: s.kind || c.kind});
-        }
-    }
-    return out;
-}
-
-// ---- confirm modal ----
-function showConfirmModal(items: PickItem[]) {
-    const total = items.reduce((a, c) => a + c.bytes, 0);
-    el('modalTitle').textContent = t('ui.confirmClean', {n: items.length, size: hb(total)});
-    el('modalConfirm').textContent = t('ui.confirmCleanBtn'); // 未认领确认弹窗可能改过按钮文案，这里复位
-    el('modalBody').innerHTML = items.map(c =>
-        `<div class="clean-row">
-            <span class="badge safe">${esc(kindLabel(c.kind))}</span>
-            <span class="path" style="flex:1;font-family:var(--mono);font-size:11px;white-space:normal;word-break:break-all">${esc(c.path)}</span>
-            <span class="size" style="font-family:var(--mono);color:var(--clean);white-space:nowrap">${hb(c.bytes)}</span>
-        </div>`).join('')
-        + '<div class="warn">' + esc(t('ui.safeOnly')) + '</div>';
-    el('modal').classList.remove('hidden');
-    el('modalConfirm').onclick = async () => {
-        el('modal').classList.add('hidden');
-        const ids = items.map(c => c.id);
-        try {
-            const rep: CleanReport = JSON.parse(await Clean(ids, false));
-            const del = (rep.deleted ?? []).length;
-            const skipped = (rep.skipped ?? []).length;
-            const hasErr = (rep.errors ?? []).length > 0;
-            const extra = skipped ? t('ui.cleanSkipped', {n: skipped}) : '';
-            showToast(t('ui.cleanDone', {del, size: hb(rep.freedBytes), extra}), hasErr);
-            selectedCleanIds.clear();
-            if (del > 0 && result) {
-                // 本地立即刷新详情，无需等整体重扫
-                applyCleanLocally(result, ids);
-                renderSummary(); renderToolList(); renderDetail(); refreshReminder(); refreshTrashInfo();
-            }
-            rescan();
-        } catch (e) {
-            showToast(t('ui.cleanFailed', {err: String(e)}), true);
-        }
-    };
-    el('modalCancel').onclick = () => el('modal').classList.add('hidden');
-}
-
-// ---- built-in trash ----
-let trashItems: TrashItem[] = [];
-
-// 刷新状态栏常驻的回收站占用信息（空回收站显示 0 B）
-async function refreshTrashInfo() {
-    try {
-        const info: TrashInfoData = JSON.parse(await TrashInfo());
-        const total = info.totalBytes || 0;
-        el('trashInfo').textContent = total > 0 ? t('ui.trashInfo', {size: hb(total), n: info.items}) : t('ui.trashInfoEmpty');
-        el('trashBtn').title = info.earliestExpiresAt
-            ? t('ui.trashBtnFull', {size: hb(total), n: info.items, time: fmtTime(info.earliestExpiresAt)})
-            : t('ui.trashBtnTitle');
-    } catch { el('trashInfo').textContent = t('ui.trashInfoEmpty'); }
-}
-
-function openTrashPanel() {
-    el('trashModal').classList.remove('hidden');
-    refreshTrashList();
-}
-
-async function refreshTrashList() {
-    const body = el('trashBody');
-    try {
-        const parsed = JSON.parse(await TrashList());
-        if (parsed.error) { body.innerHTML = `<div class="warn">${esc(parsed.error)}</div>`; return; }
-        trashItems = parsed;
-    } catch (e) {
-        body.innerHTML = `<div class="warn">${esc(t('ui.trashReadFailed', {err: String(e)}))}</div>`;
-        return;
-    }
-    if (!trashItems.length) {
-        body.innerHTML = '<div class="empty">' + esc(t('ui.trashEmpty')) + '</div>';
-        el('trashSummary').textContent = '';
-        return;
-    }
-    // 头部汇总：项数 · 总大小 · 最早到期时间
-    const total = trashItems.reduce((a, it) => a + (it.bytes || 0), 0);
-    const earliest = trashItems.reduce((m, it) => (it.expiresAt < m ? it.expiresAt : m), trashItems[0].expiresAt);
-    el('trashSummary').textContent = t('ui.trashSummary', {n: trashItems.length, size: hb(total), time: fmtTime(earliest)});
-    // 表格行：类型标签（方形色块）｜路径｜大小｜来源·时间｜恢复｜删除
-    body.innerHTML = trashItems.map(it => {
-        // 未认领数据移入回收站时后端以内部标识 "orphan" 记录（稳定 ID，供恢复/到期
-        // 处理），展示层翻译为「未认领数据」，不把内部名暴露给用户。
-        const isOrphan = it.tool === 'orphan';
-        const tone = isOrphan ? 'blue' : (KIND_TONE[it.kind] ?? 'gray');
-        const label = isOrphan ? t('ui.orphanSection') : kindLabel(it.kind);
-        const exp = t('ui.trashExp', {time: fmtTime(it.trashedAt), time2: fmtTime(it.expiresAt)});
-        const meta = isOrphan ? exp : `${esc(it.tool)} · ${exp}`;
-        return `
-        <div class="trash-row">
-            <span class="ktag ${tone}">${esc(label)}</span>
-            <span class="tpath" title="${esc(it.original)}">${esc(it.original)}</span>
-            <span class="tsize">${hb(it.bytes)}</span>
-            <span class="tmeta" title="${esc(meta)}">${meta}</span>
-            <button class="ibtn" data-restore="${esc(it.id)}" title="${esc(t('ui.restore'))}">${RESTORE_ICON}</button>
-            <button class="ibtn danger" data-purge="${esc(it.id)}" title="${esc(t('ui.purge'))}">${TRASH_ICON}</button>
-        </div>`;
-    }).join('');
-    body.querySelectorAll<HTMLButtonElement>('[data-restore]').forEach(btn => {
-        btn.onclick = async () => {
-            const r = JSON.parse(await Restore(btn.dataset.restore!));
-            if (r.error) showToast(t('ui.restoreFailed', {err: r.error}), true);
-            else {
-                showToast(t('ui.restored', {path: r.restored}));
-                rescan(); // 后台重扫，让主界面详情反映恢复的文件
-            }
-            refreshTrashList(); refreshTrashInfo();
-        };
-    });
-    body.querySelectorAll<HTMLButtonElement>('[data-purge]').forEach(btn => {
-        btn.onclick = async () => {
-            // 永久删除前必须确认（自 0.3.8 起 PurgeNow 为不可恢复的永久删除）
-            const ok = await confirmDialog({
-                title: t('ui.purge'),
-                message: t('ui.purgeConfirm', {n: 1}),
-                confirmText: t('ui.purge'),
-            });
-            if (!ok) return;
-            const r = JSON.parse(await PurgeNow([btn.dataset.purge!]));
-            if ((r.errors ?? []).length) showToast(t('ui.purgeFailed', {err: r.errors.join('; ')}), true);
-            else { showToast(t('ui.purged')); rescan(); }
-            refreshTrashList(); refreshTrashInfo();
-        };
-    });
-}
-
-// ---- update state ----
-type UpdateProgress = { downloaded: number; total: number };
-let updateState: 'idle' | 'downloading' | 'downloaded' = 'idle';
-let lastUpdateResult: UpdateResult | null = null;
-
-// 下载进度改用轮询（GetDownloadProgress）：macOS WKWebView 对跨桥事件不可靠，
-// 事件推进度在 Mac 上完全不显示，轮询与 GetUpdateStatus 同一套路（已验证有效）。
-let downloadPoll: number | null = null;
-let lastShownPct = 0;
-function stopDownloadPoll() {
-    if (downloadPoll !== null) { window.clearInterval(downloadPoll); downloadPoll = null; }
-}
-function startDownloadPoll() {
-    stopDownloadPoll();
-    lastShownPct = 0;
-    downloadPoll = window.setInterval(async () => {
-        try {
-            const raw = await GetDownloadProgress();
-            if (!raw) return; // 已结束或未开始，由完成事件兜底
-            const p = JSON.parse(raw) as UpdateProgress;
-            if (updateState !== 'downloading') return;
-            const bar = el('updBar') as HTMLElement;
-            const pct = el('updPct');
-            // 未开始或仍为 0%：保持初始 "0%"，不显示 0 字节、不切准备中文案（避免闪烁）
-            if (!p.total || p.downloaded <= 0) return;
-            const n = Math.min(100, Math.round((p.downloaded / p.total) * 100));
-            if (n < 1) return; // 不足 1% 仍保持 0%
-            // 单调防线：进度只进不退（双保险，Go 侧已有同样守卫）
-            if (n < lastShownPct) return;
-            lastShownPct = n;
-            bar.style.width = n + '%';
-            pct.textContent = `${n}%（${hb(p.downloaded)} / ${hb(p.total)}）`;
-        } catch { /* 单次轮询失败忽略 */ }
-    }, 200);
-}
-
-// 发现新版本：展示 当前/最新 版本与 [下载] [忽略该版本] [稍后]
-function showUpdateAvailable(res: UpdateResult) {
-    if (!res.updateAvailable) return;
-    lastUpdateResult = res;
-    updateState = 'idle';
-    const body = el('updateBody');
-    // 无下载入口（安装来源 unknown 且资产匹配失败）时只提供 Release 页链接，
-    // 不显示无效的下载按钮（DownloadUpdate 对空 URL 只返回提示）
-    const dlAction = res.downloadURL
-        ? `<button class="btn primary" id="updDownload">${esc(t('upd.download'))}</button>`
-        : `<button class="btn primary" id="updRelease">${esc(t('upd.releasePage'))}</button>`;
-    body.innerHTML = `
-        <p class="update-versions">${t('upd.versions', {current: res.current, latest: res.latest})}</p>
-        <p class="muted">${esc(t('upd.manualInstall'))}</p>
-        <div class="update-actions">
-            <button class="btn" id="updLater">${esc(t('upd.later'))}</button>
-            <button class="btn" id="updIgnore">${esc(t('upd.ignore'))}</button>
-            ${dlAction}
-        </div>`;
-    el('updateModal').classList.remove('hidden');
-    el('updLater').onclick = () => el('updateModal').classList.add('hidden');
-    el('updIgnore').onclick = async () => {
-        await IgnoreVersion(res.latest);
-        el('updateModal').classList.add('hidden');
-        showToast(t('upd.ignored', {version: res.latest}));
-    };
-    const dl = document.getElementById('updDownload');
-    if (dl) dl.onclick = () => startDownload();
-    const rl = document.getElementById('updRelease');
-    if (rl) rl.onclick = () => OpenURL(res.releaseURL || 'https://github.com/kevinjoy89/cli-analyzer/releases');
-}
-
-// 开始下载：进度条 + 取消；进度由 update:progress 事件驱动
-function startDownload() {
-    updateState = 'downloading';
-    const body = el('updateBody');
-    body.innerHTML = `
-        <p class="update-versions">${t('upd.downloading', {name: esc(lastUpdateResult?.assetName ?? '')})}</p>
-        <div class="progress"><div id="updBar" class="progress-bar" style="width:0%"></div></div>
-        <p id="updPct" class="muted">0%</p>
-        <div class="update-actions"><button class="btn" id="updCancel">${esc(t('upd.cancel'))}</button></div>`;
-    el('updCancel').onclick = () => { CancelDownload(); };
-    DownloadUpdate().then(err => {
-        if (err) { showUpdateFailed(t('upd.startFailed', {err}), lastUpdateResult?.releaseURL ?? ''); return; }
-        startDownloadPoll(); // 进度轮询（事件在 macOS 不可靠）
-    });
-}
-
-// 下载完成（已通过校验）：[立即安装] [稍后]；压缩包产物额外展示当前二进制路径
-function showUpdateDownloaded(d: UpdateDownloaded) {
-    updateState = 'downloaded';
-    stopDownloadPoll();
-    const isArchive = d.installSource === 'tarball' || d.installSource === 'portable';
-    const body = el('updateBody');
-    body.innerHTML = `
-        <p class="update-versions">${esc(t('upd.downloaded'))}</p>
-        <p class="muted">${isArchive ? esc(t('upd.archiveSaved')) : esc(t('upd.installerSaved'))}<code>${esc(d.path)}</code></p>
-        ${isArchive ? `<p class="muted">${esc(t('upd.binaryPath'))}<code>${esc(d.executablePath)}</code></p>` : ''}
-        <div class="update-actions">
-            <button class="btn" id="updLater">${esc(t('upd.later'))}</button>
-            <button class="btn primary" id="updInstall">${esc(t('upd.installNow'))}</button>
-        </div>`;
-    el('updLater').onclick = () => el('updateModal').classList.add('hidden');
-    // 点击后 Go 侧先打开安装包再退出应用（design D7）
-    el('updInstall').onclick = () => { InstallUpdate(); };
-}
-
-// 校验失败：安全优先，不给安装入口，仅提供 Release 页面链接
-function showUpdateVerifyFailed(err: string, releaseURL: string) {
-    updateState = 'idle';
-    const body = el('updateBody');
-    body.innerHTML = `
-        <p class="warn">${esc(t('upd.verifyFailed'))}</p>
-        <p class="muted">${esc(err)}</p>
-        <div class="update-actions">
-            <button class="btn" id="updClose">${esc(t('upd.close'))}</button>
-            <button class="btn" id="updRelease">${esc(t('upd.releasePage'))}</button>
-        </div>`;
-    el('updClose').onclick = () => el('updateModal').classList.add('hidden');
-    el('updRelease').onclick = () => OpenURL(releaseURL || 'https://github.com/kevinjoy89/cli-analyzer/releases');
-}
-
-// 下载失败：保留面板展示错误信息，提供重试与 Release 页跳转（不自动关闭）
-function showUpdateFailed(err: string, releaseURL: string) {
-    updateState = 'idle';
-    const body = el('updateBody');
-    body.innerHTML = `
-        <p class="warn">${esc(t('upd.downloadFailed'))}</p>
-        <p class="muted">${esc(err)}</p>
-        <div class="update-actions">
-            <button class="btn" id="updClose">${esc(t('upd.close'))}</button>
-            <button class="btn" id="updRetry">${esc(t('upd.download'))}</button>
-            <button class="btn" id="updRelease">${esc(t('upd.releasePage'))}</button>
-        </div>`;
-    el('updClose').onclick = () => el('updateModal').classList.add('hidden');
-    el('updRetry').onclick = () => startDownload();
-    el('updRelease').onclick = () => OpenURL(releaseURL || 'https://github.com/kevinjoy89/cli-analyzer/releases');
-}
-
-// 手动检查（Help 菜单「检查更新…」）：不受 4h 缓存限制
-async function manualCheck() {
-    let res: UpdateResult;
-    try { res = JSON.parse(await CheckForUpdates()); }
-    catch (e) { showToast(t('upd.checkFailed', {err: String(e)}), true); return; }
-    if (res.error) { showToast(res.error, true); return; }
-    if (res.updateAvailable) showUpdateAvailable(res);
-    else showToast(t('upd.upToDate', {version: res.latest}));
-}
-
-// ---- uninstall ----
-interface UninstallStartInfo { tool: string; installer?: string; blocked?: boolean; stale?: boolean; blockedReason?: string; officialCommand?: string; runnable?: boolean; footprint?: number; userBytes?: number; error?: string }
-interface UninstallResidueItem { path: string; bytes: number; tier: string; kind: string }
-interface UninstallStatus { running: boolean; done: boolean; output: string; error?: string }
-
-let uninstallPoll: number | null = null;
-function stopUninstallPoll() {
-    if (uninstallPoll !== null) { window.clearInterval(uninstallPoll); uninstallPoll = null; }
-}
-
-// 详情页「卸载」→ 起始信息（官方命令/黑名单/占用）→ 确认弹窗
-function startUninstall(toolName: string) {
-    UninstallStart(toolName).then(raw => {
-        const info = JSON.parse(raw) as UninstallStartInfo;
-        if (info.stale) { showToast(info.error || '', true); rescan(); return; }
-        if (info.error) { showToast(info.error, true); return; }
-        if (info.blocked) { showToast(info.blockedReason || '', true); return; }
-        showUninstallConfirm(info);
-    }).catch(e => showToast(String(e), true));
-}
-
-function showUninstallConfirm(info: UninstallStartInfo) {
-    const body = el('uninstallBody');
-    // 标题承载「卸载 <tool>」，body 不再重复工具名
-    el('uninstallTitle').textContent = t('un.guiUninstall') + ' ' + info.tool;
-    // 复制按钮内联在命令后面（极简 SVG 图标），不放操作行
-    const cmdHtml = info.officialCommand
-        ? `<p class="muted un-cmdline">${esc(t('un.guiOfficialCmd'))}<br><code>${esc(info.officialCommand)}</code> <button id="unCopy" class="btn icon" title="${esc(t('un.guiCopyCmd'))}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></p>`
-        : `<p class="muted">${esc(t('un.noOfficialCmd'))}</p>`;
-    // 两行按钮：主文案 + 小字说明（语义：主路径 = 卸载并自动检测；跳过 = 直达残留检测）
-    const runnableActions = info.runnable ? `
-            <button class="btn" id="unSkip"><span class="btn-main">${esc(t('un.guiSkipMain'))}</span><span class="btn-sub">${esc(t('un.guiSkipSub'))}</span></button>
-            <button class="btn primary" id="unRun"><span class="btn-main">${esc(t('un.guiRunMain'))}</span><span class="btn-sub">${esc(t('un.guiRunSub'))}</span></button>` : `
-            <button class="btn primary" id="unResidue">${esc(t('un.guiResidueTitle'))}</button>`;
-    body.innerHTML = `
-        <p class="muted">占用 ${hb(info.footprint || 0)} · 用户数据 ${hb(info.userBytes || 0)}</p>
-        ${cmdHtml}
-        <p id="unOut" class="muted un-output"></p>
-        <div class="update-actions">
-            <button class="btn" id="unCancel">${esc(t('ui.cancel'))}</button>
-            ${runnableActions}
-        </div>`;
-    el('uninstallModal').classList.remove('hidden');
-    el('unCancel').onclick = () => { stopUninstallPoll(); el('uninstallModal').classList.add('hidden'); };
-    // 条件渲染的按钮用 getElementById 可空查找（el() 对缺失元素会 throw，
-    // 导致后续按钮事件全部丢失——曾报 "missing element #unRun"）
-    const copyBtn = document.getElementById('unCopy');
-    if (copyBtn) copyBtn.onclick = () => {
-        navigator.clipboard?.writeText(info.officialCommand!).catch(() => {});
-        showToast(t('un.copied'));
-    };
-    const runBtn = document.getElementById('unRun') as HTMLButtonElement | null;
-    if (runBtn) runBtn.onclick = async () => {
-        runBtn.disabled = true;
-        const err = await UninstallRunOfficial();
-        if (err) { showToast(err, true); runBtn.disabled = false; return; }
-        startUninstallPoll();
-    };
-    const skipBtn = document.getElementById('unSkip');
-    if (skipBtn) skipBtn.onclick = () => showUninstallResidue();
-    const residueBtn = document.getElementById('unResidue');
-    if (residueBtn) residueBtn.onclick = () => showUninstallResidue();
-}
-
-function startUninstallPoll() {
-    stopUninstallPoll();
-    const t0 = Date.now();
-    uninstallPoll = window.setInterval(async () => {
-        try {
-            const st = JSON.parse(await GetUninstallStatus()) as UninstallStatus;
-            const out = el('unOut');
-            if (out) {
-                // 有输出展示输出；无输出时显示进行中 + 已耗时（标准卸载可能需数十秒）
-                out.textContent = st.output
-                    ? st.output
-                    : (st.running ? `${t('un.guiRunning')}（${Math.round((Date.now() - t0) / 1000)}s）` : '');
-            }
-            if (st.done) {
-                stopUninstallPoll();
-                if (st.error) showToast(t('un.runFailed') + ': ' + st.error, true);
-                // 进入残留检测
-                showUninstallResidue();
-            }
-        } catch { /* 单次轮询失败忽略 */ }
-    }, 300);
-}
-
-// 残留检测 → 列表（全选默认、凭证标红）→ 移入回收站
-async function showUninstallResidue() {
-    let rr: UninstallResidueItem[] = [];
-    try {
-        const parsed = JSON.parse(await UninstallResidue());
-        rr = Array.isArray(parsed) ? parsed : [];
-    } catch { showToast(t('un.residueNone'), true); return; }
-    if (!rr.length) { showToast(t('un.guiResidueNone')); return; }
-    const body = el('uninstallBody');
-    el('uninstallTitle').textContent = t('un.guiResidueTitle');
-    body.innerHTML = `
-        ${rr.map((r, i) => `
-            <label class="pref-row check">
-                <input type="checkbox" data-idx="${i}" checked/>
-                <span class="${r.tier === 'user' ? 'un-credential' : ''}">${esc(r.path)} · ${hb(r.bytes)}${r.tier === 'user' ? ' · ' + esc(t('un.guiResidueCredential')) : ''}</span>
-            </label>`).join('')}
-        <div class="update-actions">
-            <button class="btn" id="unCancel2">${esc(t('ui.cancel'))}</button>
-            <button class="btn danger" id="unDeletePerm">${esc(t('un.guiDeletePermanent'))}</button>
-            <button class="btn danger" id="unTrash">${esc(t('un.guiTrashConfirm'))}</button>
-        </div>`;
-    el('uninstallModal').classList.remove('hidden');
-    el('unCancel2').onclick = () => el('uninstallModal').classList.add('hidden');
-    const checkedPaths = () => {
-        const boxes = body.querySelectorAll<HTMLInputElement>('input[type=checkbox]');
-        return rr.filter((_, i) => boxes[i].checked).map(r => r.path);
-    };
-    el('unTrash').onclick = async () => {
-        const paths = checkedPaths();
-        if (!paths.length) { showToast(t('un.residueNone')); return; }
-        const rep = JSON.parse(await UninstallTrashResidues(paths));
-        el('uninstallModal').classList.add('hidden');
-        const hasErr = (rep.errors ?? []).length > 0;
-        showToast(t('un.guiResidueDone') + (hasErr ? '（' + t('un.runFailed') + '）' : ''), hasErr);
-        // 立即刷新右下角回收站占用（不等后台重扫完成，与 clean 流程一致）
-        refreshTrashInfo();
-    };
-    // 永久删除：不可恢复，必须先经强确认（confirmDialog），再调后端
-    el('unDeletePerm').onclick = async () => {
-        const paths = checkedPaths();
-        if (!paths.length) { showToast(t('un.residueNone')); return; }
-        const ok = await confirmDialog({
-            title: t('un.guiDeletePermanent'),
-            message: t('un.guiDeletePermanentConfirm'),
-            confirmText: t('un.guiDeletePermanent'),
-        });
-        if (!ok) return;
-        const rep = JSON.parse(await UninstallDeleteResidues(paths));
-        el('uninstallModal').classList.add('hidden');
-        const hasErr = (rep.errors ?? []).length > 0;
-        showToast(t('un.guiResidueDonePermanent') + (hasErr ? '（' + t('un.runFailed') + '）' : ''), hasErr);
-        refreshTrashInfo();
-        rescan(); // 永久删除真正释放空间，后台重扫校准占用
-    };
-}
-
-// ---- preferences ----
-async function openPrefs() {
-    let cfg: TrashConfig;
-    let rem: ReminderConfig;
-    let upd: UpdateConfig;
-    try { cfg = JSON.parse(await GetTrashConfig()); } catch { cfg = {retentionDays: 7, expireAction: 'system-trash', useTrash: true}; }
-    try { rem = JSON.parse(await GetReminderConfig()); } catch { rem = {thresholdBytes: 5 * 1024 * 1024 * 1024}; }
-    try { upd = JSON.parse(await GetUpdateConfig()); } catch { upd = {}; }
-    let cfgLang = '';
-    try { cfgLang = await GetLanguage(); } catch { /* auto */ }
-    const threshGB = (rem.thresholdBytes || 5 * 1024 * 1024 * 1024) / (1024 * 1024 * 1024);
-    const langOpts: Array<[string, string]> = [
-        ['auto', t('ui.langAuto')],
-        ['zh-CN', t('ui.langZhCN')],
-        ['zh-TW', t('ui.langZhTW')],
-        ['en', t('ui.langEn')],
-    ];
-    el('prefsBody').innerHTML = `
-        <div class="pref-head">${esc(t('ui.prefsLanguage'))}</div>
-        <label class="pref-row">${esc(t('ui.prefsLanguage'))}
-            <select id="prefLanguage">
-                ${langOpts.map(([v, label]) => `<option value="${v}" ${cfgLang === v ? 'selected' : ''}>${esc(label)}</option>`).join('')}
-            </select>
-        </label>
-        <div class="pref-head">${esc(t('ui.prefsTrashHead'))}</div>
-        <label class="pref-row">${esc(t('ui.prefsRetention'))}
-            <input id="prefRetention" type="number" min="1" max="365" value="${cfg.retentionDays}"/>
-        </label>
-        <label class="pref-row">${esc(t('ui.prefsExpire'))}
-            <select id="prefExpire">
-                <option value="system-trash" ${cfg.expireAction === 'system-trash' ? 'selected' : ''}>${esc(t('ui.prefsExpireSystem'))}</option>
-                <option value="permanent" ${cfg.expireAction === 'permanent' ? 'selected' : ''}>${esc(t('ui.prefsExpirePermanent'))}</option>
-            </select>
-        </label>
-        <label class="pref-row check">
-            <input id="prefUseTrash" type="checkbox" ${cfg.useTrash ? 'checked' : ''}/>
-            <span>${esc(t('ui.prefsUseTrash'))}</span>
-        </label>
-        <div class="pref-head">${esc(t('ui.prefsTrendsHead'))}</div>
-        <label class="pref-row">${esc(t('ui.prefsThreshold'))}
-            <input id="prefThreshold" type="number" min="0" step="0.5" value="${threshGB.toFixed(1)}"/>
-            <span>GB</span>
-        </label>
-        <div class="pref-head">${esc(t('ui.prefsUpdateHead'))}</div>
-        <label class="pref-row check">
-            <input id="prefCheckUpdates" type="checkbox" ${upd.checkUpdates !== false ? 'checked' : ''}/>
-            <span>${esc(t('ui.prefsAutoCheck'))}</span>
-        </label>`;
-    el('prefsModal').classList.remove('hidden');
-    el('prefsSave').onclick = async () => {
-        const lang = (el('prefLanguage') as HTMLSelectElement).value;
-        const next: TrashConfig = {
-            retentionDays: Math.max(1, parseInt((el('prefRetention') as HTMLInputElement).value) || 7),
-            expireAction: (el('prefExpire') as HTMLSelectElement).value,
-            useTrash: (el('prefUseTrash') as HTMLInputElement).checked,
-        };
-        const rem2: ReminderConfig = {
-            thresholdBytes: Math.round(parseFloat((el('prefThreshold') as HTMLInputElement).value || '5') * 1024 * 1024 * 1024),
-        };
-        // 合并回读的缓存字段，避免整体覆盖丢 lastCheckAt / ignoredVersion
-        const upd2: UpdateConfig = {
-            checkUpdates: (el('prefCheckUpdates') as HTMLInputElement).checked,
-            lastCheckAt: upd.lastCheckAt,
-            ignoredVersion: upd.ignoredVersion,
-        };
-        const err = await SetTrashConfig(JSON.stringify(next));
-        const rerr = await SetReminderConfig(JSON.stringify(rem2));
-        const uerr = await SetUpdateConfig(JSON.stringify(upd2));
-        const lerr = await SetLanguagePreference(lang);
-        // 语言切换：拉取新字典 → 即时重渲染 + 同步 Go 侧
-        if (!lerr && lang !== activeLocale()) {
-            const resolved = lang === 'auto' ? normalizeNavigator(navigator.language || '') : lang;
-            try {
-                const raw = JSON.parse(await GetTranslations(resolved));
-                setDict(raw.locale, raw.dict);
-                await SetLanguage(raw.locale);
-            } catch { /* 保持当前字典 */ }
-        }
-        el('prefsModal').classList.add('hidden');
-        if (err || rerr || uerr || lerr) showToast(t('ui.saveFailed', {err: (err || rerr || uerr || lerr)}), true);
-        else {
-            showToast(t('ui.saved'));
-            refreshTrashInfo(); refreshReminder();
-            applyI18n();
-            // 原生菜单下次启动生效（仅 macOS 原生菜单；Windows/Linux 为 HTML 菜单即时切换）
-            if (lang !== cfgLang && isMac) showToast(t('ui.menuRestartNote'));
-        }
-    };
-    el('prefsCancel').onclick = () => el('prefsModal').classList.add('hidden');
-}
-
-// ---- usage trends ----
-let reminderTools: Tool[] = [];
-
-// 刷新待清理提醒：按阈值筛选超限工具，更新铃铛徽标与下拉面板
-async function refreshReminder() {
-    const bell = el('bellBtn');
-    if (!result) { bell.classList.add('hidden'); reminderTools = []; return; }
-    let thresh = 5 * 1024 * 1024 * 1024;
-    try { thresh = (JSON.parse(await GetReminderConfig()) as ReminderConfig).thresholdBytes || thresh; } catch { /* 默认 */ }
-    reminderTools = result.tools.filter(t => t.cleanableBytes > thresh);
-    if (!reminderTools.length) {
-        bell.classList.add('hidden');
-        el('bellPanel').classList.remove('open');
-        return;
-    }
-    bell.classList.remove('hidden');
-    el('bellCount').textContent = String(reminderTools.length);
-    if (el('bellPanel').classList.contains('open')) renderBellPanel();
-}
-
-// 渲染铃铛下拉面板：待清理工具列表，点击可快速跳转到对应工具
-function renderBellPanel() {
-    const panel = el('bellPanel');
-    if (!reminderTools.length) {
-        panel.innerHTML = '<div class="empty">' + esc(t('ui.noReminders')) + '</div>';
-        return;
-    }
-    const shown = reminderTools.slice(0, 8);
-    panel.innerHTML = shown.map(t =>
-        `<button class="bell-item" data-tool="${esc(t.name)}">
-            <span class="bell-name">${esc(t.name)}</span>
-            <span class="size clean">${hb(t.cleanableBytes)}</span>
-        </button>`).join('')
-        + (reminderTools.length > 8 ? `<div class="bell-more">${esc(t('ui.bellMore', {n: reminderTools.length - 8}))}</div>` : '');
-    panel.querySelectorAll<HTMLButtonElement>('.bell-item').forEach(btn => {
-        btn.onclick = () => {
-            const name = btn.dataset.tool!;
-            selected = name; selectedCleanIds.clear(); expandedCleanIds.clear();
-            renderToolList(); renderDetail();
-            el('bellPanel').classList.remove('open');
-        };
-    });
-}
-
-function openTrends() {
-    el('trendsModal').classList.remove('hidden');
-    refreshTrends();
-}
-
-async function refreshTrends() {
-    let tr: TrendsResult;
-    try {
-        const parsed = JSON.parse(await GetTrends(30));
-        if (parsed.error) { el('trendChart').innerHTML = `<div class="warn">${esc(parsed.error)}</div>`; return; }
-        tr = parsed;
-    } catch (e) {
-        el('trendChart').innerHTML = `<div class="warn">${esc(t('ui.trendsReadFailed', {err: String(e)}))}</div>`;
-        return;
-    }
-    renderTrendChart(el('trendChart'), tr.points);
-    renderGrowers(el('trendGrowers'), tr.topGrowers);
-}
-
-// 手写 SVG 折线，延续零依赖风格；历史不足两个点提示"数据积累中"
-const CHART_W = 760, CHART_H = 240, CHART_PAD = 34;
-function renderTrendChart(container: HTMLElement, points: Point[]) {
-    const { footprint, cleanable, labels, max } = computeTrendPaths(points, CHART_W, CHART_H, CHART_PAD);
-    if (!footprint) {
-        container.innerHTML = '<div class="empty">' + esc(t('ui.trendsPending')) + '</div>';
-        return;
-    }
-    container.innerHTML = `
-        <div class="trend-legend">
-            <span><i class="dot user"></i>${esc(t('ui.legendFootprint'))}</span>
-            <span><i class="dot clean"></i>${esc(t('ui.legendCleanable'))}</span>
-        </div>
-        <svg viewBox="0 0 ${CHART_W} ${CHART_H}" preserveAspectRatio="xMidYMid meet" width="100%">
-            <path d="${footprint}" fill="none" stroke="var(--user)" stroke-width="2" opacity="0.9"/>
-            <path d="${cleanable}" fill="none" stroke="var(--clean)" stroke-width="2" opacity="0.9"/>
-            ${labels}
-            <text x="${CHART_PAD}" y="${CHART_PAD - 8}" font-size="11" fill="var(--muted)">${hb(max)}</text>
-        </svg>`;
-}
-
-function renderGrowers(container: HTMLElement, growers: Grower[]) {
-    if (!growers.length) {
-        container.innerHTML = '<div class="muted">' + esc(t('ui.growersEmpty')) + '</div>';
-        return;
-    }
-    container.innerHTML = growers.map((g, i) =>
-        `<div class="grower-row"><span class="grower-rank">${i + 1}</span><span class="grower-name">${esc(g.tool)}</span><span class="size clean">+${hb(g.deltaBytes)}</span></div>`).join('');
-}
-
-// ---- about dialog ----
-function openAbout() {
-    el('aboutVersion').textContent = appVersion ? `v${appVersion}` : '';
-    el('aboutModal').classList.remove('hidden');
-}
-
-// ---- in-app menu bar (Windows) ----
-// 关闭所有打开的下拉菜单
-function closeMenus() {
-    document.querySelectorAll('.menu-btn.open').forEach(b => b.classList.remove('open'));
-    document.querySelectorAll('.menu-pop.open').forEach(p => p.classList.remove('open'));
-}
-
-// 初始化 Windows 自绘菜单条：文件/帮助下拉 + 动作分发
-function initMenuBar() {
-    const bar = el('menuBar');
-    if (!bar) return;
-    bar.querySelectorAll<HTMLButtonElement>('.menu-btn').forEach(btn => {
-        btn.onclick = (e) => {
-            e.stopPropagation();
-            const wasOpen = btn.classList.contains('open');
-            closeMenus();
-            if (!wasOpen) {
-                btn.classList.add('open');
-                const pop = bar.querySelector<HTMLElement>(`.menu-pop[data-pop="${btn.dataset.pop}"]`);
-                if (pop) pop.classList.add('open');
-            }
-        };
-    });
-    bar.querySelectorAll<HTMLButtonElement>('.menu-opt').forEach(opt => {
-        opt.onclick = () => {
-            closeMenus();
-            switch (opt.dataset.act) {
-                case 'prefs': openPrefs(); break;
-                case 'quit': Quit(); break;
-                case 'about': openAbout(); break;
-                case 'check-updates': manualCheck(); break;
-                case 'github': OpenURL('https://github.com/kevinjoy89/cli-analyzer'); break;
-                case 'issue': OpenURL('https://github.com/kevinjoy89/cli-analyzer/issues/new'); break;
-            }
-        };
-    });
-    document.addEventListener('click', closeMenus);
-}
-
-// ---- scan flow ----
-async function rescan() {
-    setScanning(true, t('ui.scanning'));
-    try { await Scan(); } catch (e) { setScanning(false); showToast(t('ui.scanStartFailed', {err: String(e)}), true); }
-}
-
+// ---- init ----
 async function init() {
     // Windows/Linux have a native titlebar above the content; mark the platform
     // so CSS can drop the top padding that only exists to clear the macOS
@@ -1280,33 +81,39 @@ async function init() {
     try {
         const env = await Environment();
         document.body.classList.add('platform-' + env.platform);
-        if (env.platform === 'darwin') isMac = true;
+        if (env.platform === 'darwin') state.setIsMac(true);
     } catch { /* non-Wails context (plain browser preview) */ }
 
     // 尽早注册更新相关事件：启动自动检查可能命中缓存而瞬时完成（见 GetUpdateStatus
     // 注释），事件必须赶在检查结果之前就位，否则更新提示会丢失。
     EventsOn('update:available', (payload: unknown) => {
-        try { showUpdateAvailable(JSON.parse(String(payload)) as UpdateResult); } catch { /* 忽略异常负载 */ }
+        try { flows.showUpdateAvailable(JSON.parse(String(payload)) as state.UpdateResult); } catch { /* 忽略异常负载 */ }
     });
     // 进度不走事件（macOS WKWebView 不可靠），由 startDownloadPoll 轮询 GetDownloadProgress
-    EventsOn('update:downloaded', (p: UpdateDownloaded) => showUpdateDownloaded(p));
-    EventsOn('update:verify-failed', (p: {error: string; releaseURL: string}) => showUpdateVerifyFailed(p.error, p.releaseURL));
+    EventsOn('update:downloaded', (p: state.UpdateDownloaded) => flows.showUpdateDownloaded(p));
+    EventsOn('update:verify-failed', (p: {error: string; releaseURL: string}) => flows.showUpdateVerifyFailed(p.error, p.releaseURL));
     EventsOn('update:cancelled', () => {
-        stopDownloadPoll();
-        updateState = 'idle';
+        flows.stopDownloadPoll();
+        state.setUpdateState('idle');
         el('updateModal').classList.add('hidden');
         showToast(t('ui.downloadCancelled'));
     });
     EventsOn('update:error', (p: {error: string; releaseURL?: string}) => {
-        stopDownloadPoll();
-        updateState = 'idle';
+        flows.stopDownloadPoll();
+        state.setUpdateState('idle');
         // 失败面板保留弹窗：展示错误 + 重试 + Release 页跳转（不自动关闭）
-        showUpdateFailed(p.error, p.releaseURL ?? '');
+        flows.showUpdateFailed(p.error, p.releaseURL ?? '');
     });
 
     // 初始化 i18n（拉取字典 + SetLanguage 握手），再渲染界面
     await initI18n();
     applyI18n();
+
+    // 回调注入：render → flows 的反向调用（避免循环依赖）
+    render.setUninstallHandler((n) => flows.startUninstall(n));
+    render.setOrphanConfirmHandler((paths) => flows.showOrphanConfirm(paths));
+    render.setConfirmHandler((items: render.PickItem[]) => flows.showConfirmModal(items));
+    flows.setApplyI18n(applyI18n);
 
     initMenuBar();
 
@@ -1314,21 +121,21 @@ async function init() {
     document.addEventListener('keydown', (e) => {
         if (document.body.classList.contains('platform-windows') && (e.ctrlKey || e.metaKey) && e.key === ',') {
             e.preventDefault();
-            openPrefs();
+            flows.openPrefs();
         }
     });
 
     el('rescanBtn').onclick = rescan;
-    el('filter').addEventListener('input', (e) => { filterText = (e.target as HTMLInputElement).value; renderToolList(); });
+    el('filter').addEventListener('input', (e) => { state.setFilterText((e.target as HTMLInputElement).value); render.renderToolList(); });
 
     // built-in trash panel
-    el('trashBtn').onclick = openTrashPanel;
+    el('trashBtn').onclick = flows.openTrashPanel;
     el('trashClose').onclick = () => el('trashModal').classList.add('hidden');
     el('trashPurgeAll').onclick = async () => {
-        const ids = trashItems.map(it => it.id);
+        const ids = state.trashItems.map(it => it.id);
         if (!ids.length) return;
         // 永久删除前必须确认（自 0.3.8 起 PurgeNow 为不可恢复的永久删除）
-        const ok = await confirmDialog({
+        const ok = await flows.confirmDialog({
             title: t('ui.emptyTrash'),
             message: t('ui.purgeConfirm', {n: ids.length}),
             confirmText: t('ui.emptyTrash'),
@@ -1337,21 +144,21 @@ async function init() {
         const r = JSON.parse(await PurgeNow(ids));
         showToast((r.errors ?? []).length ? t('ui.emptyTrashFailed', {err: r.errors.join('; ')}) : t('ui.emptyTrashDone', {n: r.deleted.length}), (r.errors ?? []).length > 0);
         if (r.deleted?.length) rescan();
-        refreshTrashList(); refreshTrashInfo();
+        flows.refreshTrashList(); flows.refreshTrashInfo();
     };
 
     // preferences panel (opened from the native menu)
-    EventsOn('open-prefs', () => openPrefs());
+    EventsOn('open-prefs', () => flows.openPrefs());
 
     // usage trends panel
-    el('trendsBtn').onclick = openTrends;
+    el('trendsBtn').onclick = flows.openTrends;
     el('trendsClose').onclick = () => el('trendsModal').classList.add('hidden');
 
     // notification bell: toggle dropdown panel, position it at the click site
     el('bellBtn').onclick = () => {
         const panel = el('bellPanel');
         if (panel.classList.contains('open')) { panel.classList.remove('open'); return; }
-        renderBellPanel();
+        render.renderBellPanel();
         panel.style.cssText = ''; // 用 CSS 定位（header 右下角），清除此前可能残留的内联定位
         panel.classList.add('open');
     };
@@ -1363,57 +170,57 @@ async function init() {
     });
 
     // about dialog (opened from the native Help menu)
-    EventsOn('open-about', openAbout);
+    EventsOn('open-about', () => flows.openAbout());
     el('aboutClose').onclick = () => el('aboutModal').classList.add('hidden');
     el('aboutLink').onclick = (e) => { e.preventDefault(); OpenURL('https://github.com/kevinjoy89/cli-analyzer'); };
 
     // update flow: native Help 菜单「检查更新…」触发手动检查
-    EventsOn('check-updates', manualCheck);
+    EventsOn('check-updates', () => flows.manualCheck());
 
     // 启动自动检查可能已完成（含缓存命中，瞬时返回）：事件已提前注册（见 init 顶部），
     // 这里再主动拉取一次结果，兜住事件与监听注册之间的竞态（问题：打开软件不弹更新提示）。
     try {
         const raw = await GetUpdateStatus();
         if (raw) {
-            const res = JSON.parse(raw) as UpdateResult;
-            if (res.updateAvailable && !res.error) showUpdateAvailable(res);
+            const res = JSON.parse(raw) as state.UpdateResult;
+            if (res.updateAvailable && !res.error) flows.showUpdateAvailable(res);
         }
     } catch { /* 检查未完成或解析失败，稍后事件兜底 */ }
 
     // theme toggle: system -> light -> dark -> system
     applyTheme('system');
     el('themeBtn').onclick = () => {
-        const next: ThemeMode = themeMode === 'system' ? 'light' : themeMode === 'light' ? 'dark' : 'system';
+        const next: state.ThemeMode = state.themeMode === 'system' ? 'light' : state.themeMode === 'light' ? 'dark' : 'system';
         applyTheme(next);
     };
     if (window.matchMedia) {
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-            if (themeMode === 'system') applyTheme('system');
+            if (state.themeMode === 'system') applyTheme('system');
         });
     };
 
     // app version in footer
     try {
-        appVersion = await GetVersion();
-        el('appVersion').textContent = `v${appVersion}`;
+        state.setAppVersion(await GetVersion());
+        el('appVersion').textContent = `v${state.appVersion}`;
     } catch (e) { /* ignore */ }
 
     EventsOn('scan:done', (payload: unknown) => {
-        setScanning(false);
+        flows.setScanning(false);
         try {
             if (payload && typeof payload === 'object' && 'error' in (payload as object)) {
                 showToast(t('ui.scanFailed', {err: JSON.stringify(payload)}), true);
                 return;
             }
-            const parsed = typeof payload === 'string' ? JSON.parse(payload) as ScanResult : null;
-            result = parsed;
-            orphanSel.clear(); // 新扫描结果：旧勾选失效
-            if (parsed && (!selected || !parsed.tools.some(t => t.name === selected))) {
-                selected = parsed.tools[0]?.name ?? null;
+            const parsed = typeof payload === 'string' ? JSON.parse(payload) as state.ScanResult : null;
+            state.setResult(parsed);
+            state.orphanSel.clear(); // 新扫描结果：旧勾选失效
+            if (parsed && (!state.selected || !parsed.tools.some(tool => tool.name === state.selected))) {
+                state.setSelected(parsed.tools[0]?.name ?? null);
             }
             // 存在版本未知的工具 → 后台探测进行中（版本列显示 …）
-            probing = !!parsed && parsed.tools.some(t => !t.version && t.binaries?.length);
-            renderSummary(); renderToolList(); renderDetail(); refreshTrashInfo(); refreshReminder();
+            state.setProbing(!!parsed && parsed.tools.some(tool => !tool.version && tool.binaries?.length));
+            render.renderSummary(); render.renderToolList(); render.renderDetail(); flows.refreshTrashInfo(); flows.refreshReminder();
         } catch (err) {
             showToast(t('ui.scanParseFailed'), true);
         }
@@ -1421,24 +228,24 @@ async function init() {
 
     // 健康探测完成：用探测后的结果重渲染版本列
     EventsOn('probe:done', (payload: unknown) => {
-        probing = false;
+        state.setProbing(false);
         try {
             if (typeof payload === 'string') {
-                result = JSON.parse(payload) as ScanResult;
-                renderSummary(); renderToolList(); renderDetail();
+                state.setResult(JSON.parse(payload) as state.ScanResult);
+                render.renderSummary(); render.renderToolList(); render.renderDetail();
             }
         } catch { /* 忽略 */ }
     });
 
     try {
         const raw = await GetLastResult();
-        if (raw) { result = JSON.parse(raw); renderSummary(); renderToolList(); renderDetail(); }
+        if (raw) { state.setResult(JSON.parse(raw)); render.renderSummary(); render.renderToolList(); render.renderDetail(); }
     } catch (e) {
         console.error('load cache failed', e);
     }
 
-    refreshTrashInfo();
-    refreshReminder();
+    flows.refreshTrashInfo();
+    flows.refreshReminder();
 
     // 每次打开软件都触发一次异步扫描：指纹未变化时直接复用缓存（秒开、
     // 无全量 IO），数据变化时自动全量。手动"重新扫描"按钮仍走 rescan()
@@ -1446,7 +253,7 @@ async function init() {
     try {
         await ScanIfChanged();
     } catch (e) {
-        setScanning(false);
+        flows.setScanning(false);
         showToast(t('ui.scanStartFailed', {err: String(e)}), true);
     }
 }
