@@ -100,9 +100,12 @@ func TestClassifyGoCargoOther(t *testing.T) {
 	}
 	home, _ := os.UserHomeDir()
 	// ~/.local/bin 是官方脚本安装落点（astral uv、poetry 等）→ InstLocalBin；
-	// 其他散放路径仍是 InstOther
-	if c := classify(filepath.Join(home, ".local/bin/mytool"), "mytool"); c.ToolID != "mytool" || c.Installer != InstLocalBin {
-		t.Errorf("local bin: %+v", c)
+	// Windows 无此惯例（LocalBinDir 为空），仅 unix 断言。
+	// 其他散放路径仍是 InstOther（全平台）。
+	if runtime.GOOS != "windows" {
+		if c := classify(filepath.Join(home, ".local/bin/mytool"), "mytool"); c.ToolID != "mytool" || c.Installer != InstLocalBin {
+			t.Errorf("local bin: %+v", c)
+		}
 	}
 	if c := classify(filepath.Join(home, "bin/mytool"), "mytool"); c.ToolID != "mytool" || c.Installer != InstOther {
 		t.Errorf("other: %+v", c)

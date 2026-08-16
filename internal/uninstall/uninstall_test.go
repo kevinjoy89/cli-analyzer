@@ -90,8 +90,14 @@ func TestOfficialCommand(t *testing.T) {
 			continue
 		}
 		if c.installer == scanner.InstLocalBin {
-			if !strings.Contains(off.Command, "binx") || !off.Runnable || off.Bin != "rm" {
-				t.Errorf("local-bin: command=%q bin=%q runnable=%v", off.Command, off.Bin, off.Runnable)
+			// unix：可代跑 rm；Windows 无 ~/.local/bin（LocalBinDir 为空）→
+			// 回退为提示命令（不可代跑）
+			if platform.LocalBinDir() != "" {
+				if !strings.Contains(off.Command, "binx") || !off.Runnable || off.Bin != "rm" {
+					t.Errorf("local-bin: command=%q bin=%q runnable=%v", off.Command, off.Bin, off.Runnable)
+				}
+			} else if !strings.Contains(off.Command, "binx") || off.Runnable {
+				t.Errorf("local-bin (windows): command=%q runnable=%v", off.Command, off.Runnable)
 			}
 			continue
 		}
