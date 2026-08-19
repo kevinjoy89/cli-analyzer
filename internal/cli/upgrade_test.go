@@ -60,8 +60,7 @@ func TestRunUpdateCheckToolNotFound(t *testing.T) {
 // TestRunUpdateCheckNoScanResult 验证缓存缺失时报"没有扫描结果"而非"未找到工具"。
 func TestRunUpdateCheckNoScanResult(t *testing.T) {
 	cacheEnv(t)
-	restore := config.SetDataRoot(t.TempDir())
-	t.Cleanup(restore)
+	pinZhCN(t) // 固定 zh-CN：无扫描结果文案走 i18n，CI/Linux 英文环境也稳定断言
 	buf := captureStderr(t)
 	if code := Run([]string{"update", "check", "ripgrep"}); code != 1 {
 		t.Fatalf("exit = %d, want 1", code)
