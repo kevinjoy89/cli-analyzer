@@ -1,8 +1,8 @@
 // 业务流程模块：更新下载、卸载、回收站、首选项、趋势、确认弹窗、扫描触发。
 // 依赖 dom + state + render + lib + wailsjs；render 对本文的回调在 main.ts 注入。
 import {el, esc, showToast} from './dom';
-import {appVersion, downloadPoll, isMac, lastShownPct, lastUpdateResult, orphanSel, reminderTools, result, selectedCleanIds, trashItems, updateState, uninstallPoll} from './state';
-import {setDownloadPoll, setLastShownPct, setLastUpdateResult, setReminderTools, setTrashItems, setUpdateState, setUninstallPoll} from './state';
+import {appVersion, downloadPoll, isMac, lastShownPct, lastUpdateResult, orphanSel, reminderTools, result, selected, selectedCleanIds, trashItems, updateState, uninstallPoll, upgradePoll} from './state';
+import {setDownloadPoll, setLastShownPct, setLastUpdateResult, setReminderTools, setResult, setTrashItems, setUpdateState, setUninstallPoll, setUpgradePoll} from './state';
 import * as render from './render';
 import {KIND_TONE, RESTORE_ICON, TRASH_ICON} from './render';
 import type {PickItem} from './render';
@@ -11,7 +11,7 @@ import {hb} from './lib/format';
 import {activeLocale, fmtTime, normalizeNavigator, setDict, t} from './lib/i18n';
 import {kindLabel as renderKindLabel} from './lib/labels';
 import type {ReminderConfig, TrendsResult} from './lib/types';
-import {CancelDownload, CheckForUpdates, Clean, DownloadUpdate, GetDownloadProgress, GetLanguage, GetReminderConfig, GetTranslations, GetTrashConfig, GetTrends, GetUpdateConfig, GetUninstallStatus, IgnoreVersion, InstallUpdate, OpenURL, OrphanTrash, PurgeNow, Restore, Scan, SetLanguage, SetLanguagePreference, SetReminderConfig, SetTrashConfig, SetUpdateConfig, TrashInfo, TrashList, UninstallDeleteResidues, UninstallResidue, UninstallRunOfficial, UninstallStart, UninstallTrashResidues} from '../wailsjs/go/gui/ScannerService';
+import {CancelDownload, CheckForUpdates, CheckToolUpdate, Clean, DownloadUpdate, GetDownloadProgress, GetLanguage, GetLastResult, GetReminderConfig, GetTranslations, GetTrashConfig, GetTrends, GetUpdateConfig, GetUninstallStatus, GetUpgradeStatus, IgnoreVersion, InstallUpdate, OpenURL, OrphanTrash, PurgeNow, Restore, RunToolUpgrade, Scan, SetLanguage, SetLanguagePreference, SetReminderConfig, SetTrashConfig, SetUpdateConfig, TrashInfo, TrashList, UninstallDeleteResidues, UninstallResidue, UninstallRunOfficial, UninstallStart, UninstallTrashResidues} from '../wailsjs/go/gui/ScannerService';
 
 // applyI18n 由 main.ts 提供（涉及 theme + render + flows 的全局刷新），flows 侧仅转发
 let applyI18nFromFlows: () => void = () => {};
@@ -523,6 +523,129 @@ export async function showUninstallResidue() {
         refreshTrashInfo();
         rescan(); // 永久删除真正释放空间，后台重扫校准占用
     };
+}
+
+// ---- tool upgrade（工具升级）----
+// 与 uninstall 同为「详情页显式触发 + 页面守卫」：检测请求在途时用户离开
+// 详情页 → 结果静默丢弃（不弹窗不提示）；按钮在渲染详情页时重建，无需复位。
+export function stopUpgradePoll() {
+    if (upgradePoll !== null) { window.clearInterval(upgradePoll); setUpgradePoll(null); }
+}
+
+// 详情页「检查更新」→ 服务端检测（无缓存，每次全新查询）→ 展示结果/代跑
+// 页面守卫在 promise resolve 时校验当前详情页工具是否仍为触发者。
+// upgradeCheckSeq 记录最近一次发起的检测序号：并发检测（查 A 后离开再查 B）
+// 时，只有「最近发起」的检测的 finally 才复位按钮，避免陈旧检测把新检测的
+// 「检查中…」按钮误复位成可用（导致重复点击）（code review #5 修复）。
+let upgradeCheckSeq = 0;
+export function startToolUpgrade(toolName: string) {
+    const seq = ++upgradeCheckSeq;
+    const btn = document.getElementById('upgradeBtn') as HTMLButtonElement | null;
+    if (btn) { btn.disabled = true; btn.textContent = t('up.guiChecking'); }
+    CheckToolUpdate(toolName).then(raw => {
+        // 页面守卫：已离开该工具的详情页 → 丢弃检测结果
+        if (selected !== toolName) return;
+        let res: import('./state').UpgradeCheckResult;
+        try { res = JSON.parse(raw); } catch { return; }
+        // 检测失败（网络/命令缺失/超时）时 res.detected=false 且 res.error 携带
+        // 原因；GUI 按 detected 降级展示「无法检测 + 官方升级命令」，不把 error
+        // 当致命错误（error 仅供 CLI/调试，见 upgrade.CheckResult 契约注释）。
+        if (!res.detected) { showUpgradeResult(toolName, res); return; }
+        if (!res.hasUpdate) { showToast(t('up.guiUpToDate', {tool: res.name})); return; }
+        showUpgradeResult(toolName, res);
+    }).catch(() => { /* 查询失败静默：按钮经下方 finally 复位 */ })
+      .finally(() => {
+          // 已有更新的检测发起（本检测已陈旧）→ 不复位按钮，交给新检测的 finally
+          if (seq !== upgradeCheckSeq) return;
+          // 已离开详情页时 renderDetail 已重建按钮（新工具页面），这里只恢复
+          // 仍在当前页面上的按钮状态（文本 + 可用）。
+          const b = document.getElementById('upgradeBtn') as HTMLButtonElement | null;
+          if (b) { b.disabled = false; b.textContent = t('up.guiCheckUpdate'); }
+      });
+}
+
+// 升级弹窗：版本信息 + 官方命令（可复制）→ [代跑升级]
+function showUpgradeResult(toolName: string, res: import('./state').UpgradeCheckResult) {
+    const body = el('upgradeBody');
+    el('upgradeTitle').textContent = t('up.guiCheckUpdate') + ' ' + toolName;
+    const cmdHtml = res.command
+        ? `<p class="muted un-cmdline">${esc(t('up.guiCmd'))}<br><code>${esc(res.command)}</code> <button id="ugCopy" class="btn icon" title="${esc(t('un.guiCopyCmd'))}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></p>`
+        : '';
+    // 无检测能力：只给命令提示，不给代跑入口
+    if (!res.detected) {
+        body.innerHTML = `
+            <p class="muted">${esc(t('up.guiNoDetect'))}</p>
+            ${cmdHtml}
+            <div class="update-actions"><button class="btn" id="ugClose">${esc(t('ui.close'))}</button></div>`;
+        el('upgradeModal').classList.remove('hidden');
+        el('ugClose').onclick = () => el('upgradeModal').classList.add('hidden');
+        const copyBtn = document.getElementById('ugCopy');
+        if (copyBtn) copyBtn.onclick = () => {
+            navigator.clipboard?.writeText(res.command!).catch(() => {});
+            showToast(t('un.copied'));
+        };
+        return;
+    }
+    body.innerHTML = `
+        <p class="update-versions">${t('up.guiFound', {tool: res.name, current: res.current, latest: res.latest})}</p>
+        ${cmdHtml}
+        <p id="ugOut" class="muted un-output"></p>
+        <div class="update-actions">
+            <button class="btn" id="ugClose">${esc(t('ui.cancel'))}</button>
+            ${res.runnable ? `<button class="btn primary" id="ugRun"><span class="btn-main">${esc(t('up.guiRun'))}</span><span class="btn-sub">${esc(t('up.guiRunSub'))}</span></button>` : ''}
+        </div>`;
+    el('upgradeModal').classList.remove('hidden');
+    el('ugClose').onclick = () => { stopUpgradePoll(); el('upgradeModal').classList.add('hidden'); };
+    const copyBtn = document.getElementById('ugCopy');
+    if (copyBtn) copyBtn.onclick = () => {
+        navigator.clipboard?.writeText(res.command!).catch(() => {});
+        showToast(t('un.copied'));
+    };
+    const runBtn = document.getElementById('ugRun') as HTMLButtonElement | null;
+    if (runBtn) runBtn.onclick = async () => {
+        // 代跑会修改工具安装（升级/重装）：执行前先经应用内确认弹窗
+        const ok = await confirmDialog({
+            title: t('up.guiRun'),
+            message: t('up.guiRunConfirm', {tool: toolName}),
+            confirmText: t('up.guiRun'),
+        });
+        if (!ok) return;
+        runBtn.disabled = true;
+        const err = await RunToolUpgrade(toolName);
+        if (err) { showToast(err, true); runBtn.disabled = false; return; }
+        startUpgradePoll();
+    };
+}
+
+// 代跑进度轮询（GetUpgradeStatus，与 uninstall 同套路）
+export function startUpgradePoll() {
+    stopUpgradePoll();
+    const t0 = Date.now();
+    setUpgradePoll(window.setInterval(async () => {
+        try {
+            const st = JSON.parse(await GetUpgradeStatus()) as import('./state').UpgradeStatus;
+            const out = el('ugOut');
+            out.textContent = st.output
+                ? st.output
+                : (st.running ? `${t('up.guiRunning')}（${Math.round((Date.now() - t0) / 1000)}s）` : '');
+            if (st.done) {
+                stopUpgradePoll();
+                if (st.error) { showToast(t('up.guiFailed') + ': ' + st.error, true); return; }
+                showToast(t('up.guiDone'));
+                el('upgradeModal').classList.add('hidden');
+                // 升级成功：后端已重探测该工具版本；拉取最新结果刷新界面
+                //（复用 scan:done 的渲染路径，不触发全量扫描）
+                try {
+                    const raw = await GetLastResult();
+                    if (raw) {
+                        setResult(JSON.parse(raw));
+                        render.renderSummary(); render.renderToolList(); render.renderDetail();
+                        refreshTrashInfo(); refreshReminder();
+                    }
+                } catch { /* 刷新失败不阻塞 */ }
+            }
+        } catch { /* 单次轮询失败忽略 */ }
+    }, 300));
 }
 
 // ---- preferences ----

@@ -6,6 +6,8 @@ export function CancelDownload():Promise<string>;
 
 export function CheckForUpdates():Promise<string>;
 
+export function CheckToolUpdate(arg1:string):Promise<string>;
+
 export function Clean(arg1:Array<string>,arg2:boolean):Promise<string>;
 
 export function DownloadUpdate():Promise<string>;
@@ -32,6 +34,8 @@ export function GetUpdateConfig():Promise<string>;
 
 export function GetUpdateStatus():Promise<string>;
 
+export function GetUpgradeStatus():Promise<string>;
+
 export function GetVersion():Promise<string>;
 
 export function IgnoreVersion(arg1:string):Promise<string>;
@@ -45,6 +49,8 @@ export function OrphanTrash(arg1:Array<string>):Promise<string>;
 export function PurgeNow(arg1:Array<string>):Promise<string>;
 
 export function Restore(arg1:string):Promise<string>;
+
+export function RunToolUpgrade(arg1:string):Promise<string>;
 
 export function Scan():Promise<void>;
 

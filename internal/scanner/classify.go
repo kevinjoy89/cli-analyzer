@@ -19,6 +19,10 @@ type classification struct {
 	Installer      Installer
 	CurrentVersion string // for versioned / brew: version of this binary
 	InstallRoot    string // install dir to size (Cellar/<f>, versions/, node_modules/<pkg>…)
+	// Package 是真实包名（npm：node_modules/<pkg> 的 pkg，可能与 ToolID 短名
+	// 不同——npmToolID 映射后 ToolID 是规则名）；非 npm 来源为空。
+	// npm 查询/卸载/升级按真实包名寻址，短名会静默误报或失败。
+	Package string
 	// Family 是工具家族合并的根名（如 "nodejs"），仅当该二进制因家族合并
 	// 归并进聚合工具时非空；brew 公式 node 等保持独立身份的工具为空。
 	Family string
@@ -78,9 +82,9 @@ func classify(real, entryName string) classification {
 		// 无二进制、@openai/codex 的 npm 行无规则数据，拆成两行都残缺），
 		// 映射后归并为规则名一行。
 		if id, ok := npmToolID[pkg]; ok {
-			return classification{ToolID: id, Installer: InstNpm, InstallRoot: root}
+			return classification{ToolID: id, Installer: InstNpm, InstallRoot: root, Package: pkg}
 		}
-		return classification{ToolID: pkg, Installer: InstNpm, InstallRoot: root}
+		return classification{ToolID: pkg, Installer: InstNpm, InstallRoot: root, Package: pkg}
 	}
 
 	// pipx: ~/.local/pipx/venvs/<pkg>/
@@ -125,7 +129,8 @@ func classify(real, entryName string) classification {
 	if strings.HasSuffix(lowName, ".cmd") || strings.HasSuffix(lowName, ".bat") {
 		if shim := strings.TrimSuffix(strings.TrimSuffix(lowName, ".cmd"), ".bat"); shim != "" {
 			if pkgDir, ok := npmGlobalShim(filepath.Dir(real), shim); ok {
-				return classification{ToolID: shim, Installer: InstNpm, InstallRoot: pkgDir}
+				// Package 从 shim 包目录推导真实包名（<prefix>/node_modules/<pkg>）。
+				return classification{ToolID: shim, Installer: InstNpm, InstallRoot: pkgDir, Package: filepath.Base(pkgDir)}
 			}
 		}
 	}
@@ -309,6 +314,31 @@ var npmToolID = map[string]string{
 	"@earendil-works/pi-coding-agent": "pi",
 	"@oh-my-pi/pi-coding-agent":       "omp",
 	"@fission-ai/openspec":            "openspec",
+}
+
+// npmToolName 是 npmToolID 的逆映射：工具名 → 真实全局包名。
+// 扫描合并后工具行只有短名（如 "pi"），但 npm 查询/升级必须用真实包名
+// （如 @earendil-works/pi-coding-agent）——npm outdated/update 按包名寻址。
+var npmToolName = func() map[string]string {
+	m := make(map[string]string, len(npmToolID))
+	for pkg, name := range npmToolID {
+		m[name] = pkg
+	}
+	return m
+}()
+
+// NpmPackageFor 返回 npm 工具名对应的真实全局包名；未映射时原样返回
+// （npm 工具名 = 包名）。
+//
+// 注意这是旧缓存兜底用的启发式逆映射：7 个映射短名（pi/codex/claude/…）
+// 在 npm 上都有同名真实包，仅凭工具名无法区分。新扫描结果携带确切包名
+// （Tool.Package），调用方应优先使用；本函数只在 Tool.Package 为空时兜底
+// （旧扫描缓存）。
+func NpmPackageFor(toolName string) string {
+	if pkg, ok := npmToolName[toolName]; ok {
+		return pkg
+	}
+	return toolName
 }
 
 // gitFamily 是随 Git 分发的命令：Git for Windows 的 cmd/ 目录（git.exe、

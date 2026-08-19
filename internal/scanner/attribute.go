@@ -21,6 +21,7 @@ type toolBuilder struct {
 	installer   Installer
 	installRoot string
 	currentVer  string
+	pkg         string // 真实包名（npmToolID 映射时与 name 不同）
 	aliases     map[string]bool
 	binaries    []Binary
 	dataDirs    []DataDir
@@ -716,7 +717,7 @@ func finalize(tools map[string]*toolBuilder, order []string, opts Options) *Scan
 			Name: tb.name, Aliases: aliases, Installer: string(tb.installer),
 			Version: tb.version, UpdatedAt: tb.updatedAt,
 			Homepage: tb.homepage, Description: tb.description,
-			Family:   tb.family,
+			Family: tb.family, Package: tb.pkg,
 			Binaries: tb.binaries, DataDirs: tb.dataDirs, Cleanables: tb.cleanables,
 			Footprint: tb.footprint, Cleanable: cleanSum, User: userSum,
 		})

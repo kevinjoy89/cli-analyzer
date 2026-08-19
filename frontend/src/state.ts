@@ -15,6 +15,10 @@ export interface UninstallResidueItem { path: string; bytes: number; tier: strin
 export interface UninstallStatus { running: boolean; done: boolean; output: string; error?: string }
 export type UpdateProgress = { downloaded: number; total: number };
 
+// ---- 工具升级（upgrade）----
+export interface UpgradeCheckResult { name: string; installer?: string; current?: string; latest?: string; detected: boolean; hasUpdate: boolean; command?: string; runnable: boolean; error?: string }
+export interface UpgradeStatus { running: boolean; done: boolean; output: string; error?: string }
+
 // ---- 扫描 / 界面状态 ----
 export let result: ScanResult | null = null;
 export let probing = false; // 健康探测进行中（版本列显示 …）
@@ -55,6 +59,9 @@ export let lastShownPct = 0;
 // ---- 卸载流程状态 ----
 export let uninstallPoll: number | null = null;
 
+// ---- 升级流程状态 ----
+export let upgradePoll: number | null = null;
+
 // ---- 待清理提醒 ----
 export let reminderTools: Tool[] = [];
 
@@ -76,6 +83,7 @@ export function setLastUpdateResult(v: UpdateResult | null) { lastUpdateResult =
 export function setDownloadPoll(v: number | null) { downloadPoll = v; }
 export function setLastShownPct(v: number) { lastShownPct = v; }
 export function setUninstallPoll(v: number | null) { uninstallPoll = v; }
+export function setUpgradePoll(v: number | null) { upgradePoll = v; }
 export function setReminderTools(v: Tool[]) { reminderTools = v; }
 
 // 类型再导出：消费方从 state 拿全量类型，main.ts 不再重复声明

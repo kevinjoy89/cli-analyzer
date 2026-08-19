@@ -14,9 +14,11 @@ import {OpenURL, UninstallBlocked} from '../wailsjs/go/gui/ScannerService';
 
 // ---- 回调注册（main.ts init 注入，避免 render → flows 循环依赖）----
 let uninstallHandler: ((name: string) => void) | null = null;
+let upgradeHandler: ((name: string) => void) | null = null;
 let orphanConfirmHandler: ((paths: string[]) => void) | null = null;
 let confirmHandler: ((items: PickItem[]) => void) | null = null;
 export function setUninstallHandler(fn: (name: string) => void) { uninstallHandler = fn; }
+export function setUpgradeHandler(fn: (name: string) => void) { upgradeHandler = fn; }
 export function setOrphanConfirmHandler(fn: (paths: string[]) => void) { orphanConfirmHandler = fn; }
 export function setConfirmHandler(fn: (items: PickItem[]) => void) { confirmHandler = fn; }
 
@@ -329,6 +331,7 @@ export function renderDetail() {
         <div class="detail-actions">
             <button id="cleanBtn" class="btn danger">${esc(t('ui.cleanSelected'))}</button>
             <button id="uninstallBtn" class="btn" title="${esc(t('un.guiUninstall'))}">${esc(t('un.guiUninstall'))}</button>
+            <button id="upgradeBtn" class="btn" title="${esc(t('up.guiCheckUpdate'))}">${esc(t('up.guiCheckUpdate'))}</button>
             <span class="sel-info" id="selInfo">${esc(t('ui.selectedCount', {n: selectedCleanIds.size}))}</span>
         </div>`;
 
@@ -370,6 +373,7 @@ export function renderDetail() {
         confirmHandler?.(selectedItems(tool));
     };
     el<HTMLButtonElement>('uninstallBtn').onclick = () => uninstallHandler?.(tool.name);
+    el<HTMLButtonElement>('upgradeBtn').onclick = () => upgradeHandler?.(tool.name);
     // 黑名单工具禁用卸载按钮（UninstallBlocked 来自服务层）
     UninstallBlocked(tool.name).then(raw => {
         try {

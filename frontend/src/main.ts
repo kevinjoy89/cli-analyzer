@@ -111,6 +111,7 @@ async function init() {
 
     // 回调注入：render → flows 的反向调用（避免循环依赖）
     render.setUninstallHandler((n) => flows.startUninstall(n));
+    render.setUpgradeHandler((n) => flows.startToolUpgrade(n));
     render.setOrphanConfirmHandler((paths) => flows.showOrphanConfirm(paths));
     render.setConfirmHandler((items: render.PickItem[]) => flows.showConfirmModal(items));
     flows.setApplyI18n(applyI18n);

@@ -3,7 +3,6 @@ package uninstall
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -74,6 +73,7 @@ func TestOfficialCommand(t *testing.T) {
 	}{
 		{scanner.InstBrew, "gh", "brew uninstall gh", true},
 		{scanner.InstNpm, "opencode", "npm uninstall -g opencode", true},
+		{scanner.InstNpm, "pi", "npm uninstall -g @earendil-works/pi-coding-agent", true}, // npmToolID 映射短名 → 真实包名
 		{scanner.InstPipx, "uv", "pipx uninstall uv", true},
 		{scanner.InstCargo, "sd", "cargo uninstall sd", true},
 		{scanner.InstGo, "x", "", false}, // go 来源命令包含 bin 名，单独断言
@@ -233,34 +233,6 @@ func TestResiduesEmptyIsNotNil(t *testing.T) {
 	}
 }
 
-// ResolveCommand 应在（增强的）PATH 目录中找到命令：模拟 GUI 最小 PATH，
-// 命令只存在于 ~/.local/bin（增强目录）。仅 unix：Windows 的 PATH 增强是
-// 无操作（path_augment_windows.go）。
-func TestResolveCommandViaAugmentedPath(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("user-dir PATH augmentation is unix-only")
-	}
-	home := t.TempDir()
-	localBin := filepath.Join(home, ".local", "bin")
-	mkdir(t, localBin)
-	fake := filepath.Join(localBin, "faketool-un")
-	if err := os.WriteFile(fake, []byte("#!/bin/sh\necho hi\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("HOME", home)
-	t.Setenv("PATH", "/usr/bin:/bin")
-	resolved, err := ResolveCommand("faketool-un")
-	if err != nil {
-		t.Fatalf("ResolveCommand: %v", err)
-	}
-	if resolved != fake {
-		t.Errorf("resolved = %q, want %q", resolved, fake)
-	}
-	if _, err := ResolveCommand("no-such-cmd-xyz"); err == nil {
-		t.Error("missing command should error")
-	}
-}
-
 // TestOfficialCommandGoNoBinName 验证 go 来源工具无 PATH 二进制（缓存种子）
 // 时卸载提示不是残缺命令（rm $(go env GOPATH)/bin/ 无文件名）。
 func TestOfficialCommandGoNoBinName(t *testing.T) {
@@ -270,5 +242,21 @@ func TestOfficialCommandGoNoBinName(t *testing.T) {
 	}
 	if !strings.Contains(off.Command, "<命令名>") {
 		t.Errorf("应给通用占位提示，got %q", off.Command)
+	}
+}
+
+// TestOfficialForNpmPackage 验证 OfficialFor 按 Tool.Package（真实包名）寻址：
+// 映射短名（pi）卸载到 scoped 包；撞名真实短名包（真包 "pi"）卸载到原包。
+// 这是 code review #3 修复的碰撞回归。
+func TestOfficialForNpmPackage(t *testing.T) {
+	// 映射短名 + 扫描记录的真实包名
+	off := OfficialFor(scanner.Tool{Name: "pi", Installer: string(scanner.InstNpm), Package: "@earendil-works/pi-coding-agent"})
+	if off.Command != "npm uninstall -g @earendil-works/pi-coding-agent" || !off.Runnable {
+		t.Errorf("mapped: %+v", off)
+	}
+	// 撞名真实短名包：Package 确切为 "pi"，不得被逆映射改写
+	off2 := OfficialFor(scanner.Tool{Name: "pi", Installer: string(scanner.InstNpm), Package: "pi"})
+	if off2.Command != "npm uninstall -g pi" {
+		t.Errorf("real short pkg: %+v", off2)
 	}
 }

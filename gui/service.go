@@ -16,6 +16,7 @@ import (
 
 	"cli-analyzer/internal/buildinfo"
 	"cli-analyzer/internal/cleaner"
+	"cli-analyzer/internal/cmdexec"
 	"cli-analyzer/internal/config"
 	"cli-analyzer/internal/disk"
 	"cli-analyzer/internal/history"
@@ -26,6 +27,7 @@ import (
 	"cli-analyzer/internal/trash"
 	"cli-analyzer/internal/uninstall"
 	"cli-analyzer/internal/updater"
+	"cli-analyzer/internal/upgrade"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -51,6 +53,13 @@ type ScannerService struct {
 	unDone     bool
 	unErr      string
 	unOutput   string
+	// ---- upgrade 状态（工具升级，前端轮询） ----
+	ugTool    string // 最近一次 CheckToolUpdate 的工具名
+	ugCommand upgrade.Command
+	ugRunning bool
+	ugDone    bool
+	ugErr     string
+	ugOutput  string
 }
 
 func NewScannerService() *ScannerService { return &ScannerService{} }
@@ -641,10 +650,6 @@ func (s *ScannerService) UninstallStart(tool string) string {
 		b, _ := json.Marshal(map[string]any{"tool": tool, "error": i18n.T("un.toolNotFound")})
 		return string(b)
 	}
-	bin := ""
-	if len(t.Binaries) > 0 {
-		bin = t.Binaries[0].Name
-	}
 	// 缓存陈旧：工具曾有过二进制但现在都不在了（已卸载）→ 提示并触发重扫，
 	// 避免对已消失的工具跑注定失败的卸载命令。
 	if len(t.Binaries) > 0 {
@@ -660,7 +665,7 @@ func (s *ScannerService) UninstallStart(tool string) string {
 			return string(b)
 		}
 	}
-	off := uninstall.OfficialCommand(scanner.Installer(t.Installer), t.Name, bin)
+	off := uninstall.OfficialFor(*t)
 	s.unTool = t.Name
 	s.unOfficial = off
 	s.unRunning, s.unDone, s.unErr, s.unOutput = false, false, "", ""
@@ -709,12 +714,12 @@ func (s *ScannerService) runUninstallOfficial(off uninstall.Official) {
 	// GUI 启动 PATH 是最小集：先经（增强的）PATH 解析出命令绝对路径，
 	// 并给子进程注入完整 PATH（npm 内部的 node 等子进程依赖它）。
 	bin := off.Bin
-	if resolved, rerr := uninstall.ResolveCommand(off.Bin); rerr == nil {
+	if resolved, rerr := cmdexec.ResolveCommand(off.Bin); rerr == nil {
 		bin = resolved
 	}
 	cmd := exec.CommandContext(ctx, bin, off.Args...)
 	platform.HideConsoleWindow(cmd) // Windows: 不闪控制台窗口
-	cmd.Env = uninstall.WithPath(os.Environ(), uninstall.AugmentedPathEnv())
+	cmd.Env = cmdexec.WithPath(os.Environ(), cmdexec.AugmentedPathEnv())
 	// 并发安全输出缓冲：stdout/stderr 由 exec 的两个复制 goroutine 并行
 	// 写入同一 buffer（管道缓冲多数场景串行化，无锁仍是理论竞态）
 	var buf syncBuf
@@ -813,6 +818,138 @@ func (s *ScannerService) UninstallDeleteResidues(paths []string) string {
 	deleted, errs := uninstall.RemoveResidues(sel, tool)
 	s.Scan() // 后台重扫，让主界面刷新
 	b, _ := json.Marshal(map[string]any{"deleted": deleted, "errors": errs})
+	return string(b)
+}
+
+// CheckToolUpdate 检测单个工具是否有新版本（无缓存，每次全新查询）。
+// 前端在工具详情页点击「检查更新」时调用；页面守卫是前端义务（promise
+// resolve 时检查当前详情页工具是否仍为 name，否则丢弃）。
+// 返回值 JSON：upgrade.CheckResult 或 {name, error}。
+func (s *ScannerService) CheckToolUpdate(name string) string {
+	s.mu.Lock()
+	last := s.last
+	s.mu.Unlock()
+	if last == nil {
+		b, _ := json.Marshal(map[string]any{"name": name, "error": i18n.T("cli.noScanResult")})
+		return string(b)
+	}
+	for i := range last.Tools {
+		t := &last.Tools[i]
+		if t.Name == name {
+			cmd := upgrade.OfficialFor(*t)
+			// 先记录本次检测的命令供 RunToolUpgrade 代跑（镜像 UninstallStart），
+			// 再发起网络查询——若查询后才记录，并发检测（用户查 A 后离开再查 B）
+			// 时，先发起的 A 查询后返回会覆盖 B 的记录，导致 B 的代跑被误拒
+			// （ugTool != B）。先记录保证「最近发起的检测」胜出，陈旧检测不会
+			// 事后覆盖（code review #5 修复）。
+			s.mu.Lock()
+			s.ugTool = name
+			s.ugCommand = cmd
+			s.mu.Unlock()
+			res := upgrade.CheckTool(*t)
+			b, _ := json.Marshal(res)
+			return string(b)
+		}
+	}
+	b, _ := json.Marshal(map[string]any{"name": name, "error": i18n.T("up.toolNotFound")})
+	return string(b)
+}
+
+// RunToolUpgrade 异步代跑最近一次 CheckToolUpdate 的官方升级命令；状态经
+// GetUpgradeStatus 轮询读取（镜像 UninstallRunOfficial）。name 必须与最近
+// 检测的工具一致，防页面守卫丢弃后的陈旧命令被代跑。
+func (s *ScannerService) RunToolUpgrade(name string) string {
+	s.mu.Lock()
+	cmd := s.ugCommand
+	if !cmd.Runnable || s.ugTool != name {
+		s.mu.Unlock()
+		return i18n.T("up.notRunnable")
+	}
+	if s.ugRunning {
+		s.mu.Unlock()
+		return i18n.T("up.alreadyRunning")
+	}
+	s.ugRunning, s.ugDone, s.ugErr, s.ugOutput = true, false, "", ""
+	s.mu.Unlock()
+	// 记录本次代跑的目标工具：升级完成后重探测用它（reprobeToolVersion），
+	// 不能到完成时再读 s.ugTool——期间用户可能已检查别的工具 B（CheckToolUpdate
+	// 会覆盖 ugTool），导致重探测 B 而非刚升级的 A（code review #7 修复）。
+	go s.runToolUpgrade(name, cmd)
+	return ""
+}
+
+func (s *ScannerService) runToolUpgrade(name string, cmd upgrade.Command) {
+	defer func() {
+		s.mu.Lock()
+		s.ugRunning = false
+		s.ugDone = true
+		s.mu.Unlock()
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	// GUI 启动 PATH 是最小集：经（增强的）PATH 解析命令绝对路径并注入完整
+	// PATH（与 uninstall 代跑一致）。
+	bin := cmd.Bin
+	if resolved, rerr := cmdexec.ResolveCommand(cmd.Bin); rerr == nil {
+		bin = resolved
+	}
+	c := exec.CommandContext(ctx, bin, cmd.Args...)
+	platform.HideConsoleWindow(c) // Windows: 不闪控制台窗口
+	c.Env = cmdexec.WithPath(os.Environ(), cmdexec.AugmentedPathEnv())
+	var buf syncBuf
+	c.Stdout = &buf
+	c.Stderr = &buf
+	err := c.Run()
+	s.mu.Lock()
+	s.ugOutput = buf.String()
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			s.ugErr = i18n.T("up.runTimeout")
+		} else {
+			s.ugErr = err.Error()
+		}
+	}
+	s.mu.Unlock()
+	// 升级成功：仅重探测该工具版本（design D8），不触发全量扫描。
+	// 占用数字保持原样，由用户下一次显式全量扫描刷新。
+	if err == nil {
+		s.reprobeToolVersion(name)
+	}
+}
+
+// reprobeToolVersion 升级成功后重探测该工具（name）的版本并刷新 s.last，供前端
+// 经 GetLastResult 重渲染详情页。仅展示用，不参与任何判定（design D3）。
+func (s *ScannerService) reprobeToolVersion(name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.last == nil {
+		return
+	}
+	for i := range s.last.Tools {
+		t := &s.last.Tools[i]
+		if t.Name != name || len(t.Binaries) == 0 {
+			continue
+		}
+		b := t.Binaries[0]
+		if !scanner.ProbeSafeBinary(scanner.Installer(t.Installer), b.Real, b.Name) {
+			return
+		}
+		if v, ok := probe.CachedOrRun(b.Real, b.Path, b.Size); ok && v != "" {
+			t.Version = v
+		}
+		probe.Save() // 持久化探测缓存（probe-versions.json）
+		return
+	}
+}
+
+// GetUpgradeStatus 返回代跑状态 JSON：{running, done, output, error}。
+// 前端轮询（macOS WKWebView 对高频事件不可靠，沿用 update 进度方案）。
+func (s *ScannerService) GetUpgradeStatus() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	b, _ := json.Marshal(map[string]any{
+		"running": s.ugRunning, "done": s.ugDone, "output": s.ugOutput, "error": s.ugErr,
+	})
 	return string(b)
 }
 

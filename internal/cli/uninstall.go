@@ -13,6 +13,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"cli-analyzer/internal/cmdexec"
 	"cli-analyzer/internal/i18n"
 	"cli-analyzer/internal/scanner"
 	"cli-analyzer/internal/uninstall"
@@ -71,11 +72,7 @@ func runUninstall(args []string) int {
 		return uninstallBlocked(tool.Name, *jsonOut)
 	}
 
-	binName := ""
-	if len(tool.Binaries) > 0 {
-		binName = tool.Binaries[0].Name
-	}
-	off := uninstall.OfficialCommand(scanner.Installer(tool.Installer), tool.Name, binName)
+	off := uninstall.OfficialFor(*tool)
 
 	if *residueOnly {
 		return printResidue(tool.Name, res, *jsonOut)
@@ -206,11 +203,11 @@ func runOfficial(off uninstall.Official) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	bin := off.Bin
-	if resolved, rerr := uninstall.ResolveCommand(off.Bin); rerr == nil {
+	if resolved, rerr := cmdexec.ResolveCommand(off.Bin); rerr == nil {
 		bin = resolved
 	}
 	cmd := exec.CommandContext(ctx, bin, off.Args...)
-	cmd.Env = uninstall.WithPath(os.Environ(), uninstall.AugmentedPathEnv())
+	cmd.Env = cmdexec.WithPath(os.Environ(), cmdexec.AugmentedPathEnv())
 	cmd.Stdout = stdout()
 	cmd.Stderr = stderr()
 	return cmd.Run()

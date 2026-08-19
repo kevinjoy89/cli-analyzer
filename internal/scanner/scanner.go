@@ -49,7 +49,7 @@ func scan(opts Options, skipIfUnchanged bool) (*ScanResult, bool, error) {
 
 	tools := map[string]*toolBuilder{}
 	order := []string{}
-	addBinary := func(id string, installer Installer, b Binary, currentVer, installRoot, family string) {
+	addBinary := func(id string, installer Installer, b Binary, currentVer, installRoot, family, pkg string) {
 		tb := tools[id]
 		if tb == nil {
 			tb = &toolBuilder{name: id, aliases: map[string]bool{}}
@@ -72,6 +72,10 @@ func scan(opts Options, skipIfUnchanged bool) (*ScanResult, bool, error) {
 		}
 		if tb.currentVer == "" {
 			tb.currentVer = currentVer
+		}
+		// 真实包名：首个二进制记录为准（同 ToolID 多来源合并时保留最先的）
+		if tb.pkg == "" {
+			tb.pkg = pkg
 		}
 		// 家族合并工具的别名用归一化命令名（Windows 上去掉 .exe/.cmd 等扩展名，
 		// 显示 corepack 而非 corepack.cmd）；普通工具保留原始入口名。
@@ -102,7 +106,7 @@ func scan(opts Options, skipIfUnchanged bool) (*ScanResult, bool, error) {
 			size = st.Size()
 		}
 		c := classify(real, ex.Name)
-		addBinary(c.ToolID, c.Installer, Binary{Name: ex.Name, Path: ex.Path, Real: real, Size: size}, c.CurrentVersion, c.InstallRoot, c.Family)
+		addBinary(c.ToolID, c.Installer, Binary{Name: ex.Name, Path: ex.Path, Real: real, Size: size}, c.CurrentVersion, c.InstallRoot, c.Family, c.Package)
 	}
 
 	// Seed curated tools that have no PATH binary (p10k, puppeteer…).

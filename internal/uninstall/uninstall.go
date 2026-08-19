@@ -10,7 +10,6 @@ package uninstall
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -72,12 +71,42 @@ func IsBlocked(name string) bool {
 // OfficialCommand 返回按安装来源映射的标准卸载建议。
 // binName 是 PATH 上的命令名（go 来源的提示需要它）。
 func OfficialCommand(installer scanner.Installer, name, binName string) Official {
+	return officialCommand(installer, name, binName, "")
+}
+
+// OfficialFor 返回工具的标准卸载建议（按扫描记录）。npm 工具名可能是
+// 合并后的短名或 Windows shim 名（npmToolID / npmGlobalShim），真实包名
+// 记录在 Tool.Package——npm uninstall 按包名寻址，用短名会卸载到错误/
+// 不存在的包。旧扫描缓存缺少 Package 时回退 NpmPackageFor 逆映射。
+func OfficialFor(t scanner.Tool) Official {
+	binName := ""
+	if len(t.Binaries) > 0 {
+		binName = t.Binaries[0].Name
+	}
+	return officialCommand(scanner.Installer(t.Installer), strings.TrimSpace(t.Name), binName, npmPkgOf(t))
+}
+
+// npmPkgOf 解析 npm 工具的真实包名：优先 Tool.Package（扫描记录），
+// 旧缓存回退 NpmPackageFor 逆映射。
+func npmPkgOf(t scanner.Tool) string {
+	if t.Package != "" {
+		return t.Package
+	}
+	return scanner.NpmPackageFor(strings.TrimSpace(t.Name))
+}
+
+// officialCommand 是 OfficialCommand/OfficialFor 的内部实现；pkg 是已解析的
+// 真实包名（仅 npm 用，调用方经 Tool.Package / NpmPackageFor 得到）。
+func officialCommand(installer scanner.Installer, name, binName, pkg string) Official {
 	name = strings.TrimSpace(name)
 	switch installer {
 	case scanner.InstBrew:
 		return Official{Command: "brew uninstall " + name, Runnable: true, Bin: "brew", Args: []string{"uninstall", name}}
 	case scanner.InstNpm:
-		return Official{Command: "npm uninstall -g " + name, Runnable: true, Bin: "npm", Args: []string{"uninstall", "-g", name}}
+		if pkg == "" {
+			pkg = scanner.NpmPackageFor(name)
+		}
+		return Official{Command: "npm uninstall -g " + pkg, Runnable: true, Bin: "npm", Args: []string{"uninstall", "-g", pkg}}
 	case scanner.InstPipx:
 		return Official{Command: "pipx uninstall " + name, Runnable: true, Bin: "pipx", Args: []string{"uninstall", name}}
 	case scanner.InstCargo:
@@ -109,39 +138,4 @@ func OfficialCommand(installer scanner.Installer, name, binName string) Official
 	default: // versioned / other / rustup 等：无统一标准卸载命令
 		return Official{}
 	}
-}
-
-// ResolveCommand 在（含增强的）PATH 目录中解析命令的绝对路径。
-// GUI 从 Finder 启动时进程 PATH 是系统最小集，直接 exec "npm" 会报
-// "executable file not found in $PATH"——与扫描漏工具的根因相同。
-func ResolveCommand(bin string) (string, error) {
-	for _, dir := range platform.PathDirs(false) {
-		p := filepath.Join(dir, bin)
-		if st, err := os.Stat(p); err == nil && !st.IsDir() && platform.IsExecutable(st) {
-			return p, nil
-		}
-	}
-	return "", fmt.Errorf("%w: %q not found on PATH", os.ErrNotExist, bin)
-}
-
-// AugmentedPathEnv 返回含增强目录的 PATH 环境变量，供卸载命令的子进程使用：
-// npm 等工具内部会再派生子进程（如 node），子进程继承的 PATH 必须完整。
-func AugmentedPathEnv() string {
-	return strings.Join(platform.PathDirs(false), string(os.PathListSeparator))
-}
-
-// WithPath 返回替换 PATH 后的环境变量切片（保留其余环境）。
-// 键匹配大小写不敏感：Windows 系统环境变量名为 "Path"（大写 P 小写 ath），
-// 只匹配 "PATH=" 会残留旧变量并追加新变量，子进程拿到重复 PATH。
-// GUI 与 CLI 代跑卸载命令共用（CLI 曾直接 exec 裸命令名，最小 PATH 环境下
-// 找不到 brew/npm——与 GUI 的 ResolveCommand + 增强 PATH 行为不一致）。
-func WithPath(env []string, path string) []string {
-	out := make([]string, 0, len(env)+1)
-	for _, e := range env {
-		if strings.HasPrefix(strings.ToUpper(e), "PATH=") {
-			continue
-		}
-		out = append(out, e)
-	}
-	return append(out, "PATH="+path)
 }

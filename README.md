@@ -38,6 +38,7 @@ CLI Analyzer scans every CLI tool installed on your machine and attributes its *
 - **Tree drill-down** — expand an actionable item to its one-level child dirs (`~/.npm` → `_cacache` 10G / `_npx` 764M) and dispose of only the selected children. Sub-path deletion passes the same integrity guards (must be a child of an already-scanned, attributed parent)
 - **Built-in updater** — checks GitHub Releases on startup for a new version (toggleable in Preferences, with a 4h rate-limit cache); prompts to download with a progress bar, verifies the SHA256 checksum, then opens the installer for you to complete manually. CLI: `cli-analyzer update check`. Note: within 4h of a release, a cached check may not yet report it — the prompt appears once the cache refreshes
 - **Official uninstall** — don't know the uninstall command? The tool detects the install source (brew / npm / pipx / cargo…), shows the standard command and can run it for you, then detects leftover config/cache dirs. Residue disposal defaults to the built-in trash (recoverable); permanently deleting residue is an explicit choice. System-critical tools are blocked. CLI: `cli-analyzer uninstall <tool>`
+- **Official upgrade** — for scanned CLI tools, the tool detects the install source and reports the latest version using the package manager's own commands (brew `outdated` / npm `outdated` / pipx + `pip index` / cargo `search`, mirror/proxy-aware), shows the official upgrade command, and can run it for you with progress. Per-tool and on-demand only: no cache, no batch check, never blocked (even system-critical tools) — the version shown is always the package manager's own, never fabricated. Sources without a safe detection path (go / pyenv / generic) degrade to showing the command hint. CLI: `cli-analyzer update check <tool>` / `cli-analyzer update run <tool>`
 - **Localized UI** — Simplified Chinese / Traditional Chinese / English; follows the system language by default, switchable in Preferences → Language (applies instantly; macOS native menu applies after restart)
 - **Two interfaces** — CLI (`scan` / `clean` / `cache` / `trash` / `trends` / `update` / `version`) + native GUI
 - **Unattributed data dirs** — top-level dirs under the data roots that no tool claims (leftovers of removed or never-on-PATH tools) appear in a collapsible "Unattributed data" section; USER-level, move-to-trash only (recoverable), filtered by the non-CLI exclusion system (GUI apps, their data and command-line companions are out of scope)
@@ -84,6 +85,10 @@ cli-analyzer trash restore <id>      # restore an item to its original path
 cli-analyzer trash empty             # empty the built-in trash (permanent)
 cli-analyzer trends [days]           # usage trends over the last N days (default 30)
 cli-analyzer update check           # check for a new version (exit: 0 up-to-date / 2 update / 1 error)
+cli-analyzer update check <tool>    # check a scanned tool's latest version via its package manager
+cli-analyzer update check <tool> --json  # structured result {name,current,latest,detected,hasUpdate,command,runnable}
+cli-analyzer update run <tool>      # show the official upgrade command, confirm, then run it (5-min timeout)
+cli-analyzer update run <tool> --yes     # skip confirmation (none-interactive scripts)
 cli-analyzer uninstall <tool>       # standard uninstall + residue cleanup (built-in trash by default)
 cli-analyzer uninstall <tool> --permanent  # permanently delete residue (unrecoverable)
 cli-analyzer version                # show version and install source (e.g. 0.3.8 (darwin, dmg))

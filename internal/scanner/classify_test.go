@@ -33,12 +33,12 @@ func TestClassifyBrew(t *testing.T) {
 func TestClassifyNpmScoped(t *testing.T) {
 	// @anthropic-ai/claude-code → claude（npmToolID 映射：规则行与 npm 行归并）
 	c := classify(filepath.Join(brewPrefix(), "lib/node_modules/@anthropic-ai/claude-code/bin/claude"), "claude")
-	if c.ToolID != "claude" || c.Installer != InstNpm {
+	if c.ToolID != "claude" || c.Installer != InstNpm || c.Package != "@anthropic-ai/claude-code" {
 		t.Errorf("npm scoped: %+v", c)
 	}
 	// 未映射的 scoped 包保持包名
 	c2 := classify(filepath.Join(brewPrefix(), "lib/node_modules/@openai/codex/bin/codex.js"), "codex")
-	if c2.ToolID != "codex" || c2.Installer != InstNpm {
+	if c2.ToolID != "codex" || c2.Installer != InstNpm || c2.Package != "@openai/codex" {
 		t.Errorf("npm scoped codex: %+v", c2)
 	}
 }

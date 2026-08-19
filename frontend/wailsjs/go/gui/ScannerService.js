@@ -10,6 +10,10 @@ export function CheckForUpdates() {
   return window['go']['gui']['ScannerService']['CheckForUpdates']();
 }
 
+export function CheckToolUpdate(arg1) {
+  return window['go']['gui']['ScannerService']['CheckToolUpdate'](arg1);
+}
+
 export function Clean(arg1, arg2) {
   return window['go']['gui']['ScannerService']['Clean'](arg1, arg2);
 }
@@ -62,6 +66,10 @@ export function GetUpdateStatus() {
   return window['go']['gui']['ScannerService']['GetUpdateStatus']();
 }
 
+export function GetUpgradeStatus() {
+  return window['go']['gui']['ScannerService']['GetUpgradeStatus']();
+}
+
 export function GetVersion() {
   return window['go']['gui']['ScannerService']['GetVersion']();
 }
@@ -88,6 +96,10 @@ export function PurgeNow(arg1) {
 
 export function Restore(arg1) {
   return window['go']['gui']['ScannerService']['Restore'](arg1);
+}
+
+export function RunToolUpgrade(arg1) {
+  return window['go']['gui']['ScannerService']['RunToolUpgrade'](arg1);
 }
 
 export function Scan() {

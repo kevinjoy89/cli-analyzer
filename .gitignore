@@ -35,3 +35,6 @@ build/darwin/Info.dev.plist
 # 本地测试包（zip 与便携目录，勿提交）
 build/package-test
 build/*.zip
+
+# piolium audit tool working dir (local only)
+piolium/
