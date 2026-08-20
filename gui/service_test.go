@@ -146,6 +146,43 @@ func TestCheckToolUpdateToolNotFound(t *testing.T) {
 	}
 }
 
+// TestToolUpgradeSupported 验证「是否有升级命令」判定：brew/npm/cargo 等
+// 有命令来源返回 supported=true（GUI 显示按钮），go/versioned/other 只有
+// 提示返回 false（不显示按钮）。
+func TestToolUpgradeSupported(t *testing.T) {
+	s := NewScannerService()
+	s.mu.Lock()
+	s.last = &scanner.ScanResult{Tools: []scanner.Tool{
+		{Name: "ripgrep", Installer: string(scanner.InstBrew)},
+		{Name: "uv", Installer: string(scanner.InstLocalBin)},
+		{Name: "dlv", Installer: string(scanner.InstGo)},
+		{Name: "python", Installer: string(scanner.InstPyenv)},
+	}}
+	s.mu.Unlock()
+	cases := []struct {
+		tool string
+		want bool
+	}{
+		{"ripgrep", true},
+		{"uv", true}, // 已知官方脚本表
+		{"dlv", false},
+		{"python", false},
+		{"no-such-tool", false},
+	}
+	for _, c := range cases {
+		var r struct {
+			Tool      string `json:"tool"`
+			Supported bool   `json:"supported"`
+		}
+		if err := json.Unmarshal([]byte(s.ToolUpgradeSupported(c.tool)), &r); err != nil {
+			t.Fatalf("unmarshal %s: %v", c.tool, err)
+		}
+		if r.Supported != c.want {
+			t.Errorf("ToolUpgradeSupported(%q) = %v, want %v", c.tool, r.Supported, c.want)
+		}
+	}
+}
+
 // TestCheckToolUpdateGoSource 验证 go 来源工具返回 detected=false 且携带
 // 命令提示（不执行任何网络查询——go 来源无检测能力）。
 func TestCheckToolUpdateGoSource(t *testing.T) {

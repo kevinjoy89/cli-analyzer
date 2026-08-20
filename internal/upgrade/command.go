@@ -27,7 +27,24 @@ var localBinScripts = map[string]string{
 	"rye":    "curl -sSf https://rye.astral.sh/get | bash",
 }
 
-// OfficialCommand 返回按安装来源映射的官方升级建议。
+// HasCommand 报告该来源是否有可展示的官方升级命令（而非纯提示）。
+// brew/npm/pipx/cargo 恒有命令；local-bin 仅命中已知官方脚本表（uv/poetry/rye）
+// 时有命令；go/versioned/other/pyenv/未知 local-bin 只有提示，无命令。
+// GUI 据此决定是否渲染「检查更新」按钮与结果弹窗（无命令不弹，避免展示
+// 无意义的提示面板）。
+func HasCommand(installer scanner.Installer, name string) bool {
+	name = strings.TrimSpace(name)
+	switch installer {
+	case scanner.InstBrew, scanner.InstNpm, scanner.InstPipx, scanner.InstCargo:
+		return true
+	case scanner.InstLocalBin:
+		_, ok := localBinScripts[name]
+		return ok
+	default:
+		return false
+	}
+}
+
 // 命令/提示一律不编造：go 需要模块路径（工具名 ≠ 模块路径），versioned/
 // other/pyenv 无统一升级方式，只给提示。
 func OfficialCommand(installer scanner.Installer, name, binName string) Command {

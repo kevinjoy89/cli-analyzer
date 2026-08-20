@@ -70,6 +70,8 @@ export function SetUpdateConfig(arg1:string):Promise<string>;
 
 export function Startup(arg1:context.Context):Promise<void>;
 
+export function ToolUpgradeSupported(arg1:string):Promise<string>;
+
 export function TrashInfo():Promise<string>;
 
 export function TrashList():Promise<string>;

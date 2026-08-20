@@ -138,6 +138,10 @@ export function Startup(arg1) {
   return window['go']['gui']['ScannerService']['Startup'](arg1);
 }
 
+export function ToolUpgradeSupported(arg1) {
+  return window['go']['gui']['ScannerService']['ToolUpgradeSupported'](arg1);
+}
+
 export function TrashInfo() {
   return window['go']['gui']['ScannerService']['TrashInfo']();
 }

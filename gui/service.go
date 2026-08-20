@@ -825,6 +825,37 @@ func (s *ScannerService) UninstallDeleteResidues(paths []string) string {
 // 前端在工具详情页点击「检查更新」时调用；页面守卫是前端义务（promise
 // resolve 时检查当前详情页工具是否仍为 name，否则丢弃）。
 // 返回值 JSON：upgrade.CheckResult 或 {name, error}。
+// ToolUpgradeSupported 报告该工具是否有可展示的官方升级命令（有命令才渲染
+// 「检查更新」按钮与结果弹窗，无命令来源不展示提示面板）。
+// 同步判定：读最近扫描结果 → 按来源映射（brew/npm/pipx/cargo 恒有；
+// local-bin 仅已知官方脚本表；go/versioned/other/pyenv 无命令）。
+func (s *ScannerService) ToolUpgradeSupported(tool string) string {
+	b, _ := json.Marshal(map[string]any{"tool": tool, "supported": upgrade.HasCommand(scanner.Installer(s.installerOf(tool)), tool)})
+	return string(b)
+}
+
+// installerOf 返回最近扫描结果中该工具的安装来源（未找到返回空）。
+func (s *ScannerService) installerOf(tool string) string {
+	s.mu.Lock()
+	last := s.last
+	s.mu.Unlock()
+	if last == nil {
+		return ""
+	}
+	for i := range last.Tools {
+		t := &last.Tools[i]
+		if t.Name == tool {
+			return t.Installer
+		}
+		for _, a := range t.Aliases {
+			if a == tool {
+				return t.Installer
+			}
+		}
+	}
+	return ""
+}
+
 func (s *ScannerService) CheckToolUpdate(name string) string {
 	s.mu.Lock()
 	last := s.last

@@ -184,6 +184,33 @@ func TestOfficialCommand(t *testing.T) {
 	}
 }
 
+// TestHasCommand 验证 HasCommand 判定与 OfficialCommand 一致：有真实命令的
+// 来源返回 true（GUI 显示「检查更新」按钮），纯提示来源返回 false（无按钮）。
+func TestHasCommand(t *testing.T) {
+	cases := []struct {
+		name      string
+		installer scanner.Installer
+		want      bool
+	}{
+		{"ripgrep", scanner.InstBrew, true},
+		{"ripgrep", scanner.InstCargo, true},
+		{"pi", scanner.InstNpm, true},
+		{"black", scanner.InstPipx, true},
+		{"uv", scanner.InstLocalBin, true},                // 已知官方脚本表
+		{"poetry", scanner.InstLocalBin, true},            // 已知官方脚本表
+		{"some-script-tool", scanner.InstLocalBin, false}, // 未知 local-bin 只有提示
+		{"dlv", scanner.InstGo, false},
+		{"python", scanner.InstPyenv, false},
+		{"whatever", scanner.InstOther, false},
+		{"", scanner.InstOther, false},
+	}
+	for _, c := range cases {
+		if got := HasCommand(c.installer, c.name); got != c.want {
+			t.Errorf("HasCommand(%s, %q) = %v, want %v", c.installer, c.name, got, c.want)
+		}
+	}
+}
+
 // ---- 代跑执行 ----
 
 func TestRunOfficialFailure(t *testing.T) {
