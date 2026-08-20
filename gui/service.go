@@ -714,11 +714,13 @@ func (s *ScannerService) runUninstallOfficial(off uninstall.Official) {
 	defer cancel()
 	// GUI 启动 PATH 是最小集：先经（增强的）PATH 解析出命令绝对路径，
 	// 并给子进程注入完整 PATH（npm 内部的 node 等子进程依赖它）。
+	// Windows .cmd/.bat shim（npm 全局）经 cmd.exe /c 执行。
 	bin := off.Bin
 	if resolved, rerr := cmdexec.ResolveCommand(off.Bin); rerr == nil {
 		bin = resolved
 	}
-	cmd := exec.CommandContext(ctx, bin, off.Args...)
+	bin, args := cmdexec.WrapShim(bin, off.Args)
+	cmd := exec.CommandContext(ctx, bin, args...)
 	platform.HideConsoleWindow(cmd) // Windows: 不闪控制台窗口
 	cmd.Env = cmdexec.WithPath(os.Environ(), cmdexec.AugmentedPathEnv())
 	// 并发安全输出缓冲：stdout/stderr 由 exec 的两个复制 goroutine 并行

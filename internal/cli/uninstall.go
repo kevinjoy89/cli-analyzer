@@ -206,7 +206,9 @@ func runOfficial(off uninstall.Official) error {
 	if resolved, rerr := cmdexec.ResolveCommand(off.Bin); rerr == nil {
 		bin = resolved
 	}
-	cmd := exec.CommandContext(ctx, bin, off.Args...)
+	// Windows .cmd/.bat shim（npm 全局）经 cmd.exe /c 执行。
+	bin, args := cmdexec.WrapShim(bin, off.Args)
+	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Env = cmdexec.WithPath(os.Environ(), cmdexec.AugmentedPathEnv())
 	cmd.Stdout = stdout()
 	cmd.Stderr = stderr()

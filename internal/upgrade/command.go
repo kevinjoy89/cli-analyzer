@@ -120,14 +120,9 @@ func defaultHelpOutput(ctx context.Context, bin string, args ...string) string {
 	if r, rerr := cmdexec.ResolveCommand(bin); rerr == nil {
 		resolved = r
 	}
-	var cmd *exec.Cmd
-	if isCmdShim(resolved) {
-		// Windows .cmd/.bat shim（npm 全局等）：CreateProcess 不解析脚本，
-		// 经 cmd.exe /c 执行（镜像 RunOfficial 的处理）。
-		cmd = exec.CommandContext(ctx2, "cmd.exe", append([]string{"/c", resolved}, args...)...)
-	} else {
-		cmd = exec.CommandContext(ctx2, resolved, args...)
-	}
+	// Windows .cmd/.bat shim 经 cmd.exe /c 执行（镜像 RunOfficial 的处理）。
+	resolved, args = cmdexec.WrapShim(resolved, args)
+	cmd := exec.CommandContext(ctx2, resolved, args...)
 	cmd.Env = cmdexec.WithPath(os.Environ(), cmdexec.AugmentedPathEnv())
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf

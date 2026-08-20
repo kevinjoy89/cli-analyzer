@@ -54,3 +54,16 @@ func WithPath(env []string, path string) []string {
 	}
 	return append(out, "PATH="+path)
 }
+
+// WrapShim 处理 Windows 批处理脚本（.cmd/.bat）直跑问题：Go 的
+// CreateProcess 不解析脚本，需经 cmd.exe /c 包装。输入是解析后的命令
+// 路径（绝对或裸名）；若为 .cmd/.bat 返回 (cmd.exe, ["/c", bin, args…])，
+// 否则原样返回。upgrade/uninstall 的代跑与 -h 探测共用（design D5）。
+// 非 Windows 上 .cmd 文件几乎不存在，但按同语义处理无副作用。
+func WrapShim(bin string, args []string) (string, []string) {
+	low := strings.ToLower(bin)
+	if !strings.HasSuffix(low, ".cmd") && !strings.HasSuffix(low, ".bat") {
+		return bin, args
+	}
+	return "cmd.exe", append([]string{"/c", bin}, args...)
+}

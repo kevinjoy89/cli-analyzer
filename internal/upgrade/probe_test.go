@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"testing"
 
+	"cli-analyzer/internal/cmdexec"
 	"cli-analyzer/internal/scanner"
 )
 
@@ -168,11 +169,20 @@ func TestStripExeExt(t *testing.T) {
 }
 
 func TestIsCmdShim(t *testing.T) {
-	if !isCmdShim("npm.cmd") || !isCmdShim("C:\\Users\\x\\bin\\tool.bat") {
-		t.Error("cmd/bat should be shims")
+	// WrapShim：.cmd/.bat 包装成 cmd.exe /c，其余原样
+	if bin, args := cmdexec.WrapShim("npm.cmd", []string{"-g", "pkg"}); bin != "cmd.exe" ||
+		len(args) != 4 || args[0] != "/c" || args[1] != "npm.cmd" {
+		t.Errorf("WrapShim(npm.cmd) = %s %v, want cmd.exe [/c npm.cmd -g pkg]", bin, args)
 	}
-	if isCmdShim("claude.exe") || isCmdShim("/usr/bin/claude") || isCmdShim("npm") {
-		t.Error("exe/bare names should not be shims")
+	if bin, args := cmdexec.WrapShim(`C:\Users\x\bin\tool.bat`, []string{"x"}); bin != "cmd.exe" ||
+		len(args) != 3 || args[2] != "x" {
+		t.Errorf("WrapShim(tool.bat) = %s %v", bin, args)
+	}
+	if bin, args := cmdexec.WrapShim("claude.exe", []string{"update"}); bin != "claude.exe" || len(args) != 1 {
+		t.Errorf("WrapShim(claude.exe) = %s %v, want unchanged", bin, args)
+	}
+	if bin, args := cmdexec.WrapShim("/usr/bin/claude", []string{"update"}); bin != "/usr/bin/claude" || len(args) != 1 {
+		t.Errorf("WrapShim(bare) = %s %v, want unchanged", bin, args)
 	}
 }
 

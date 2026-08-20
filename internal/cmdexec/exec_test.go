@@ -69,3 +69,21 @@ func TestResolveCommandViaAugmentedPath(t *testing.T) {
 		t.Error("missing command should error")
 	}
 }
+
+// TestWrapShim 验证 .cmd/.bat 包装为 cmd.exe /c、其余原样（Windows 代跑
+// 与 -h 探测共用）。
+func TestWrapShim(t *testing.T) {
+	if bin, args := WrapShim("npm.cmd", []string{"-g", "pkg"}); bin != "cmd.exe" ||
+		len(args) != 4 || args[0] != "/c" || args[1] != "npm.cmd" || args[3] != "pkg" {
+		t.Errorf("WrapShim(npm.cmd) = %s %v", bin, args)
+	}
+	if bin, args := WrapShim("tool.bat", []string{"x"}); bin != "cmd.exe" || len(args) != 3 {
+		t.Errorf("WrapShim(tool.bat) = %s %v", bin, args)
+	}
+	if bin, args := WrapShim("claude.exe", []string{"update"}); bin != "claude.exe" || len(args) != 1 {
+		t.Errorf("WrapShim(exe) = %s %v, want unchanged", bin, args)
+	}
+	if bin, args := WrapShim("claude", []string{"update"}); bin != "claude" || len(args) != 1 {
+		t.Errorf("WrapShim(bare) = %s %v, want unchanged", bin, args)
+	}
+}
