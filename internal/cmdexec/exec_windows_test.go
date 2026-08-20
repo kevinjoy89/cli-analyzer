@@ -5,6 +5,7 @@ package cmdexec
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -21,7 +22,9 @@ func TestResolveCommandExtension(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveCommand(fakext): %v", err)
 	}
-	if resolved != exe {
+	// Windows 文件系统大小写不敏感：解析结果扩展名按 PATHEXT 枚举的 case
+	// 返回（runner 上 .EXE 大写），与磁盘存储的 .exe 仅 case 不同。
+	if !strings.EqualFold(resolved, exe) {
 		t.Errorf("resolved = %q, want %q", resolved, exe)
 	}
 	if _, err := ResolveCommand("no-such-fakext-xyz"); err == nil {
