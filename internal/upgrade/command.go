@@ -54,11 +54,12 @@ const probeTimeout = 3 * time.Second
 // 的缓存键）。GUI 详情页每次渲染都会问「有无升级命令」，探测是子进程 IO，
 // 必须缓存避免每次渲染重跑。进程内缓存即可（扫描/会话生命周期内二进制
 // 不变；升级后 mtime 变化自然失效）。
+// Sub 为空表示「无自升级子命令或探测失败」——与成功同缓存（避免重复跑
+// 子进程），二进制不变则负结果也稳定。
 type probeEntry struct {
 	Size    int64
 	MtimeNs int64
-	Sub     string // 探测到的自升级子命令；空 = 无
-	Ok      bool   // 探测是否成功（区分「无子命令」与「探测失败」）
+	Sub     string // 探测到的自升级子命令；空 = 无/失败
 }
 
 var (
@@ -86,7 +87,7 @@ func ProbeSelfUpgrade(ctx context.Context, bin string) string {
 	}
 	sub := probeHelpSub(ctx, bin)
 	probeMu.Lock()
-	probeCache[key] = probeEntry{Size: st.Size(), MtimeNs: st.ModTime().UnixNano(), Sub: sub, Ok: true}
+	probeCache[key] = probeEntry{Size: st.Size(), MtimeNs: st.ModTime().UnixNano(), Sub: sub}
 	probeMu.Unlock()
 	return sub
 }
@@ -242,7 +243,9 @@ func probeCommand(ctx context.Context, installer scanner.Installer, name, bin st
 		// 探测失败/无子命令：回退静态提示（不编造）
 		return officialCommand(installer, name, "", "")
 	}
-	// 探测到的自升级命令可代跑：<bin> <sub>（如 claude update / uv self update）
+	// 探测到的自升级命令可代跑：<bin> <sub>（如 claude update / uv self update）。
+	// Bin 用绝对路径（real）：探测即按此执行，代跑无需再经 PATH 解析；
+	// 与静态表分支的裸名 Bin（经 ResolveCommand 解析）形态不同但都正确。
 	return Command{
 		Command:  name + " " + sub,
 		Runnable: true,

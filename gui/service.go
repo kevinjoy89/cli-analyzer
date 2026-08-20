@@ -847,6 +847,8 @@ func (s *ScannerService) ToolUpgradeSupported(tool string) string {
 			real = r
 		}
 		if scanner.ProbeSafeBinary(scanner.Installer(installer), real, filepath.Base(bin)) {
+			// ProbeSelfUpgrade 内部自带超时（每参数 3s，最多 -h+--help 两个），
+			// 此处上下文只作总预算防御；取消后内部立即放弃。
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			supported = upgrade.ProbeSelfUpgrade(ctx, real) != ""

@@ -60,6 +60,9 @@ func WithPath(env []string, path string) []string {
 // 路径（绝对或裸名）；若为 .cmd/.bat 返回 (cmd.exe, ["/c", bin, args…])，
 // 否则原样返回。upgrade/uninstall 的代跑与 -h 探测共用（design D5）。
 // 非 Windows 上 .cmd 文件几乎不存在，但按同语义处理无副作用。
+// 含空格路径（如 "C:\Program Files\..."）无需手动引号：调用方经
+// exec.CommandContext 传 argv 数组，Go 在 Windows 用 EscapeArg 自动加引号，
+// cmd.exe /c 收到的已是正确形态。
 func WrapShim(bin string, args []string) (string, []string) {
 	low := strings.ToLower(bin)
 	if !strings.HasSuffix(low, ".cmd") && !strings.HasSuffix(low, ".bat") {
