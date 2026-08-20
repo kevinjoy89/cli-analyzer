@@ -148,3 +148,53 @@ func TestProbeCommandMiss(t *testing.T) {
 		t.Error("probeCommand miss should fall back to generic hint")
 	}
 }
+
+// ---- Windows 兼容（静态表键/程序名匹配）----
+
+func TestStripExeExt(t *testing.T) {
+	cases := map[string]string{
+		"claude":     "claude",
+		"claude.exe": "claude",
+		"claude.cmd": "claude",
+		"npm.bat":    "npm",
+		"tool.COM":   "tool",
+		"uv":         "uv",
+	}
+	for in, want := range cases {
+		if got := stripExeExt(in); got != want {
+			t.Errorf("stripExeExt(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestIsCmdShim(t *testing.T) {
+	if !isCmdShim("npm.cmd") || !isCmdShim("C:\\Users\\x\\bin\\tool.bat") {
+		t.Error("cmd/bat should be shims")
+	}
+	if isCmdShim("claude.exe") || isCmdShim("/usr/bin/claude") || isCmdShim("npm") {
+		t.Error("exe/bare names should not be shims")
+	}
+}
+
+// TestSelfUpgradeTableWindowsName 验证 Windows 带扩展名的二进制名也能命中
+// 静态表（claude.exe → claude update），HasCommand 与 OfficialCommand 对齐。
+func TestSelfUpgradeTableWindowsName(t *testing.T) {
+	if !HasCommand(scanner.InstVersioned, "claude.exe") {
+		t.Error("HasCommand(claude.exe) should hit self-upgrade table")
+	}
+	got := OfficialCommand(scanner.InstVersioned, "claude.exe", "claude.exe")
+	if got.Command != "claude.exe update" || !got.Runnable {
+		t.Errorf("OfficialCommand(claude.exe) = {%q runnable=%v}, want claude.exe update/true", got.Command, got.Runnable)
+	}
+}
+
+// TestProbeHelpSubWindowsBinBase 验证探测解析时程序名剥扩展名：
+// Windows 二进制名是 opencode.exe（help 里命令名是裸 opencode），
+// "opencode upgrade" 形态应命中。filepath.Base 是平台相关的（unix 不按
+// 反斜杠切），故直接传剥好扩展名的 base 名验证解析逻辑。
+func TestProbeHelpSubWindowsBinBase(t *testing.T) {
+	out := "Commands:\n  opencode completion  generate shell completion\n  opencode upgrade [target]  upgrade opencode to the latest\n"
+	if got := parseSelfUpgradeSub(out, stripExeExt("opencode.exe")); got != "upgrade" {
+		t.Errorf("windows binBase parse = %q, want upgrade", got)
+	}
+}

@@ -15,11 +15,20 @@ import (
 // ResolveCommand 在（含增强的）PATH 目录中解析命令的绝对路径。
 // GUI 从 Finder 启动时进程 PATH 是系统最小集，直接 exec "npm" 会报
 // "executable file not found in $PATH"——与扫描漏工具的根因相同。
+// Windows 上补全 PATHEXT 扩展名（"claude" → claude.exe）：PATH 目录里的
+// 可执行文件带扩展名，裸名 Join 后 Stat 会失败（IsExecutable 认 PATHEXT，
+// 但 Join 不拼扩展名）；uninstall/upgrade 代跑按此解析（design D5）。
 func ResolveCommand(bin string) (string, error) {
+	cands := []string{bin}
+	for _, ext := range platform.ExecExtensions() {
+		cands = append(cands, bin+ext)
+	}
 	for _, dir := range platform.PathDirs(false) {
-		p := filepath.Join(dir, bin)
-		if st, err := os.Stat(p); err == nil && !st.IsDir() && platform.IsExecutable(st) {
-			return p, nil
+		for _, cand := range cands {
+			p := filepath.Join(dir, cand)
+			if st, err := os.Stat(p); err == nil && !st.IsDir() && platform.IsExecutable(st) {
+				return p, nil
+			}
 		}
 	}
 	return "", fmt.Errorf("%w: %q not found on PATH", os.ErrNotExist, bin)

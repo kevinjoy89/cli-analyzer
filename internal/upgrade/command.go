@@ -93,7 +93,7 @@ func ProbeSelfUpgrade(ctx context.Context, bin string) string {
 
 // probeHelpSub 实际执行 -h / --help 并解析子命令。
 func probeHelpSub(ctx context.Context, bin string) string {
-	binBase := filepath.Base(bin)
+	binBase := stripExeExt(filepath.Base(bin))
 	for _, args := range [][]string{{"-h"}, {"--help"}} {
 		out := helpOutput(ctx, bin, args...)
 		if out == "" {
@@ -120,7 +120,14 @@ func defaultHelpOutput(ctx context.Context, bin string, args ...string) string {
 	if r, rerr := cmdexec.ResolveCommand(bin); rerr == nil {
 		resolved = r
 	}
-	cmd := exec.CommandContext(ctx2, resolved, args...)
+	var cmd *exec.Cmd
+	if isCmdShim(resolved) {
+		// Windows .cmd/.bat shim（npm 全局等）：CreateProcess 不解析脚本，
+		// 经 cmd.exe /c 执行（镜像 RunOfficial 的处理）。
+		cmd = exec.CommandContext(ctx2, "cmd.exe", append([]string{"/c", resolved}, args...)...)
+	} else {
+		cmd = exec.CommandContext(ctx2, resolved, args...)
+	}
 	cmd.Env = cmdexec.WithPath(os.Environ(), cmdexec.AugmentedPathEnv())
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
@@ -178,6 +185,19 @@ func parseSelfUpgradeSub(out, binBase string) string {
 	return ""
 }
 
+// stripExeExt 剥掉 Windows 可执行扩展名（claude.exe → claude，npm.cmd →
+// npm）。扫描器在 Windows 上记录的二进制名带扩展名（discover 取目录文件名），
+// 静态表键与 help 里的程序名都是裸名，查找/匹配前必须对齐。
+func stripExeExt(name string) string {
+	low := strings.ToLower(name)
+	for _, ext := range []string{".exe", ".cmd", ".bat", ".com"} {
+		if strings.HasSuffix(low, ext) {
+			return name[:len(name)-len(ext)]
+		}
+	}
+	return name
+}
+
 // stat 是 os.Stat 的薄封装（测试可注入）。
 var stat = func(path string) (os.FileInfo, error) { return os.Stat(path) }
 
@@ -189,7 +209,7 @@ var stat = func(path string) (os.FileInfo, error) { return os.Stat(path) }
 // 注意：这是同步静态判断（不探测）。探测结果走 CheckTool/OfficialFor 的
 // Command 字段，GUI 按钮显隐由 ToolUpgradeSupported 异步探测决定。
 func HasCommand(installer scanner.Installer, name string) bool {
-	name = strings.TrimSpace(name)
+	name = stripExeExt(strings.TrimSpace(name))
 	if _, ok := selfUpgradeSub[name]; ok {
 		return true // 已知自升级子命令工具
 	}
@@ -242,7 +262,8 @@ func officialCommand(installer scanner.Installer, name, binName, pkg string) Com
 	name = strings.TrimSpace(name)
 	// 已知自升级子命令工具（claude update / kimi upgrade / codegraph upgrade /
 	// uv self update）：命令可代跑（<bin> <sub>），经 PATH 解析执行。
-	if sub, ok := selfUpgradeSub[name]; ok {
+	// Windows 二进制名带扩展名（claude.exe），查表前对齐裸名。
+	if sub, ok := selfUpgradeSub[stripExeExt(name)]; ok {
 		return Command{
 			Command:  name + " " + sub,
 			Runnable: true,
