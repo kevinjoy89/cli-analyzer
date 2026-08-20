@@ -516,8 +516,9 @@ export function renderDetail() {
             /* 忽略 */
         }
     });
-    // 仅有官方升级命令的工具才显示「检查更新」按钮（无命令来源如 go/versioned/
-    // other 只给提示，不展示按钮与弹窗）
+    // 仅有官方升级命令的工具才显示「检查更新」按钮：静态表（brew/npm/pipx/
+    // cargo/已知脚本/已知自升级子命令如 claude update）+ 无命令来源做 -h
+    // 探测兜底（命中自升级子命令也显示）。无命令只给提示，不展示按钮与弹窗。
     ToolUpgradeSupported(tool.name).then((raw) => {
         try {
             const b = JSON.parse(raw) as { supported: boolean };

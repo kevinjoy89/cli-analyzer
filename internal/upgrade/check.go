@@ -93,6 +93,9 @@ func CheckTool(t scanner.Tool) CheckResult {
 	// cmdPkg 供 officialCommand 生成命令；detectName 供 detect 查询。
 	// npm：都用真实包名；cargo：命令用 crate 名（ripgrep），检测用二进制名
 	// （rg，detectCargo 据此反查 crate）——两者不同（code review #6）。
+	// ctx 提前创建：命令探测（-h）与版本检测共用同一超时预算。
+	ctx, cancel := context.WithTimeout(context.Background(), detectTimeout)
+	defer cancel()
 	cmdPkg := name
 	detectName := name
 	if t.Installer == string(scanner.InstNpm) {
@@ -102,15 +105,26 @@ func CheckTool(t scanner.Tool) CheckResult {
 		cmdPkg = cargoCrateOf(t)
 		detectName = binName
 	}
-	cmd := officialCommand(scanner.Installer(t.Installer), name, binName, cmdPkg)
-	res.Command = cmd.Command
-	res.Runnable = cmd.Runnable
+	// 静态来源（brew/npm/pipx/cargo/已知脚本/已知自升级表）直接给命令；
+	// 无静态命令的来源（go/versioned/other/pyenv/未知 local-bin）做 -h 探测
+	// 兜底：命中自升级子命令 → 可代跑命令，未命中 → 通用提示。
+	if HasCommand(scanner.Installer(t.Installer), name) {
+		cmd := officialCommand(scanner.Installer(t.Installer), name, binName, cmdPkg)
+		res.Command = cmd.Command
+		res.Runnable = cmd.Runnable
+	} else {
+		bin := ""
+		if len(t.Binaries) > 0 {
+			bin = t.Binaries[0].Real
+		}
+		cmd := probeCommand(ctx, scanner.Installer(t.Installer), name, bin)
+		res.Command = cmd.Command
+		res.Runnable = cmd.Runnable
+	}
 
 	if !Detectable(scanner.Installer(t.Installer)) {
 		return res // detected=false，仅命令/提示
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), detectTimeout)
-	defer cancel()
 	cur, latest, detected, err := detect(ctx, scanner.Installer(t.Installer), detectName)
 	res.Current, res.Latest, res.Detected = cur, latest, detected
 	if err != nil {
@@ -157,7 +171,15 @@ func OfficialFor(t scanner.Tool) Command {
 	} else if t.Installer == string(scanner.InstCargo) {
 		pkg = cargoCrateOf(t)
 	}
-	return officialCommand(scanner.Installer(t.Installer), strings.TrimSpace(t.Name), binName, pkg)
+	if HasCommand(scanner.Installer(t.Installer), t.Name) {
+		return officialCommand(scanner.Installer(t.Installer), strings.TrimSpace(t.Name), binName, pkg)
+	}
+	// 无静态命令来源：-h 探测兜底（命中自升级子命令 → 可代跑）
+	bin := ""
+	if len(t.Binaries) > 0 {
+		bin = t.Binaries[0].Real
+	}
+	return probeCommand(nil, scanner.Installer(t.Installer), strings.TrimSpace(t.Name), bin)
 }
 
 // newerThan 判定 latest 是否新于 current：两者均可按语义化版本解析时做

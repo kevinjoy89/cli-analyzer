@@ -148,15 +148,18 @@ func TestCheckToolUpdateToolNotFound(t *testing.T) {
 
 // TestToolUpgradeSupported 验证「是否有升级命令」判定：brew/npm/cargo 等
 // 有命令来源返回 supported=true（GUI 显示按钮），go/versioned/other 只有
-// 提示返回 false（不显示按钮）。
+// 提示返回 false（不显示按钮）。已知自升级子命令工具（claude/kimi）也返回
+// true；无二进制（无法探测）的未知来源返回 false。
 func TestToolUpgradeSupported(t *testing.T) {
 	s := NewScannerService()
 	s.mu.Lock()
 	s.last = &scanner.ScanResult{Tools: []scanner.Tool{
 		{Name: "ripgrep", Installer: string(scanner.InstBrew)},
 		{Name: "uv", Installer: string(scanner.InstLocalBin)},
+		{Name: "claude", Installer: string(scanner.InstVersioned)},
 		{Name: "dlv", Installer: string(scanner.InstGo)},
 		{Name: "python", Installer: string(scanner.InstPyenv)},
+		{Name: "unknown", Installer: string(scanner.InstOther)},
 	}}
 	s.mu.Unlock()
 	cases := []struct {
@@ -164,9 +167,11 @@ func TestToolUpgradeSupported(t *testing.T) {
 		want bool
 	}{
 		{"ripgrep", true},
-		{"uv", true}, // 已知官方脚本表
+		{"uv", true},     // 已知官方脚本表
+		{"claude", true}, // 已知自升级子命令（claude update）
 		{"dlv", false},
 		{"python", false},
+		{"unknown", false}, // 无二进制，无法探测
 		{"no-such-tool", false},
 	}
 	for _, c := range cases {

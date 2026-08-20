@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	goruntime "runtime"
 	"sync"
 	"time"
@@ -827,31 +828,59 @@ func (s *ScannerService) UninstallDeleteResidues(paths []string) string {
 // 返回值 JSON：upgrade.CheckResult 或 {name, error}。
 // ToolUpgradeSupported 报告该工具是否有可展示的官方升级命令（有命令才渲染
 // 「检查更新」按钮与结果弹窗，无命令来源不展示提示面板）。
-// 同步判定：读最近扫描结果 → 按来源映射（brew/npm/pipx/cargo 恒有；
-// local-bin 仅已知官方脚本表；go/versioned/other/pyenv 无命令）。
+// 静态来源（brew/npm/pipx/cargo/已知脚本/已知自升级表）同步判定；无静态
+// 命令的来源做 -h 探测兜底（命中自升级子命令 → supported=true）。
+// 探测结果按二进制 real path + size + mtime 缓存，重复渲染不再跑子进程。
 func (s *ScannerService) ToolUpgradeSupported(tool string) string {
-	b, _ := json.Marshal(map[string]any{"tool": tool, "supported": upgrade.HasCommand(scanner.Installer(s.installerOf(tool)), tool)})
+	installer, bin := s.installerOf(tool)
+	if upgrade.HasCommand(scanner.Installer(installer), tool) {
+		b, _ := json.Marshal(map[string]any{"tool": tool, "supported": true})
+		return string(b)
+	}
+	// 无静态命令：探测兜底（仅对安全可探测二进制；探测失败 = 不支持）
+	supported := false
+	if bin != "" {
+		real := bin
+		if r, err := filepath.EvalSymlinks(bin); err == nil {
+			real = r
+		}
+		if scanner.ProbeSafeBinary(scanner.Installer(installer), real, filepath.Base(bin)) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			supported = upgrade.ProbeSelfUpgrade(ctx, real) != ""
+		}
+	}
+	b, _ := json.Marshal(map[string]any{"tool": tool, "supported": supported})
 	return string(b)
 }
 
-// installerOf 返回最近扫描结果中该工具的安装来源（未找到返回空）。
-func (s *ScannerService) installerOf(tool string) string {
+// installerOf 返回最近扫描结果中该工具的安装来源与首个二进制路径。
+// （来源未找到返回空字符串对。）
+func (s *ScannerService) installerOf(tool string) (string, string) {
 	s.mu.Lock()
 	last := s.last
 	s.mu.Unlock()
 	if last == nil {
-		return ""
+		return "", ""
 	}
 	for i := range last.Tools {
 		t := &last.Tools[i]
 		if t.Name == tool {
-			return t.Installer
+			return t.Installer, firstBinOf(t)
 		}
 		for _, a := range t.Aliases {
 			if a == tool {
-				return t.Installer
+				return t.Installer, firstBinOf(t)
 			}
 		}
+	}
+	return "", ""
+}
+
+// firstBinOf 返回工具的首个二进制路径（无二进制返回空）。
+func firstBinOf(t *scanner.Tool) string {
+	if len(t.Binaries) > 0 && t.Binaries[0].Real != "" {
+		return t.Binaries[0].Real
 	}
 	return ""
 }

@@ -148,7 +148,10 @@ func TestOfficialCommand(t *testing.T) {
 		{"cli-analyzer", scanner.InstNpm, "npm update -g cli-analyzer", true},
 		{"black", scanner.InstPipx, "pipx upgrade black", true},
 		{"ripgrep", scanner.InstCargo, "cargo install ripgrep --force", true},
-		{"uv", scanner.InstLocalBin, "curl -LsSf https://astral.sh/uv/install.sh | sh", false},
+		{"uv", scanner.InstLocalBin, "uv self update", true}, // 自升级子命令优先于 curl 脚本
+		{"claude", scanner.InstVersioned, "claude update", true},
+		{"kimi", scanner.InstOther, "kimi upgrade", true},
+		{"codegraph", scanner.InstVersioned, "codegraph upgrade", true},
 		{"poetry", scanner.InstLocalBin, "curl -sSL https://install.python-poetry.org | python3 -", false},
 		{"unknown-tool", scanner.InstLocalBin, "重新运行官方安装脚本（见工具官网）", false},
 		{"dlv", scanner.InstGo, "重新执行当时的 go install（需模块路径）", false},
@@ -196,8 +199,10 @@ func TestHasCommand(t *testing.T) {
 		{"ripgrep", scanner.InstCargo, true},
 		{"pi", scanner.InstNpm, true},
 		{"black", scanner.InstPipx, true},
-		{"uv", scanner.InstLocalBin, true},                // 已知官方脚本表
+		{"uv", scanner.InstLocalBin, true},                // 自升级子命令（uv self update）
 		{"poetry", scanner.InstLocalBin, true},            // 已知官方脚本表
+		{"claude", scanner.InstVersioned, true},           // 已知自升级子命令（claude update）
+		{"kimi", scanner.InstOther, true},                 // 已知自升级子命令（kimi upgrade）
 		{"some-script-tool", scanner.InstLocalBin, false}, // 未知 local-bin 只有提示
 		{"dlv", scanner.InstGo, false},
 		{"python", scanner.InstPyenv, false},
