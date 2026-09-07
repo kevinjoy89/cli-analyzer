@@ -42,6 +42,7 @@ type ScannerService struct {
 	ctx            context.Context
 	mu             sync.Mutex
 	last           *scanner.ScanResult
+	scanning       bool                 // 扫描 single-flight 闸门（ADR-0001）
 	check          *updater.CheckResult // 最近一次更新检查结果
 	downloadedPath string               // 已下载并通过校验的安装包路径
 	downloadCancel context.CancelFunc   // 进行中的下载取消句柄
@@ -98,8 +99,25 @@ func (s *ScannerService) GetLastResult() string {
 
 // Scan starts a background rescan and emits "scan:done" with the JSON result
 // (or an {error} object) when finished.
+//
+// Single-flight（ADR-0001）：已有扫描进行中时本次触发被丢弃——四个触发入口
+// （手动重扫、OrphanTrash 与两处残留处置后的自动重扫）并发触发会造成双倍
+// 全量 IO、双份 history.Record（趋势图重复点）与多个 scan:done 事件；进行中
+// 的那轮结束自然会刷新界面，无需感知被合并的请求。
 func (s *ScannerService) Scan() {
+	s.mu.Lock()
+	if s.scanning {
+		s.mu.Unlock()
+		return
+	}
+	s.scanning = true
+	s.mu.Unlock()
 	go func() {
+		defer func() {
+			s.mu.Lock()
+			s.scanning = false
+			s.mu.Unlock()
+		}()
 		res, err := scanner.Scan(scanner.Options{})
 		if err != nil {
 			runtime.EventsEmit(s.ctx, "scan:done", map[string]any{"error": err.Error()})
@@ -120,8 +138,22 @@ func (s *ScannerService) Scan() {
 // ScanIfChanged 启动时使用：指纹未变化时直接返回缓存结果（不执行全量
 // 扫描、不追加历史），否则走完整扫描；版本探测始终执行（probe 缓存秒回，
 // 缓存命中启动也补齐版本列）。事件契约与 Scan 一致。
+// 与 Scan 共用 single-flight 闸门：手动 Scan 进行中时启动扫描被丢弃
+// （反之亦然），见 ADR-0001。
 func (s *ScannerService) ScanIfChanged() {
+	s.mu.Lock()
+	if s.scanning {
+		s.mu.Unlock()
+		return
+	}
+	s.scanning = true
+	s.mu.Unlock()
 	go func() {
+		defer func() {
+			s.mu.Lock()
+			s.scanning = false
+			s.mu.Unlock()
+		}()
 		res, scanned, err := scanner.ScanIfUnchanged(scanner.Options{})
 		if err != nil {
 			runtime.EventsEmit(s.ctx, "scan:done", map[string]any{"error": err.Error()})
@@ -144,22 +176,27 @@ func (s *ScannerService) ScanIfChanged() {
 // probeAll 为版本未知的工具后台探测版本（--version/-V/--help，超时+缓存），
 // 完成后用更新后的结果发射 probe:done 事件。缓存命中时秒回；挂起工具按
 // 3s 超时中断。失败静默，不产生错误事件。
+//
+// 并发模型：两轮 probeAll（扫描 A 触发的未结束 + 扫描 B 触发的新实例）共享
+// 同一个 s.last 指针时，读循环与写循环都在 mu 外会构成数据竞态——Scan 的
+// single-flight（见 Scan 的注释，ADR-0001）让"扫描 B → probeAll B"与
+// "probeAll A"错开，但不排除手动 Scan 与 ScanIfChanged 同时触发的首秒窗口。
+// 因此统一约定：s.last 的读取在锁内，写回在锁内做完整校验后原子完成。
 func (s *ScannerService) probeAll() {
 	s.mu.Lock()
 	res := s.last
-	s.mu.Unlock()
 	if res == nil {
+		s.mu.Unlock()
 		return
 	}
-	type upd struct {
-		idx int
-		v   string
+	// 探测目标快照：锁内拷贝待探测条目（只读字段），探测全程不触碰 s.last，
+	// 结果在锁内合并——s.last 可能在探测期间被 Scan 整体替换（作废本轮）。
+	type target struct {
+		idx            int
+		real, execPath string
+		size           int64
 	}
-	var (
-		wg      sync.WaitGroup
-		sem     = make(chan struct{}, 8)
-		results = make([]upd, len(res.Tools))
-	)
+	var targets []target
 	for i := range res.Tools {
 		t := &res.Tools[i]
 		if t.Version != "" || len(t.Binaries) == 0 {
@@ -172,6 +209,20 @@ func (s *ScannerService) probeAll() {
 		if !scanner.ProbeSafeBinary(scanner.Installer(t.Installer), b.Real, b.Name) {
 			continue
 		}
+		targets = append(targets, target{i, b.Real, b.Path, b.Size})
+	}
+	s.mu.Unlock()
+
+	type upd struct {
+		idx int
+		v   string
+	}
+	var (
+		wg      sync.WaitGroup
+		sem     = make(chan struct{}, 8)
+		results = make([]upd, len(res.Tools))
+	)
+	for _, tg := range targets {
 		wg.Add(1)
 		sem <- struct{}{}
 		go func(i int, real, execPath string, size int64) {
@@ -180,7 +231,7 @@ func (s *ScannerService) probeAll() {
 			if v, ok := probe.CachedOrRun(real, execPath, size); ok && v != "" {
 				results[i] = upd{i, v}
 			}
-		}(i, b.Real, b.Path, b.Size)
+		}(tg.idx, tg.real, tg.execPath, tg.size)
 	}
 	wg.Wait()
 	probe.Save()
@@ -715,9 +766,15 @@ func (s *ScannerService) runUninstallOfficial(off uninstall.Official) {
 	// GUI 启动 PATH 是最小集：先经（增强的）PATH 解析出命令绝对路径，
 	// 并给子进程注入完整 PATH（npm 内部的 node 等子进程依赖它）。
 	// Windows .cmd/.bat shim（npm 全局）经 cmd.exe /c 执行。
+	// 解析失败不再静默降级为裸名执行——报明确错误并提示自行执行。
 	bin := off.Bin
 	if resolved, rerr := cmdexec.ResolveCommand(off.Bin); rerr == nil {
 		bin = resolved
+	} else {
+		s.mu.Lock()
+		s.unErr = i18n.T("un.resolveFailed", map[string]any{"cmd": off.Command})
+		s.mu.Unlock()
+		return
 	}
 	bin, args := cmdexec.WrapShim(bin, off.Args)
 	cmd := exec.CommandContext(ctx, bin, args...)
@@ -952,10 +1009,17 @@ func (s *ScannerService) runToolUpgrade(name string, cmd upgrade.Command) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	// GUI 启动 PATH 是最小集：经（增强的）PATH 解析命令绝对路径并注入完整
-	// PATH（与 uninstall 代跑一致）。
+	// PATH（与 uninstall 代跑一致）。解析失败不再静默降级为裸名执行——
+	// 那会让用户看到难懂的 "executable file not found in $PATH"，应报明确
+	// 错误并提示自行执行。
 	bin := cmd.Bin
 	if resolved, rerr := cmdexec.ResolveCommand(cmd.Bin); rerr == nil {
 		bin = resolved
+	} else {
+		s.mu.Lock()
+		s.ugErr = i18n.T("up.resolveFailed", map[string]any{"cmd": cmd.Command})
+		s.mu.Unlock()
+		return
 	}
 	c := exec.CommandContext(ctx, bin, cmd.Args...)
 	platform.HideConsoleWindow(c) // Windows: 不闪控制台窗口

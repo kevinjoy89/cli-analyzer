@@ -23,6 +23,9 @@ go vet ./...
 echo "==> go test ./..."
 go test ./...
 
+echo "==> go test -race ./gui/（GUI 并发边界：probeAll/single-flight/下载取消）"
+go test -race ./gui/
+
 echo "==> 前端单测 (vitest)"
 (cd frontend && npm test)
 

@@ -447,7 +447,7 @@ export function showUpdateAvailable(res: import("./state").UpdateResult) {
         ? `<button class="btn primary" id="updDownload">${esc(t("upd.download"))}</button>`
         : `<button class="btn primary" id="updRelease">${esc(t("upd.releasePage"))}</button>`;
     body.innerHTML = `
-        <p class="update-versions">${t("upd.versions", { current: res.current, latest: res.latest })}</p>
+        <p class="update-versions">${t("upd.versions", { current: esc(res.current), latest: esc(res.latest) })}</p>
         <p class="muted">${esc(t("upd.manualInstall"))}</p>
         <div class="update-actions">
             <button class="btn" id="updLater">${esc(t("upd.later"))}</button>
@@ -890,7 +890,7 @@ function showUpgradeResult(
         return;
     }
     body.innerHTML = `
-        <p class="update-versions">${t("up.guiFound", { tool: res.name, current: res.current, latest: res.latest })}</p>
+        <p class="update-versions">${t("up.guiFound", { tool: esc(res.name), current: esc(res.current ?? ""), latest: esc(res.latest ?? "") })}</p>
         ${cmdHtml}
         <p id="ugOut" class="muted un-output"></p>
         <div class="update-actions">

@@ -180,6 +180,13 @@ func TestOfficialCommand(t *testing.T) {
 	if got.Args[2] != "@earendil-works/pi-coding-agent" {
 		t.Errorf("npm mapped tool should use real pkg name, args = %v", got.Args)
 	}
+	// 旧缓存缺 Package 时 OfficialCommand 的 pkg 为空 → officialCommand 内部
+	// 回退 NpmPackageFor；对不在逆映射表的裸名即工具名本身，仍可代跑。
+	// 但官方命令层面绝不允许空参数（`npm update -g ""`），此处钉住该契约。
+	got = OfficialCommand(scanner.InstNpm, "known-short-name", "")
+	if got.Runnable && got.Args[len(got.Args)-1] == "" {
+		t.Errorf("npm command must never carry an empty pkg arg, args = %v", got.Args)
+	}
 	// 未知 local-bin 回退通用提示
 	got = OfficialCommand(scanner.InstLocalBin, "some-script-tool", "")
 	if got.Command == "" {

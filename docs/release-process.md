@@ -30,6 +30,8 @@
 gofmt -l .                    # 必须为空！CI "Check formatting" 步骤会失败
 go vet ./...
 go test ./... -cover          # 全量（含 i18n parity、孤儿过滤等集成测试）
+go test -race ./gui/          # GUI 并发边界（probeAll/single-flight 等）至少每次发布跑一次 -race；
+                              # 改动 gui/ 或涉及并发的包时 MUST 全量 go test -race ./...
 cd frontend && npm test       # vitest
 npx tsc --noEmit              # 类型检查
 cd .. && for os in windows linux darwin; do GOOS=$os go build ./...; done  # 三平台编译

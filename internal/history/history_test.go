@@ -2,6 +2,7 @@ package history
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -191,5 +192,46 @@ func TestTrendsEmptySerializesWithoutNull(t *testing.T) {
 	b, _ := json.Marshal(tr)
 	if strings.Contains(string(b), "null") {
 		t.Errorf("无历史时序列化不应出现 null: %s", b)
+	}
+}
+
+// TestOpenRecoversFromCorruptDB 验证损坏库自愈：WAL 中断/磁盘满留下的损坏
+// history.db 不应让趋势功能永久瘫痪——open 检测到 corruption 错误时备份
+// 原文件（history.db.corrupt-<时间戳>）后重建空库，后续写入正常。
+func TestOpenRecoversFromCorruptDB(t *testing.T) {
+	withTempDB(t)
+	// 造一个非 SQLite 文件冒充损坏库（"file is not a database" 路径）
+	if err := os.WriteFile(dbPath(), []byte("this is definitely not a sqlite database, padding to 16+ bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	db, err := open()
+	if err != nil {
+		t.Fatalf("open 应自愈而非报错: %v", err)
+	}
+	db.Close()
+	// 原库文件已留档
+	entries, err := os.ReadDir(filepath.Dir(dbPath()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kept bool
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".corrupt-") {
+			kept = true
+		}
+	}
+	if !kept {
+		t.Errorf("损坏库应备份为 .corrupt-<时间戳>，目录内容: %v", entries)
+	}
+	// 自愈后的库可正常记录与查询
+	if err := Record(mkRes(rfc3339(time.Now()), tool("npm", 100))); err != nil {
+		t.Fatalf("自愈后 Record 失败: %v", err)
+	}
+	tr, err := Trends(30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tr.Points) != 1 {
+		t.Fatalf("自愈后应能正常写入查询, points = %d", len(tr.Points))
 	}
 }

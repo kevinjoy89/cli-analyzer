@@ -54,8 +54,16 @@ var blocklist = map[string]bool{
 // （node@，如 node@20 公式）、go 系（go@）均属系统关键工具。
 func IsBlocked(name string) bool {
 	n := strings.ToLower(strings.TrimSpace(name))
-	for _, ext := range []string{".exe", ".cmd", ".bat"} {
-		n = strings.TrimSuffix(n, ext)
+	// 循环剥离：畸形双扩展名（python.exe.exe）也要拦——黑名单是纵深防御，
+	// 不给任何拼装形态留口子
+	for changed := true; changed; {
+		changed = false
+		for _, ext := range []string{".exe", ".cmd", ".bat"} {
+			if s := strings.TrimSuffix(n, ext); s != n {
+				n = s
+				changed = true
+			}
+		}
 	}
 	if blocklist[n] {
 		return true
@@ -103,8 +111,13 @@ func officialCommand(installer scanner.Installer, name, binName, pkg string) Off
 	case scanner.InstBrew:
 		return Official{Command: "brew uninstall " + name, Runnable: true, Bin: "brew", Args: []string{"uninstall", name}}
 	case scanner.InstNpm:
+		// 旧扫描缓存缺 Package 且短名不在逆映射表时 pkg 为空：空参数会跑出
+		// `npm uninstall -g ""` 这样注定失败且报错难懂的命令，降级为提示。
 		if pkg == "" {
 			pkg = scanner.NpmPackageFor(name)
+		}
+		if pkg == "" {
+			return Official{Command: "npm uninstall -g <真实包名>（未能解析，见工具 package.json）"}
 		}
 		return Official{Command: "npm uninstall -g " + pkg, Runnable: true, Bin: "npm", Args: []string{"uninstall", "-g", pkg}}
 	case scanner.InstPipx:

@@ -39,6 +39,8 @@ var localBinScripts = map[string]string{
 // 这些工具无包管理器来源（versioned/other/local-bin），但 -h 里提供官方
 // 自升级方式（claude update / kimi upgrade / codegraph upgrade / uv self update）。
 // 静态表优先于 -h 探测：命中即免子进程，且命令形态可人工核对。
+// 注：-h 探测（parseSelfUpgradeSub）只认 update/upgrade 子命令，"self update"
+// 这类带前缀的形态探测不到——uv 的可代跑升级完全依赖本表静态命中。
 var selfUpgradeSub = map[string]string{
 	"claude":    "update",
 	"kimi":      "upgrade",
@@ -276,8 +278,13 @@ func officialCommand(installer scanner.Installer, name, binName, pkg string) Com
 		// 工具名可能是合并后的短名（npmToolID 映射，如 pi →
 		// @earendil-works/pi-coding-agent，也可能是撞名的真实短名包）；
 		// npm 按真实包名寻址，用错名会静默误报「已最新」或代跑失败。
+		// 旧扫描缓存缺 Package 且短名不在逆映射表时 pkg 为空——空参数会跑出
+		// `npm update -g ""` 这样注定失败且报错难懂的命令，降级为提示。
 		if pkg == "" {
 			pkg = scanner.NpmPackageFor(name)
+		}
+		if pkg == "" {
+			return Command{Command: "npm update -g <真实包名>（未能解析，见工具 package.json）"}
 		}
 		return Command{Command: "npm update -g " + pkg, Runnable: true, Bin: "npm", Args: []string{"update", "-g", pkg}}
 	case scanner.InstPipx:

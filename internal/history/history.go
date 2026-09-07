@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"cli-analyzer/internal/platform"
@@ -61,11 +62,31 @@ CREATE TABLE IF NOT EXISTS scan_tools (
 CREATE INDEX IF NOT EXISTS idx_scan_tools_scan ON scan_tools(scan_id);
 `
 
-// open 打开数据库并确保表结构存在；首次运行会先创建父目录
+// open 打开数据库并确保表结构存在；首次运行会先创建父目录。
+// 损坏自愈：WAL 被中断（进程在写入中被杀）或磁盘满可留下损坏的库文件，
+// 之后所有读写永久报错、趋势功能瘫痪。检测到 corruption 错误时把库文件
+// 改名留档（history.db.corrupt-<时间戳>，不静默丢弃）后重建空库。
 func open() (*sql.DB, error) {
 	if err := os.MkdirAll(filepath.Dir(dbPath()), 0o755); err != nil {
 		return nil, err
 	}
+	db, err := openDB()
+	if err == nil {
+		return db, nil
+	}
+	if !isCorruptErr(err) {
+		return nil, err
+	}
+	stamp := time.Now().Format("20060102-150405")
+	_ = os.Rename(dbPath(), dbPath()+".corrupt-"+stamp)
+	// WAL/SHM 伴随文件一并挪走，避免新库读到旧侧车文件
+	_ = os.Rename(dbPath()+"-wal", dbPath()+".corrupt-"+stamp+"-wal")
+	_ = os.Rename(dbPath()+"-shm", dbPath()+".corrupt-"+stamp+"-shm")
+	return openDB()
+}
+
+// openDB 是 open 的无自愈版本
+func openDB() (*sql.DB, error) {
 	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)", dbPath())
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -76,6 +97,19 @@ func open() (*sql.DB, error) {
 		return nil, err
 	}
 	return db, nil
+}
+
+// isCorruptErr 报告 err 是否为 SQLite 库损坏类错误（modernc.org/sqlite 把
+// SQLITE_CORRUPT/SQLITE_NOTADB 映射为 "database disk image is malformed" /
+// "file is not a database"）。
+func isCorruptErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "malformed") ||
+		strings.Contains(msg, "not a database") ||
+		strings.Contains(msg, "corrupt")
 }
 
 // Record 将一次扫描快照追加到历史；写入失败返回 error（调用方自行决定是否静默）

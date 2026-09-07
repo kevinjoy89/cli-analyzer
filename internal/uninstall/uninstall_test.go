@@ -56,11 +56,31 @@ func TestIsBlocked(t *testing.T) {
 			t.Errorf("IsBlocked(%q) = true, want false", name)
 		}
 	}
-	// Windows 扩展名变体同样命中黑名单
-	for _, ex := range []string{"ssh.exe", "SSH.EXE", "cmd.exe", "powershell.exe", "wsl.exe"} {
+	// Windows 扩展名变体同样命中黑名单（含畸形多层扩展名：黑名单是纵深防御，
+	// 不给拼装形态留口子）
+	for _, ex := range []string{"ssh.exe", "SSH.EXE", "cmd.exe", "powershell.exe", "wsl.exe", "python.exe.exe", "npm.cmd.exe"} {
 		if !IsBlocked(ex) {
 			t.Errorf("IsBlocked(%q) = false, want true (extension variant)", ex)
 		}
+	}
+}
+
+// TestOfficialCommandNpmUnknownPkg 提示级降级：npm 按真实包名寻址，pkg 为空
+// 时（旧缓存缺 Package、NpmPackageFor 也解析不出，如 name 本身为空）绝不能
+// 产出空参数的可代跑命令（`npm uninstall -g ""` 注定失败且报错难懂），
+// 必须降级为不可代跑的提示。
+func TestOfficialCommandNpmUnknownPkg(t *testing.T) {
+	off := OfficialCommand(scanner.InstNpm, "", "")
+	if off.Runnable {
+		t.Errorf("npm empty pkg: runnable = true, want false")
+	}
+	if off.Command == "" || strings.Contains(off.Command, "-g  ") {
+		t.Errorf("npm empty pkg: command = %q, want 提示文案（非空参数命令）", off.Command)
+	}
+	// 常规路径不受影响：未知裸名经 NpmPackageFor 回退为工具名本身，仍可代跑
+	off = OfficialCommand(scanner.InstNpm, "totally-unknown-pkg-xyz", "x")
+	if !off.Runnable || off.Args[len(off.Args)-1] != "totally-unknown-pkg-xyz" {
+		t.Errorf("npm fallback-to-name path broken: %+v", off)
 	}
 }
 
