@@ -246,6 +246,12 @@ function makeToolRow(tool: Tool): HTMLDivElement {
     row.className = "tool-row" + (tool.name === selected ? " selected" : "");
     const clean =
         tool.cleanableBytes > 0 ? `<span class="cleanable-flag">✓</span>` : "";
+    // 安装占用：无安装根（Electron 桌面端在 /Applications 不测量、自包含
+    // 数据布局、已卸载残留）显示 "—"，与真实的 0 字节安装区分开
+    const hasInstall = tool.dataDirs.some((d) => d.kind === "install");
+    const installCell = hasInstall
+        ? `<span class="num user">${hb(tool.userBytes)}</span>`
+        : `<span class="num user muted">—</span>`;
     // AI 编目：类别徽章（agent=蓝 / ai-ide=紫）与「已卸载」标注（数据残留的已卸载工具）
     const cat = tool.category
         ? `<span class="cat-badge cat-${esc(tool.category)}">${esc(categoryLabel(tool.category))}</span>`
@@ -258,7 +264,7 @@ function makeToolRow(tool: Tool): HTMLDivElement {
         <span class="ver">${esc(tool.version || "—")}</span>
         <span class="num">${hb(tool.footprintBytes)}</span>
         <span class="num clean">${hb(tool.cleanableBytes)}${clean}</span>
-        <span class="num user">${hb(tool.userBytes)}</span>`;
+        ${installCell}`;
     row.onclick = () => {
         setSelected(tool.name);
         selectedCleanIds.clear();

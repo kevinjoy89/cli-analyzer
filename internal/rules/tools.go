@@ -23,8 +23,11 @@ var curated = []Rule{
 			dd(platform.Home, ".claude/shell-snapshots", TierUser, KindCheckpoint),
 			dd(platform.Home, ".claude/plugins", TierUser, KindPlugins),
 			dd(platform.Home, ".claude/telemetry", TierSafe, KindTelemetry),
-			// ~/.local/share/claude 同时是版本化安装基目录（versions/）
-			dd(platform.XDGData, "claude", TierUser, "data"),
+			// 版本化安装基目录（versions/ 617M 级）：必须标 install 而非
+			// data——标 data 会把安装本体列为可处置项（clean --include-data
+			// 误删 claude 安装），且安装占用列被吞成 0。旧版本清理由
+			// deriveOldVersions 基于 installRoot 生成，不受此影响。
+			dd(platform.XDGData, "claude", TierUser, "install"),
 			dd(platform.XDGConfig, "claude", TierUser, "config"),
 			dd(platform.XDGCache, "claude", TierSafe, "cache"),
 		},

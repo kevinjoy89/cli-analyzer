@@ -2,6 +2,8 @@ package rules
 
 import (
 	"testing"
+
+	"cli-analyzer/internal/platform"
 )
 
 // TestAICatalogEntries 校验第一批 AI 编目条目（add-ai-tool-catalog）：
@@ -100,4 +102,23 @@ func TestMarsCodeIndexTier(t *testing.T) {
 		}
 	}
 	t.Error("marscode 缺少 .ckg 索引规则")
+}
+
+// TestClaudeInstallBaseIsInstall 校验 claude 的版本化安装基目录
+// （~/.local/share/claude，含 versions/）标为 install 而非 data：
+// 标 data 会把安装本体列为可处置项（误删风险）并吞掉安装占用列。
+func TestClaudeInstallBaseIsInstall(t *testing.T) {
+	r := Load().Lookup("claude")
+	if r == nil {
+		t.Fatal("缺少 claude 条目")
+	}
+	for _, d := range r.DataDirs {
+		if d.Root == platform.XDGData && d.Sub == "claude" {
+			if d.Kind != "install" {
+				t.Errorf("XDGData/claude kind = %q, want install", d.Kind)
+			}
+			return
+		}
+	}
+	t.Error("claude 缺少 XDGData/claude 规则")
 }
