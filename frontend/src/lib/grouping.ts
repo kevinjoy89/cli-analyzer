@@ -57,3 +57,27 @@ export function pathInside(dir: string, p: string): boolean {
     if (dn === pn) return false;
     return pn.startsWith(dn.endsWith("/") ? dn : dn + "/");
 }
+
+// FormSubtotals 是形态占用小计（add-form-factor-split）：桌面端（应用包 +
+// 桌面端数据目录）与 CLI 各自合计。
+export interface FormSubtotals {
+    desktop: number;
+    cli: number;
+}
+
+// formSubtotals 按极大路径口径分形态合计：父目录与子目录并存时不重复
+// 计入（与后端 cleanableBytes 的 sumMaximal 同口径）。form 缺省按 CLI 计。
+export function formSubtotals(
+    dirs: Array<{ path: string; bytes: number; form?: string }>,
+): FormSubtotals {
+    const maximal = dirs.filter(
+        (d) => !dirs.some((o) => o.path !== d.path && pathInside(o.path, d.path)),
+    );
+    let desktop = 0;
+    let cli = 0;
+    for (const d of maximal) {
+        if (d.form === 'desktop') desktop += d.bytes;
+        else cli += d.bytes;
+    }
+    return { desktop, cli };
+}

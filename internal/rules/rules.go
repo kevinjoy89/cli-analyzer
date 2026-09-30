@@ -23,6 +23,10 @@ type DataDirRule struct {
 	Path string            // literal absolute path (takes precedence)
 	Tier string
 	Kind string // config|data|cache|install|state
+	// Form 是形态标注（FormDesktop / 空）：desktop = 桌面端形态的目录
+	// （AppSupport 桌面数据、.app 应用包——后者由 scanner 按路径自动标）；
+	// 空 = CLI 形态或未标注（展示按 cli 计）。
+	Form string
 }
 
 // CleanRule describes one cleanable item.

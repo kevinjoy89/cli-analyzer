@@ -104,7 +104,7 @@ func attribute(tools map[string]*toolBuilder, order []string, ruleTable *rules.T
 		if cur != nil {
 			for _, dr := range cur.DataDirs {
 				if p := dr.Resolve(); p != "" {
-					tb.dataDirs = append(tb.dataDirs, DataDir{Path: p, Tier: Tier(dr.Tier), Kind: dr.Kind})
+					tb.dataDirs = append(tb.dataDirs, DataDir{Path: p, Tier: Tier(dr.Tier), Kind: dr.Kind, Form: dr.Form})
 					tb.addMeasure(p)
 				}
 			}
@@ -205,12 +205,13 @@ func attribute(tools map[string]*toolBuilder, order []string, ruleTable *rules.T
 				tb.uninstalled = true
 			}
 			// 桌面端应用包计入安装占用（add-ai-app-bundle-sizing）：声明了
-			// Apps 的 AI 条目，实际存在的 .app 包作为 install 归因。应用包
-			// 缺失（桌面端未安装）时不归因，与 uninstalled 口径一致。
+			// Apps 的 AI 条目，实际存在的 .app 包作为 install 归因（形态自动
+			// 标 desktop）。应用包缺失（桌面端未安装）时不归因，与
+			// uninstalled 口径一致。
 			if cur.Category != "" && len(cur.Apps) > 0 {
 				for _, p := range appBundlePaths(cur.Apps) {
 					if st, err := os.Stat(p); err == nil && st.IsDir() {
-						tb.dataDirs = append(tb.dataDirs, DataDir{Path: p, Tier: TierUser, Kind: "install"})
+						tb.dataDirs = append(tb.dataDirs, DataDir{Path: p, Tier: TierUser, Kind: "install", Form: rules.FormDesktop})
 						tb.addMeasure(p)
 					}
 				}

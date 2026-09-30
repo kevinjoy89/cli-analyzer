@@ -108,6 +108,9 @@ type DataDir struct {
 	Tier  Tier   `json:"tier"`
 	Kind  string `json:"kind"`           // config|data|cache|install|state
 	Root  string `json:"root,omitempty"` // 所在数据根类型（孤儿数据专用）
+	// Form 是形态标注（desktop / 空）：桌面端应用包与桌面端数据目录为
+	// desktop；空 = CLI 形态（详情页形态小计按 cli 计）。
+	Form string `json:"form,omitempty"`
 }
 
 // SubEntry is one direct child (file or dir) of a cleanable path, used to

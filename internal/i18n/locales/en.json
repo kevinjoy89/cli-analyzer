@@ -401,5 +401,10 @@
   "ui.sessionDb.note": "Session database: contains conversation history and cannot be recovered once deleted; direct cleanup is not supported yet",
   "ui.group.ai": "AI coding tools ({n} · {size})",
   "ui.group.others": "Other CLI tools ({n} · {size})",
-  "cln.subsumed": "already included in a selected parent directory"
+  "cln.subsumed": "already included in a selected parent directory",
+  "ui.form.title": "By form factor",
+  "ui.form.desktop": "Desktop",
+  "ui.form.cli": "CLI",
+  "ui.form.desktopShare": "app bundle and desktop data, {pct} of footprint",
+  "ui.form.cliShare": "CLI data and install root, {pct} of footprint"
 }

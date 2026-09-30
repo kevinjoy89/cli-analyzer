@@ -18,7 +18,7 @@ import {
 import { setOthersExpanded, setPanelView, setSelected, setSortDir, setSortKey } from "./state";
 import type { SortKey } from "./state";
 import { hb } from "./lib/format";
-import { groupTools, pathInside } from "./lib/grouping";
+import { formSubtotals, groupTools, pathInside } from "./lib/grouping";
 import { fmtTime, t } from "./lib/i18n";
 import { categoryLabel, isSessionDBKind, kindLabel, orphanRootLabel } from "./lib/labels";
 import { computeTrendPaths } from "./lib/trends";
@@ -45,6 +45,12 @@ export function setOrphanConfirmHandler(fn: (paths: string[]) => void) {
 }
 export function setConfirmHandler(fn: (items: PickItem[]) => void) {
     confirmHandler = fn;
+}
+
+// pctOf 返回 part 占 total 的百分比字符串（total 为 0 时返回 "0%"）。
+function pctOf(part: number, total: number): string {
+    if (!total) return "0%";
+    return Math.round((part / total) * 100) + "%";
 }
 
 // ---- summary ----
@@ -476,6 +482,15 @@ export function renderDetail() {
             <div class="meta-row">${metaItems.join("")}${tool.homepage ? `<a class="meta-link" id="hpLink" href="#">${esc(t("ui.homepage"))}</a>` : ""}</div>
           </div>`
             : "";
+    // 形态占用小计（add-form-factor-split）：双形态条目分桌面端 / CLI 合计，
+    // 极大路径口径（父子目录不重复计入），两行之和 = 总占用
+    const subtotals = formSubtotals(tool.dataDirs);
+    const formHtml = tool.category
+        ? `<div class="detail-section"><h4>${esc(t("ui.form.title"))}</h4><div class="detail-list">
+            <div class="detail-item"><span class="badge installer">${esc(t("ui.form.desktop"))}</span><span class="path">${esc(t("ui.form.desktopShare", { pct: pctOf(subtotals.desktop, tool.footprintBytes) }))}</span><span class="size">${hb(subtotals.desktop)}</span></div>
+            <div class="detail-item"><span class="badge safe">${esc(t("ui.form.cli"))}</span><span class="path">${esc(t("ui.form.cliShare", { pct: pctOf(subtotals.cli, tool.footprintBytes) }))}</span><span class="size">${hb(subtotals.cli)}</span></div>
+          </div></div>`
+        : "";
     const binaries = tool.binaries.length
         ? `<div class="detail-list">${tool.binaries
               .map(
@@ -542,6 +557,7 @@ export function renderDetail() {
     body.innerHTML = `
         <div class="detail-head"><h2>${esc(tool.name)}</h2>${installer}${catBadge}${uninstBadge}</div>
         ${metaHtml}
+        ${formHtml}
         <div class="detail-section"><h4>${esc(t("ui.sectionBinaries"))}</h4>${binaries}</div>
         ${installHtml ? `<div class="detail-section"><h4>${esc(t("ui.sectionInstallRoot"))}</h4>${installHtml}</div>` : ""}
         ${reportHtml}

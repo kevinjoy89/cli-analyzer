@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { groupTools, matchesFilter, pathInside } from './grouping';
+import { formSubtotals, groupTools, matchesFilter, pathInside } from './grouping';
 import type { Tool } from './types';
 
 // 与 Go JSON 契约同构的最小 Tool 构造（grouping 只消费 name/aliases/
@@ -84,5 +84,29 @@ describe('pathInside', () => {
     it('带尾斜杠与 Windows 反斜杠路径', () => {
         expect(pathInside('/home/u/.kimi-code/', '/home/u/.kimi-code/bin')).toBe(true);
         expect(pathInside('C:\\Users\\u\\.kimi-code', 'C:\\Users\\u\\.kimi-code\\bin')).toBe(true);
+    });
+});
+
+describe('formSubtotals', () => {
+    it('按 form 分形态合计', () => {
+        const s = formSubtotals([
+            { path: '/a/app.app', bytes: 300, form: 'desktop' },
+            { path: '/a/data', bytes: 100, form: 'desktop' },
+            { path: '/b/cli-data', bytes: 50 },
+        ]);
+        expect(s.desktop).toBe(400);
+        expect(s.cli).toBe(50);
+    });
+    it('父子目录极大路径去重', () => {
+        const s = formSubtotals([
+            { path: '/home/u/.kimi-code', bytes: 556 },
+            { path: '/home/u/.kimi-code/bin', bytes: 353 },
+            { path: '/a/Kimi Code.app', bytes: 295, form: 'desktop' },
+        ]);
+        expect(s.cli).toBe(556); // bin 被父目录包含，不重复计入
+        expect(s.desktop).toBe(295);
+    });
+    it('空输入返回零', () => {
+        expect(formSubtotals([])).toEqual({ desktop: 0, cli: 0 });
     });
 });

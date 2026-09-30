@@ -48,7 +48,7 @@ var curated = []Rule{
 			dd(platform.Home, ".kimi-webbridge", TierUser, "data"),
 			dd(platform.Home, ".kimi-work", TierUser, "data"),
 			// Kimi Code 桌面端数据
-			dd(platform.MacAppSupport, "kimi-code-app", TierUser, "data"),
+			ddDesktop(platform.MacAppSupport, "kimi-code-app", TierUser, "data"),
 		},
 	},
 	{
@@ -90,8 +90,8 @@ var curated = []Rule{
 			// 伴随命令经 companion 家族归并后随行认领
 			dd(platform.Home, ".opencode", TierUser, "install"),
 			// OpenCode.app 桌面端（2026-09-30 实测 ai.opencode.desktop 1.1G）
-			dd(platform.MacAppSupport, "ai.opencode.desktop", TierUser, "data"),
-			dd(platform.MacAppSupport, "@opencode-ai", TierUser, "data"),
+			ddDesktop(platform.MacAppSupport, "ai.opencode.desktop", TierUser, "data"),
+			ddDesktop(platform.MacAppSupport, "@opencode-ai", TierUser, "data"),
 		},
 	},
 	{
@@ -232,7 +232,7 @@ var curated = []Rule{
 			dd(platform.Home, ".dsh/profiles", TierUser, "config"),
 			dd(platform.Home, ".dsh/attachments", TierUser, KindArtifacts),
 			// DeepSeek Harness 桌面端数据
-			dd(platform.MacAppSupport, "@deepseek-ai", TierUser, "data"),
+			ddDesktop(platform.MacAppSupport, "@deepseek-ai", TierUser, "data"),
 		},
 	},
 	{
@@ -263,8 +263,8 @@ var curated = []Rule{
 			dd(platform.Home, ".codex/plugins", TierSafe, KindRuntime),
 			dd(platform.Home, ".codex/packages", TierSafe, KindRuntime),
 			// Codex 桌面端数据（Electron Chromium profile）
-			dd(platform.MacAppSupport, "Codex", TierUser, "data"),
-			dd(platform.MacAppSupport, "com.openai.codex", TierUser, "data"),
+			ddDesktop(platform.MacAppSupport, "Codex", TierUser, "data"),
+			ddDesktop(platform.MacAppSupport, "com.openai.codex", TierUser, "data"),
 		},
 		Cleanables: []CleanRule{
 			// Only leftover install-staging dirs are cleanable; the active
@@ -304,6 +304,14 @@ var curated = []Rule{
 
 func dd(root platform.RootKind, sub, tier, kind string) DataDirRule {
 	return DataDirRule{Root: root, Sub: sub, Tier: tier, Kind: kind}
+}
+
+// ddDesktop 是桌面端形态（Form = desktop）的目录规则：桌面端 AppSupport
+// 数据、Windows 桌面端镜像目录等。
+func ddDesktop(root platform.RootKind, sub, tier, kind string) DataDirRule {
+	r := dd(root, sub, tier, kind)
+	r.Form = FormDesktop
+	return r
 }
 
 func cl(root platform.RootKind, sub, tier, kind, keep, desc string) CleanRule {

@@ -1,6 +1,6 @@
 // 与 Go JSON 契约一致的共享类型，供 main.ts 与 lib/ 纯逻辑模块使用
 export interface Binary { name: string; path: string; real: string; size: number }
-export interface DataDir { path: string; bytes: number; tier: string; kind: string; root?: string }
+export interface DataDir { path: string; bytes: number; tier: string; kind: string; root?: string; form?: string }
 export interface SubEntry { id: string; path: string; bytes: number; kind?: string }
 
 export interface Cleanable {

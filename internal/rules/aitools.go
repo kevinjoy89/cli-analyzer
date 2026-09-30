@@ -67,7 +67,7 @@ var aiCurated = []Rule{
 			dd(platform.Home, ".zcode/cli/rollout", TierUser, KindSession),
 			dd(platform.Home, ".zcode/cli/image-cache", TierSafe, "cache"),
 			dd(platform.Home, ".zcode/computer-use", TierUser, KindArtifacts),
-			dd(platform.MacAppSupport, "ZCode", TierUser, "data"),
+			ddDesktop(platform.MacAppSupport, "ZCode", TierUser, "data"),
 		},
 	},
 	{
@@ -80,8 +80,8 @@ var aiCurated = []Rule{
 		Category: CategoryAgent,
 		Apps:     []string{"Antigravity", "Antigravity Tools"},
 		DataDirs: []DataDirRule{
-			dd(platform.MacAppSupport, "Antigravity", TierUser, "data"),
-			dd(platform.MacAppSupport, "com.lbjlaq.antigravity-tools", TierUser, "data"),
+			ddDesktop(platform.MacAppSupport, "Antigravity", TierUser, "data"),
+			ddDesktop(platform.MacAppSupport, "com.lbjlaq.antigravity-tools", TierUser, "data"),
 			dd(platform.AppData, "Antigravity", TierUser, "data"),
 		},
 	},
@@ -99,7 +99,7 @@ var aiCurated = []Rule{
 			dd(platform.Home, ".workbuddy/blobs", TierUser, KindArtifacts),
 			// projects 为会话/工作区混合数据，语义待确认，先按会话标注
 			dd(platform.Home, ".workbuddy/projects", TierUser, KindSession),
-			dd(platform.AppData, "WorkBuddy", TierUser, "data"),
+			ddDesktop(platform.AppData, "WorkBuddy", TierUser, "data"),
 		},
 	},
 	{
@@ -112,7 +112,7 @@ var aiCurated = []Rule{
 			// 捆绑的 pi 运行时（2026-09-30 实测 461M）
 			dd(platform.Home, ".u1s1/agent/npm", TierSafe, KindRuntime),
 			dd(platform.Home, ".u1s1/agent/sessions", TierUser, KindSession),
-			dd(platform.AppData, "u1s1", TierUser, "data"),
+			ddDesktop(platform.AppData, "u1s1", TierUser, "data"),
 		},
 	},
 	{
@@ -130,8 +130,8 @@ var aiCurated = []Rule{
 		Apps: []string{"Gemini 2"},
 		DataDirs: []DataDirRule{
 			dd(platform.Home, ".gemini", TierUser, "data"),
-			dd(platform.MacAppSupport, "Gemini 2", TierUser, "data"),
-			dd(platform.MacAppSupport, "cloud-code", TierUser, "data"),
+			ddDesktop(platform.MacAppSupport, "Gemini 2", TierUser, "data"),
+			ddDesktop(platform.MacAppSupport, "cloud-code", TierUser, "data"),
 		},
 	},
 	// ---- AI IDE ----
@@ -142,15 +142,15 @@ var aiCurated = []Rule{
 		Category: CategoryAIIde,
 		Apps:     []string{"Visual Studio Code"},
 		DataDirs: []DataDirRule{
-			dd(platform.MacAppSupport, "Code", TierUser, "data"),
-			dd(platform.MacAppSupport, "Code/User/workspaceStorage", TierUser, KindWorkspaceData),
-			dd(platform.MacAppSupport, "Code/CachedData", TierSafe, "cache"),
-			dd(platform.MacAppSupport, "JoyCoder", TierUser, "data"),
-			dd(platform.MacAppSupport, "CodeBuddyExtension", TierUser, "data"),
+			ddDesktop(platform.MacAppSupport, "Code", TierUser, "data"),
+			ddDesktop(platform.MacAppSupport, "Code/User/workspaceStorage", TierUser, KindWorkspaceData),
+			ddDesktop(platform.MacAppSupport, "Code/CachedData", TierSafe, "cache"),
+			ddDesktop(platform.MacAppSupport, "JoyCoder", TierUser, "data"),
+			ddDesktop(platform.MacAppSupport, "CodeBuddyExtension", TierUser, "data"),
 			// Windows 官方数据路径镜像
-			dd(platform.AppData, "Code", TierUser, "data"),
-			dd(platform.AppData, `Code\User\workspaceStorage`, TierUser, KindWorkspaceData),
-			dd(platform.LocalAppData, "Code", TierUser, "data"),
+			ddDesktop(platform.AppData, "Code", TierUser, "data"),
+			ddDesktop(platform.AppData, `Code\User\workspaceStorage`, TierUser, KindWorkspaceData),
+			ddDesktop(platform.LocalAppData, "Code", TierUser, "data"),
 		},
 	},
 	{
@@ -158,9 +158,9 @@ var aiCurated = []Rule{
 		Name: "trae-cn", Installer: "other", Category: CategoryAIIde,
 		Apps: []string{"Trae CN"},
 		DataDirs: []DataDirRule{
-			dd(platform.Home, ".trae-cn", TierUser, "data"),
-			dd(platform.MacAppSupport, "Trae CN", TierUser, "data"),
-			dd(platform.AppData, "Trae CN", TierUser, "data"),
+			ddDesktop(platform.Home, ".trae-cn", TierUser, "data"),
+			ddDesktop(platform.MacAppSupport, "Trae CN", TierUser, "data"),
+			ddDesktop(platform.AppData, "Trae CN", TierUser, "data"),
 		},
 	},
 	{
@@ -169,8 +169,11 @@ var aiCurated = []Rule{
 		Name: "marscode", Installer: "other", Category: CategoryAIIde,
 		Apps: []string{"MarsCode"},
 		DataDirs: []DataDirRule{
-			dd(platform.Home, ".marscode", TierUser, "data"),
-			dd(platform.Home, ".marscode/.ckg", TierSafe, KindIndex),
+			ddDesktop(platform.Home, ".marscode", TierUser, "data"),
+			ddDesktop(platform.Home, ".marscode/.ckg", TierSafe, KindIndex),
 		},
 	},
 }
+
+// FormDesktop 是桌面端形态的 Form 标注值（add-form-factor-split）。
+const FormDesktop = "desktop"
