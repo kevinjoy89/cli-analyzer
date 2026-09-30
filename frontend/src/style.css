@@ -8,6 +8,7 @@
     --text: #1a1f29;
     --muted: #6b7280;
     --clean: #16a34a;
+    --violet: #7c3aed;
     --user: #2563eb;
     --amber: #d97706;
     --danger: #dc2626;
@@ -38,6 +39,7 @@
     --text: #1a1f29;
     --muted: #6b7280;
     --clean: #16a34a;
+    --violet: #7c3aed;
     --user: #2563eb;
     --amber: #d97706;
     --danger: #dc2626;
@@ -65,6 +67,7 @@
     --text: #e6e8ee;
     --muted: #8b90a0;
     --clean: #4ade80;
+    --violet: #a78bfa;
     --user: #60a5fa;
     --amber: #fbbf24;
     --danger: #ef4444;
@@ -382,9 +385,17 @@ body.platform-linux #header { padding-top: 10px; }
     border-radius: 999px;
     vertical-align: 1px;
     font-family: var(--mono);
+}
+/* 类别配色：agent=蓝（执行/工具链），ai-ide=紫（工作台）；深浅主题各一档 */
+.cat-badge.cat-agent {
     background: color-mix(in srgb, var(--accent) 14%, transparent);
     color: var(--accent);
     border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.cat-badge.cat-ai-ide {
+    background: color-mix(in srgb, var(--violet) 14%, transparent);
+    color: var(--violet);
+    border: 1px solid color-mix(in srgb, var(--violet) 40%, transparent);
 }
 .uninst-badge,
 .badge.uninst {
