@@ -34,6 +34,10 @@ type toolBuilder struct {
 	description string
 	// family 是工具家族合并根名（"nodejs"）；普通单工具为空。
 	family string
+	// category 是 AI 编目类别（agent / ai-ide）；空 = 通用 CLI 工具。
+	// uninstalled 表示 AI 条目无二进制且桌面端缺失（数据为残留）。
+	category    string
+	uninstalled bool
 }
 
 func (b *toolBuilder) addMeasure(p string) {
@@ -122,7 +126,9 @@ func attribute(tools map[string]*toolBuilder, order []string, ruleTable *rules.T
 		// 独立，但同名规则在部分平台上仍可能重叠）。
 		seenPath := map[string]bool{}
 		for _, dd := range tb.dataDirs {
-			if dd.Kind == "install" || dd.Path == "" || seenPath[dd.Path] {
+			// install 是安装根自身；session-db 是会话数据库——rm 式删除等于
+			// 毁掉全部对话历史（resume 能力），仅报告不生成可处置项（design D2）。
+			if dd.Kind == "install" || rules.IsReportOnly(dd.Kind) || dd.Path == "" || seenPath[dd.Path] {
 				continue
 			}
 			seenPath[dd.Path] = true
@@ -189,6 +195,13 @@ func attribute(tools map[string]*toolBuilder, order []string, ruleTable *rules.T
 			tb.homepage = m.Homepage
 			tb.description = i18n.T(m.Description)
 		}
+		// AI 编目：类别 + 已卸载判定（无二进制且桌面端宿主应用缺失 → 残留）。
+		if cur := ruleTable.Lookup(id); cur != nil {
+			tb.category = cur.Category
+			if cur.Category != "" && len(tb.binaries) == 0 && !platform.AppsInstalled(cur.Apps) {
+				tb.uninstalled = true
+			}
+		}
 		// 规则表别名（claude→claude-code、pip→pip3、hf…）并入展示字段：
 		// 此前 aliases 只含二进制名推断值，真正的别名从未进入 JSON。
 		// 家族合并工具（nodejs）除外——其别名即实际合并进来的命令，curated
@@ -252,14 +265,34 @@ func attribute(tools map[string]*toolBuilder, order []string, ruleTable *rules.T
 //
 //	~/.npm/_logs → logs（npm 调试日志，不是缓存）
 //	~/.npm/_cacache → cache（继承父项）
+//	~/.local/share/opencode/opencode.db → session-db（会话数据库，
+//	  仅报告：UI 展示说明且不提供处置操作）
 //
-// 只识别有把握的类别（日志），其余继承父项 —— 不靠猜测扩大分类，宁缺毋滥。
+// 只识别有把握的类别（日志、数据库文件），其余继承父项 —— 不靠猜测扩大
+// 分类，宁缺毋滥。
 func subKind(parentKind, name string) string {
 	low := strings.ToLower(name)
 	if low == "_logs" || strings.HasSuffix(low, ".log") {
 		return "logs"
 	}
+	if isSessionDBFile(low) {
+		return rules.KindSessionDB
+	}
 	return parentKind
+}
+
+// isSessionDBFile 报告文件名（小写）是否为会话数据库文件形态：
+// *.db / *.sqlite / *.sqlite3 及其 -wal / -shm / *-wal 伴生文件。
+// 各家 agent 的会话历史正从平面 JSONL 迁往 SQLite（opencode.db、
+// logs_2.sqlite、thread_history_1.sqlite、mimocode.db），在树下钻中
+// 把它们单独标注出来是「语义清理」与 rm -rf 的分界线。
+func isSessionDBFile(low string) bool {
+	for _, s := range []string{".db", ".sqlite", ".sqlite3", ".sqlite-wal", ".sqlite-shm", ".db-wal", ".db-shm", "-wal", "-shm"} {
+		if strings.HasSuffix(low, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // kindDesc 返回可处置项的人类可读描述；无对应文案的类型返回空串
@@ -672,6 +705,20 @@ func finalize(tools map[string]*toolBuilder, order []string, opts Options) *Scan
 		if userSum < 0 {
 			userSum = 0
 		}
+		// 剪枝不存在的 dataDirs：curated 条目即使无二进制也会 seed，若无此步，
+		// 未安装该工具的机器会出现零字节幽灵行（规则路径不存在但 len(dataDirs)>0
+		// 使下方空工具判定失效）。必须在空工具判定之前执行。存在但为空的
+		// 目录（0 字节）保留。
+		keptDD := tb.dataDirs[:0]
+		for _, d := range tb.dataDirs {
+			if d.Bytes == 0 {
+				if _, err := os.Lstat(d.Path); err != nil {
+					continue
+				}
+			}
+			keptDD = append(keptDD, d)
+		}
+		tb.dataDirs = keptDD
 		if tb.footprint == 0 && len(tb.binaries) == 0 && len(tb.cleanables) == 0 && len(tb.dataDirs) == 0 {
 			continue
 		}
@@ -718,6 +765,7 @@ func finalize(tools map[string]*toolBuilder, order []string, opts Options) *Scan
 			Version: tb.version, UpdatedAt: tb.updatedAt,
 			Homepage: tb.homepage, Description: tb.description,
 			Family: tb.family, Package: tb.pkg,
+			Category: tb.category, Uninstalled: tb.uninstalled,
 			Binaries: tb.binaries, DataDirs: tb.dataDirs, Cleanables: tb.cleanables,
 			Footprint: tb.footprint, Cleanable: cleanSum, User: userSum,
 		})
