@@ -6,6 +6,7 @@ import {
     expandedCleanIds,
     filterText,
     orphanSel,
+    othersExpanded,
     panelView,
     reminderTools,
     result,
@@ -14,9 +15,10 @@ import {
     sortDir,
     sortKey,
 } from "./state";
-import { setPanelView, setSelected, setSortDir, setSortKey } from "./state";
+import { setOthersExpanded, setPanelView, setSelected, setSortDir, setSortKey } from "./state";
 import type { SortKey } from "./state";
 import { hb } from "./lib/format";
+import { groupTools } from "./lib/grouping";
 import { fmtTime, t } from "./lib/i18n";
 import { categoryLabel, isSessionDBKind, kindLabel, orphanRootLabel } from "./lib/labels";
 import { computeTrendPaths } from "./lib/trends";
@@ -143,15 +145,80 @@ export function renderToolList() {
         renderOrphanView(list);
         return;
     }
-    const q = filterText.toLowerCase();
-    const tools = sortTools(
-        result.tools.filter(
-            (t) =>
-                !q ||
-                t.name.toLowerCase().includes(q) ||
-                t.aliases.some((a) => a.toLowerCase().includes(q)),
-        ),
-    );
+    // AI 优先分组（add-ai-focused-grouping）：category 非空 → AI 段置顶常展开，
+    // 其余 → 「其他工具」段默认折叠带合计。排序键在段内生效。
+    const q = filterText.trim().toLowerCase();
+    const { ai, others } = groupTools(result.tools, q);
+    const aiSorted = sortTools(ai.tools);
+    const othersSorted = sortTools(others.tools);
+    const searching = q !== "";
+    // 搜索命中其他段时自动展开（不持久化：清空搜索后恢复用户手动折叠状态）
+    const othersOpen =
+        others.tools.length > 0 && (othersExpanded || (searching && othersSorted.length > 0));
+
+    if (!aiSorted.length && !othersSorted.length) {
+        list.innerHTML = '<div class="empty">' + esc(t("ui.noData")) + "</div>";
+        return;
+    }
+
+    if (aiSorted.length) {
+        list.appendChild(
+            makeGroupHeader(
+                t("ui.group.ai", {
+                    n: aiSorted.length,
+                    size: hb(ai.footprintBytes),
+                }),
+                false,
+                false,
+            ),
+        );
+        list.appendChild(makeColumnsHeader());
+        for (const tool of aiSorted) list.appendChild(makeToolRow(tool));
+    }
+
+    if (othersSorted.length) {
+        const header = makeGroupHeader(
+            t("ui.group.others", {
+                n: othersSorted.length,
+                size: hb(others.footprintBytes),
+            }),
+            true,
+            othersOpen,
+        );
+        if (othersOpen) {
+            header.classList.add("expanded");
+        }
+        header.onclick = () => {
+            setOthersExpanded(!othersExpanded);
+            renderToolList();
+        };
+        list.appendChild(header);
+        if (othersOpen) {
+            list.appendChild(makeColumnsHeader());
+            for (const tool of othersSorted) list.appendChild(makeToolRow(tool));
+        }
+    }
+}
+
+// 分组段头：AI 段为常展开的强调头（▍标记），其他段为可折叠头（▸ 箭头）。
+function makeGroupHeader(
+    title: string,
+    collapsible: boolean,
+    expanded: boolean,
+): HTMLDivElement {
+    const header = document.createElement("div");
+    header.className =
+        "group-header" +
+        (collapsible ? " collapsible" : "") +
+        (collapsible && expanded ? " expanded" : "");
+    header.innerHTML = collapsible
+        ? `<span class="group-caret">▸</span><span>${esc(title)}</span>`
+        : `<span class="g-marker">▍</span><span>${esc(title)}</span>`;
+    return header;
+}
+
+// 列头（排序按钮）：AI 段与其他展开段各自渲染一份，事件一致。
+function makeColumnsHeader(): HTMLDivElement {
     const head = document.createElement("div");
     head.className = "tool-header";
     head.innerHTML = COLUMNS.map(({ key, labelKey, sortable }) => {
@@ -159,7 +226,6 @@ export function renderToolList() {
         const arrow = key === sortKey ? (sortDir === -1 ? " ▼" : " ▲") : "";
         return `<button class="h" data-key="${key}">${esc(t(labelKey))}${arrow}</button>`;
     }).join("");
-    list.appendChild(head);
     head.querySelectorAll<HTMLButtonElement>("button.h").forEach((btn) => {
         btn.onclick = () => {
             const k = btn.dataset.key as SortKey;
@@ -172,37 +238,35 @@ export function renderToolList() {
             renderToolList();
         };
     });
-    // 未认领数据有独立标签页，不再混排在工具列表里。
-    for (const tool of tools) {
-        const row = document.createElement("div");
-        row.className =
-            "tool-row" + (tool.name === selected ? " selected" : "");
-        const clean =
-            tool.cleanableBytes > 0
-                ? `<span class="cleanable-flag">✓</span>`
-                : "";
-        // AI 编目：类别徽章与「已卸载」标注（数据残留的已卸载工具）
-        const cat = tool.category
-            ? `<span class="cat-badge">${esc(categoryLabel(tool.category))}</span>`
-            : "";
-        const un = tool.uninstalled
-            ? `<span class="uninst-badge">${esc(t("ui.tool.uninstalled"))}</span>`
-            : "";
-        row.innerHTML = `
-            <span class="tool-name" title="${esc(tool.name)}">${esc(tool.name)}${cat}${un}</span>
-            <span class="ver">${esc(tool.version || "—")}</span>
-            <span class="num">${hb(tool.footprintBytes)}</span>
-            <span class="num clean">${hb(tool.cleanableBytes)}${clean}</span>
-            <span class="num user">${hb(tool.userBytes)}</span>`;
-        row.onclick = () => {
-            setSelected(tool.name);
-            selectedCleanIds.clear();
-            expandedCleanIds.clear();
-            renderToolList();
-            renderDetail();
-        };
-        list.appendChild(row);
-    }
+    return head;
+}
+
+function makeToolRow(tool: Tool): HTMLDivElement {
+    const row = document.createElement("div");
+    row.className = "tool-row" + (tool.name === selected ? " selected" : "");
+    const clean =
+        tool.cleanableBytes > 0 ? `<span class="cleanable-flag">✓</span>` : "";
+    // AI 编目：类别徽章与「已卸载」标注（数据残留的已卸载工具）
+    const cat = tool.category
+        ? `<span class="cat-badge">${esc(categoryLabel(tool.category))}</span>`
+        : "";
+    const un = tool.uninstalled
+        ? `<span class="uninst-badge">${esc(t("ui.tool.uninstalled"))}</span>`
+        : "";
+    row.innerHTML = `
+        <span class="tool-name" title="${esc(tool.name)}">${esc(tool.name)}${cat}${un}</span>
+        <span class="ver">${esc(tool.version || "—")}</span>
+        <span class="num">${hb(tool.footprintBytes)}</span>
+        <span class="num clean">${hb(tool.cleanableBytes)}${clean}</span>
+        <span class="num user">${hb(tool.userBytes)}</span>`;
+    row.onclick = () => {
+        setSelected(tool.name);
+        selectedCleanIds.clear();
+        expandedCleanIds.clear();
+        renderToolList();
+        renderDetail();
+    };
+    return row;
 }
 
 // ---- 未认领数据（标签页视图）----

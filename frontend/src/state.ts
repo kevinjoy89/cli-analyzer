@@ -47,6 +47,9 @@ export let isMac = false;
 export let panelView: 'tools' | 'orphans' = 'tools';
 export let orphanSel = new Set<string>(); // 已勾选的未认领路径
 
+// ---- 工具列表分组（add-ai-focused-grouping）----
+export let othersExpanded = false; // 「其他工具」段展开状态（会话内记忆，重扫不重置）
+
 // ---- 内置回收站 ----
 export let trashItems: TrashItem[] = [];
 
@@ -77,6 +80,7 @@ export function setSortDir(v: 1 | -1) { sortDir = v; }
 export function setThemeMode(v: ThemeMode) { themeMode = v; }
 export function setIsMac(v: boolean) { isMac = v; }
 export function setPanelView(v: 'tools' | 'orphans') { panelView = v; }
+export function setOthersExpanded(v: boolean) { othersExpanded = v; }
 export function setTrashItems(v: TrashItem[]) { trashItems = v; }
 export function setUpdateState(v: 'idle' | 'downloading' | 'downloaded') { updateState = v; }
 export function setLastUpdateResult(v: UpdateResult | null) { lastUpdateResult = v; }

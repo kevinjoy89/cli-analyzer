@@ -407,6 +407,43 @@ body.platform-linux #header { padding-top: 10px; }
     padding: 2px 0 6px 28px;
 }
 
+/* 工具列表分组段头（add-ai-focused-grouping）：AI 段常展开强调头 +
+   其他工具折叠头 */
+.group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+.group-header .g-marker {
+    color: var(--accent);
+    font-weight: 700;
+}
+.group-header .group-caret {
+    display: inline-block;
+    font-size: 10px;
+    color: var(--muted);
+    transition: transform 0.15s;
+}
+.group-header.expanded .group-caret {
+    transform: rotate(90deg);
+}
+.group-header.collapsible {
+    cursor: pointer;
+    user-select: none;
+}
+.group-header.collapsible:hover {
+    color: var(--accent);
+}
+
 .detail-section { margin-top: 14px; }
 .detail-section h4 {
     margin: 0 0 6px;

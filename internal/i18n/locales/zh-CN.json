@@ -398,5 +398,7 @@
   "ui.category.agent": "Agent",
   "ui.category.ai-ide": "AI IDE",
   "ui.tool.uninstalled": "已卸载",
-  "ui.sessionDb.note": "会话数据库：包含对话历史，删除后无法恢复，暂不支持直接清理"
+  "ui.sessionDb.note": "会话数据库：包含对话历史，删除后无法恢复，暂不支持直接清理",
+  "ui.group.ai": "AI 编码工具（{n} · {size}）",
+  "ui.group.others": "其他工具（{n} · {size}）"
 }
