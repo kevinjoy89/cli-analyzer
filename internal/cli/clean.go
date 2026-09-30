@@ -61,12 +61,17 @@ func runClean(args []string) int {
 		return 0
 	}
 
-	// --all 的保护性默认：只批量选择"清理类"（缓存/旧版本/备份/下载），
-	// config/data/state/toolchain 等"数据类"需 --include-data 或逐项指定 id。
-	// 这是防误操作的默认值，不是门槛——用户随时可以显式覆盖。
-	cleanKinds := map[string]bool{"cache": true, "old-version": true, "backup": true, "download": true}
+	// --all 的保护性默认：只批量选择"清理类"（缓存/旧版本/备份/下载，以及
+	// AI 编目中的可再生代码索引/遥测/日志），config/data/state/toolchain/
+	// runtime 等会改变工具可用状态或承载用户数据的"数据类"需 --include-data
+	// 或逐项指定 id。这是防误操作的默认值，不是门槛——用户随时可以显式覆盖。
+	// （runtime 可重下但删除会即时破坏工具可用性，故不在默认批量内；
+	// session-db 在扫描端已被排除为仅报告，永远不会出现在 items 里。）
+	cleanKinds := map[string]bool{"cache": true, "old-version": true, "backup": true, "download": true,
+		"index": true, "telemetry": true, "logs": true}
 	if *includeData {
-		for _, k := range []string{"config", "data", "state", "toolchain", "logs"} {
+		for _, k := range []string{"config", "data", "state", "toolchain", "logs", "runtime",
+			"session", "plugins", "artifacts", "checkpoint", "workspace-data"} {
 			cleanKinds[k] = true
 		}
 	}
