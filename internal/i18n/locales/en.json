@@ -400,5 +400,5 @@
   "ui.tool.uninstalled": "Uninstalled",
   "ui.sessionDb.note": "Session database: contains conversation history and cannot be recovered once deleted; direct cleanup is not supported yet",
   "ui.group.ai": "AI coding tools ({n} · {size})",
-  "ui.group.others": "Other tools ({n} · {size})"
+  "ui.group.others": "Other CLI tools ({n} · {size})"
 }
