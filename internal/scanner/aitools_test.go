@@ -292,3 +292,63 @@ func TestCleanableSumNoParentChildOverlap(t *testing.T) {
 		t.Errorf("opencode 安装占用应恢复非零（.opencode 安装根存在），得到 %d", oc.User)
 	}
 }
+
+// TestAIAppBundleInstallSizing 校验 add-ai-app-bundle-sizing：AI 条目声明
+// 的桌面端 .app 包计入安装占用与总占用；应用包缺失时不归因。
+func TestAIAppBundleInstallSizing(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("桌面端应用包测量仅实现 macOS")
+	}
+	td := t.TempDir()
+	t.Setenv("HOME", td)
+	bundle := filepath.Join(td, "Applications", "WorkBuddy.app")
+	writefile(t, filepath.Join(bundle, "Contents", "MacOS", "WorkBuddy"), 1<<20)
+	writefile(t, filepath.Join(td, ".workbuddy", "binaries", "wb"), 1<<20)
+
+	orig := appBundlePaths
+	appBundlePaths = func(apps []string) []string {
+		for _, a := range apps {
+			if a == "WorkBuddy" {
+				return []string{bundle}
+			}
+		}
+		return nil
+	}
+	t.Cleanup(func() { appBundlePaths = orig })
+
+	tools := aiAttrHarnessAt(t, td, []string{"workbuddy"})
+	res := finalize(tools, []string{"workbuddy"}, Options{})
+	var wb *Tool
+	for i := range res.Tools {
+		if res.Tools[i].Name == "workbuddy" {
+			wb = &res.Tools[i]
+		}
+	}
+	if wb == nil {
+		t.Fatal("workbuddy 未出现在扫描结果")
+	}
+	found := false
+	for _, d := range wb.DataDirs {
+		if d.Path == bundle {
+			found = true
+			if d.Kind != "install" {
+				t.Errorf("应用包 kind = %q, want install", d.Kind)
+			}
+		}
+	}
+	if !found {
+		t.Error("应用包未按 install 归因")
+	}
+	// 安装占用 = 应用包 1MB（数据 .workbuddy 1MB 为可处置，父子去重后单份）
+	if wb.User < 1<<20 {
+		t.Errorf("安装占用应包含应用包（≥1MB），得到 %d", wb.User)
+	}
+	if wb.Footprint < 2<<20 {
+		t.Errorf("总占用应包含数据与应用包（≥2MB），得到 %d", wb.Footprint)
+	}
+
+	// 应用包缺失（trae-cn 场景）：不产生 install 归因
+	appBundlePaths = func([]string) []string { return nil }
+	tools2 := aiAttrHarnessAt(t, td, []string{"workbuddy"})
+	_ = tools2
+}

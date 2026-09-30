@@ -15,6 +15,9 @@ import (
 	"cli-analyzer/internal/rules"
 )
 
+// appBundlePaths 可注入（测试用）：AI 条目桌面端 .app 包路径解析。
+var appBundlePaths = platform.AppBundlePaths
+
 // toolBuilder accumulates everything for one tool during a scan.
 type toolBuilder struct {
 	name        string
@@ -200,6 +203,17 @@ func attribute(tools map[string]*toolBuilder, order []string, ruleTable *rules.T
 			tb.category = cur.Category
 			if cur.Category != "" && len(tb.binaries) == 0 && !platform.AppsInstalled(cur.Apps) {
 				tb.uninstalled = true
+			}
+			// 桌面端应用包计入安装占用（add-ai-app-bundle-sizing）：声明了
+			// Apps 的 AI 条目，实际存在的 .app 包作为 install 归因。应用包
+			// 缺失（桌面端未安装）时不归因，与 uninstalled 口径一致。
+			if cur.Category != "" && len(cur.Apps) > 0 {
+				for _, p := range appBundlePaths(cur.Apps) {
+					if st, err := os.Stat(p); err == nil && st.IsDir() {
+						tb.dataDirs = append(tb.dataDirs, DataDir{Path: p, Tier: TierUser, Kind: "install"})
+						tb.addMeasure(p)
+					}
+				}
 			}
 		}
 		// 规则表别名（claude→claude-code、pip→pip3、hf…）并入展示字段：
