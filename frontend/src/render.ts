@@ -18,7 +18,7 @@ import {
 import { setOthersExpanded, setPanelView, setSelected, setSortDir, setSortKey } from "./state";
 import type { SortKey } from "./state";
 import { hb } from "./lib/format";
-import { groupTools } from "./lib/grouping";
+import { groupTools, pathInside } from "./lib/grouping";
 import { fmtTime, t } from "./lib/i18n";
 import { categoryLabel, isSessionDBKind, kindLabel, orphanRootLabel } from "./lib/labels";
 import { computeTrendPaths } from "./lib/trends";
@@ -726,7 +726,11 @@ export function selectedItems(t: Tool): PickItem[] {
                 });
         }
     }
-    return out;
+    // 父子同选去重：被所选父路径包含的子路径随父项处置，不重复计入
+    // 确认合计（后端 cleaner 同口径跳过，见 cln.subsumed）。
+    return out.filter(
+        (it) => !out.some((o) => o.path !== it.path && pathInside(o.path, it.path)),
+    );
 }
 
 // ---- bell panel ----

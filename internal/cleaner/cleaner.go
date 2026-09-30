@@ -81,6 +81,27 @@ func clean(result *scanner.ScanResult, ids []string, dryRun bool, permanent bool
 		}
 	}
 
+	// 父子同选去重：选中集合里若某路径严格位于另一选中路径之内（父子
+	// 子目录规则使父目录与子目录同为可处置项），它会随父项一起进入回收
+	// 站——单独再删只会报错或重复计数。跳过并说明，而不是让用户看到
+	// 莫名的删除错误。
+	resolved := make(map[string]string, len(ids))
+	for _, id := range ids {
+		if c, ok := byID[id]; ok {
+			resolved[id] = c.Path
+		} else if si, ok := subs[id]; ok {
+			resolved[id] = si.sub.Path
+		}
+	}
+	subsumed := func(p string) bool {
+		for _, other := range resolved {
+			if other != p && isInside(other, p) {
+				return true
+			}
+		}
+		return false
+	}
+
 	// 默认延迟删除；仅当永久模式或配置禁用回收站时才真正删除
 	useTrash := !permanent && config.Load().Trash.UseTrash
 	remove := func(path string, bytes int64, tool, kind string) {
@@ -106,6 +127,10 @@ func clean(result *scanner.ScanResult, ids []string, dryRun bool, permanent bool
 
 	for _, id := range ids {
 		if c, ok := byID[id]; ok {
+			if subsumed(c.Path) {
+				report.Skipped = append(report.Skipped, c.Path+" ("+i18n.T("cln.subsumed")+")")
+				continue
+			}
 			if reason := guard(c); reason != "" {
 				report.Skipped = append(report.Skipped, c.Path+" ("+reason+")")
 				continue
@@ -114,6 +139,10 @@ func clean(result *scanner.ScanResult, ids []string, dryRun bool, permanent bool
 			continue
 		}
 		if si, ok := subs[id]; ok {
+			if subsumed(si.sub.Path) {
+				report.Skipped = append(report.Skipped, si.sub.Path+" ("+i18n.T("cln.subsumed")+")")
+				continue
+			}
 			if reason := guardSub(si.parent.Path, si.sub.Path); reason != "" {
 				report.Skipped = append(report.Skipped, si.sub.Path+" ("+reason+")")
 				continue
@@ -172,6 +201,16 @@ func guardSub(parent, p string) string {
 		return i18n.T("cln.guardNotInside")
 	}
 	return ""
+}
+
+// isInside reports whether p is strictly inside dir (p != dir, no error,
+// relative path neither "." nor prefixed by "..").
+func isInside(dir, p string) bool {
+	rel, err := filepath.Rel(dir, p)
+	if err != nil || rel == "." || rel == ".." {
+		return false
+	}
+	return !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // forbiddenRoots are paths that must never be deleted themselves. Deleting

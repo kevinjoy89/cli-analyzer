@@ -245,3 +245,50 @@ func TestAIIDEWorkspaceData(t *testing.T) {
 		t.Error("AI 扩展伴侣目录（JoyCoder）未归因到 code 条目")
 	}
 }
+
+// TestCleanableSumNoParentChildOverlap 校验 add-ai-tool-catalog 父子子目录
+// 规则下的合计口径：cleanableBytes 按极大路径求和（fix-cleanable-sum-overlap），
+// 不再出现「可处置 > 总占用」，安装占用（userBytes）恢复含义。
+func TestCleanableSumNoParentChildOverlap(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("AI 归因测试基于 unix HOME 布局")
+	}
+	td := t.TempDir()
+	t.Setenv("HOME", td)
+	t.Setenv("XDG_DATA_HOME", filepath.Join(td, ".local", "share"))
+	// marscode：父目录 .marscode 与子目录 .marscode/.ckg 同为可处置项
+	writefile(t, filepath.Join(td, ".marscode", ".ckg", "graph.bin"), 1<<20)
+	// opencode：数据目录 + 安装根 .opencode/bin（安装占用应恢复非零）
+	writefile(t, filepath.Join(td, ".local", "share", "opencode", "opencode.db"), 1<<20)
+	writefile(t, filepath.Join(td, ".opencode", "bin", "opencode"), 1<<18)
+
+	tools := aiAttrHarnessAt(t, td, []string{"marscode", "opencode"})
+	res := finalize(tools, []string{"marscode", "opencode"}, Options{})
+	byName := map[string]*Tool{}
+	for i := range res.Tools {
+		byName[res.Tools[i].Name] = &res.Tools[i]
+	}
+
+	mc := byName["marscode"]
+	if mc == nil {
+		t.Fatal("marscode 未出现在扫描结果")
+	}
+	if mc.Cleanable > mc.Footprint {
+		t.Errorf("marscode 可处置(%d) 不应大于总占用(%d)", mc.Cleanable, mc.Footprint)
+	}
+	// .ckg ⊂ .marscode：合计应为父目录单份（等于 footprint，无独立二进制）
+	if mc.Cleanable != mc.Footprint {
+		t.Errorf("marscode 可处置(%d) 应等于总占用(%d)（父目录单份口径）", mc.Cleanable, mc.Footprint)
+	}
+
+	oc := byName["opencode"]
+	if oc == nil {
+		t.Fatal("opencode 未出现在扫描结果")
+	}
+	if oc.Cleanable > oc.Footprint {
+		t.Errorf("opencode 可处置(%d) 不应大于总占用(%d)", oc.Cleanable, oc.Footprint)
+	}
+	if oc.User <= 0 {
+		t.Errorf("opencode 安装占用应恢复非零（.opencode 安装根存在），得到 %d", oc.User)
+	}
+}

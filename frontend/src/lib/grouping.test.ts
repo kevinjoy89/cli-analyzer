@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { groupTools, matchesFilter } from './grouping';
+import { groupTools, matchesFilter, pathInside } from './grouping';
 import type { Tool } from './types';
 
 // 与 Go JSON 契约同构的最小 Tool 构造（grouping 只消费 name/aliases/
@@ -71,5 +71,18 @@ describe('groupTools', () => {
         const { ai, others } = groupTools([], '');
         expect(ai.tools).toHaveLength(0);
         expect(others.footprintBytes).toBe(0);
+    });
+});
+
+describe('pathInside', () => {
+    it('unix 路径：严格子路径命中', () => {
+        expect(pathInside('/home/u/.kimi-code', '/home/u/.kimi-code/bin')).toBe(true);
+        expect(pathInside('/home/u/.kimi-code', '/home/u/.kimi-code')).toBe(false);
+        expect(pathInside('/home/u/.kimi-code', '/home/u/.kimi-code-x')).toBe(false);
+        expect(pathInside('/home/u/.kimi-code', '/home/u/.npm')).toBe(false);
+    });
+    it('带尾斜杠与 Windows 反斜杠路径', () => {
+        expect(pathInside('/home/u/.kimi-code/', '/home/u/.kimi-code/bin')).toBe(true);
+        expect(pathInside('C:\\Users\\u\\.kimi-code', 'C:\\Users\\u\\.kimi-code\\bin')).toBe(true);
     });
 });

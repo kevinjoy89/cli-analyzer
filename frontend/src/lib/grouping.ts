@@ -44,3 +44,16 @@ export function groupTools(
         },
     };
 }
+
+// pathInside 报告 p 是否严格位于 dir 之内（p ≠ dir，无越界）。
+// 用于父子同选去重：子路径被所选父路径包含时随父项处置，不再重复
+// 计入确认合计（与后端 cleaner 的 isInside 同口径）。分隔符无关：
+// Windows 反斜杠路径归一为正斜杠后比较（大小写敏感，实际处置由
+// 后端权威判定，这里只保证确认合计口径一致）。
+export function pathInside(dir: string, p: string): boolean {
+    if (!dir || !p) return false;
+    const dn = dir.replace(/\\/g, "/");
+    const pn = p.replace(/\\/g, "/");
+    if (dn === pn) return false;
+    return pn.startsWith(dn.endsWith("/") ? dn : dn + "/");
+}

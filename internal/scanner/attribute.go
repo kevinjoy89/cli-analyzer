@@ -695,10 +695,17 @@ func finalize(tools map[string]*toolBuilder, order []string, opts Options) *Scan
 		}
 		// nodejs 合并工具把 node 排到 Binaries[0]，让版本探测取到运行时版本。
 		probeOrder(tb)
-		var cleanSum int64
+		// 可处置合计按极大路径求和：AI 编目的父子子目录规则（.kimi-code 与
+		// .kimi-code/bin 等）会让父目录与子目录同时成为可处置项，朴素求和把
+		// 同一份字节算两遍——可处置 > 总占用、安装占用被挤成 0。与 footprint
+		// 的 sumMaximal 同口径。
+		cleanPaths := make([]string, 0, len(tb.cleanables))
+		sizeOf := make(map[string]int64, len(tb.cleanables))
 		for _, c := range tb.cleanables {
-			cleanSum += c.Bytes
+			cleanPaths = append(cleanPaths, c.Path)
+			sizeOf[c.Path] = c.Bytes
 		}
+		cleanSum := sumMaximal(cleanPaths, sizeOf)
 		// 可处置合计 = 全部可处置项（非安装根的归因目录）；其余（安装根 +
 		// 独立二进制等）为 userSum。Tier 不再参与汇总。
 		userSum := tb.footprint - cleanSum
