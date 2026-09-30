@@ -109,3 +109,37 @@ THEN VS Code 的编目数据目录（如 `~/Library/Application Support/Code`）
 WHEN 数据根下存在未认领目录 `~/Library/Application Support/NetSarang`
 
 THEN 该目录仍不列为孤儿数据（厂商排除表生效）
+
+### Requirement: AI 优先分组视图
+
+工具列表 SHALL 分「AI 编码工具」（类别字段非空的条目）与「其他 CLI 工具」两段展示：AI 段 SHALL 置顶且始终展开；其他 CLI 工具段 SHALL 默认折叠，段头 MUST 展示条目数与合计占用，点击段头可展开/收起，折叠状态 SHALL 在会话内保持（重新扫描不重置）。排序键 SHALL 在段内继续生效。搜索过滤 SHALL 同时作用于两段；当其他 CLI 工具段存在命中时，系统 SHALL 自动展开该段（自动展开不持久化）。
+
+#### Scenario: AI 段置顶展开
+
+WHEN 扫描完成且用户打开工具列表
+
+THEN 「AI 编码工具」段位于列表最前，全部 AI 条目行可见（不折叠）
+
+#### Scenario: 其他 CLI 工具段默认折叠带合计
+
+WHEN 存在类别为空的其他工具
+
+THEN 「其他 CLI 工具」段默认折叠，段头展示条目数与合计占用，不渲染行
+
+#### Scenario: 展开查看其他工具
+
+WHEN 用户点击「其他 CLI 工具」段头
+
+THEN 该段展开渲染全部命中行，再次点击收起；会话内切换详情页后返回列表，折叠状态保持
+
+#### Scenario: 搜索命中自动展开
+
+WHEN 搜索关键词只命中其他 CLI 工具段的工具（如 "npm"）
+
+THEN 其他 CLI 工具段自动展开并显示命中行（该自动展开不持久化，清空搜索后恢复折叠）
+
+#### Scenario: 排序在段内生效
+
+WHEN 用户按可清理列排序
+
+THEN AI 段与其他 CLI 工具段各自按该排序键排列，段顺序不变
