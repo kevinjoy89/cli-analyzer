@@ -43,8 +43,14 @@ type Rule struct {
 	Installer   string
 	Homepage    string // official website, shown in the GUI detail panel
 	Description string // one-line summary in Chinese
-	DataDirs    []DataDirRule
-	Cleanables  []CleanRule
+	// Category 是 AI 编目类别（CategoryAgent / CategoryAIIde）；空 = 通用
+	// CLI 工具，不参与 AI 语义展示与已卸载判定。
+	Category string
+	// Apps 是该工具桌面端形态的宿主应用名（macOS .app 基名）：用于「已卸载」
+	// 判定（无二进制且桌面端缺失 → 已卸载残留）。
+	Apps       []string
+	DataDirs   []DataDirRule
+	Cleanables []CleanRule
 }
 
 // Resolve returns the absolute path for a data-dir rule ("" if not applicable).
@@ -89,6 +95,16 @@ func Load() *Table {
 	t := &Table{byName: map[string]*Rule{}}
 	for i := range curated {
 		r := &curated[i]
+		t.byName[r.Name] = r
+		t.order = append(t.order, r.Name)
+	}
+	// AI 编目条目（add-ai-tool-catalog）：与通用条目同一张表、同一套
+	// 归因/清理管线，仅额外携带 Category 与 Apps。
+	for i := range aiCurated {
+		r := &aiCurated[i]
+		if _, dup := t.byName[r.Name]; dup {
+			continue
+		}
 		t.byName[r.Name] = r
 		t.order = append(t.order, r.Name)
 	}

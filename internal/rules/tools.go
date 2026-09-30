@@ -11,27 +11,50 @@ import (
 // scanner from the installer type, not listed here.
 var curated = []Rule{
 	{
-		Name: "claude", Aliases: []string{"claude-code"}, Installer: "versioned",
+		Name: "claude", Aliases: []string{"claude-code"}, Installer: "versioned", Category: CategoryAgent,
 		DataDirs: []DataDirRule{
+			// 配置/状态混合根（settings.json、todos、cache、backups 等）
+			dd(platform.Home, ".claude", TierUser, "data"),
+			// AI 语义子目录（2026-09-30 实测：projects 17M、transcripts 39M、
+			// telemetry 7.6M、file-history/shell-snapshots 回滚点）
+			dd(platform.Home, ".claude/projects", TierUser, KindSession),
+			dd(platform.Home, ".claude/transcripts", TierUser, KindSession),
+			dd(platform.Home, ".claude/file-history", TierUser, KindCheckpoint),
+			dd(platform.Home, ".claude/shell-snapshots", TierUser, KindCheckpoint),
+			dd(platform.Home, ".claude/plugins", TierUser, KindPlugins),
+			dd(platform.Home, ".claude/telemetry", TierSafe, KindTelemetry),
+			// ~/.local/share/claude 同时是版本化安装基目录（versions/）
 			dd(platform.XDGData, "claude", TierUser, "data"),
 			dd(platform.XDGConfig, "claude", TierUser, "config"),
 			dd(platform.XDGCache, "claude", TierSafe, "cache"),
 		},
 	},
 	{
-		Name: "kimi", Aliases: []string{"kimi-code"}, Installer: "other",
+		Name: "kimi", Aliases: []string{"kimi-code"}, Installer: "other", Category: CategoryAgent,
+		// 桌面端为 Kimi Code.app（Electron）；kimi-desktop 是 Kimi 聊天助手，
+		// 不属于本条目。
+		Apps: []string{"Kimi Code"},
 		DataDirs: []DataDirRule{
 			dd(platform.Home, ".kimi-code", TierUser, "data"), // config.toml, sessions, telemetry, install mix
+			// AI 语义子目录（2026-09-30 实测：bin 353M、sessions 28M、search-index 3.3M）
+			dd(platform.Home, ".kimi-code/sessions", TierUser, KindSession),
+			dd(platform.Home, ".kimi-code/search-index", TierSafe, KindIndex),
+			dd(platform.Home, ".kimi-code/bin", TierSafe, KindRuntime),
 			// 伴随命令的独立目录（kimi-webbridge 浏览器桥 / kimi-slides），
 			// 由 companion 家族归并进 kimi 后随行认领
 			dd(platform.Home, ".kimi-webbridge", TierUser, "data"),
 			dd(platform.Home, ".kimi-work", TierUser, "data"),
+			// Kimi Code 桌面端数据
+			dd(platform.MacAppSupport, "kimi-code-app", TierUser, "data"),
 		},
 	},
 	{
-		Name: "mimocode", Aliases: []string{"mimo"}, Installer: "other",
+		Name: "mimocode", Aliases: []string{"mimo"}, Installer: "other", Category: CategoryAgent,
 		DataDirs: []DataDirRule{
 			dd(platform.XDGData, "mimocode", TierUser, "data"),
+			// 会话快照/索引（opencode fork 同构；mimocode.db 会话数据库文件
+			// 位于父目录，由树下钻 subKind 标注 session-db 仅报告）
+			dd(platform.XDGData, "mimocode/snapshot", TierSafe, KindIndex),
 			dd(platform.XDGConfig, "mimocode", TierUser, "config"),
 			// mimocode is an opencode fork and stores its plugins in the cache
 			// dir the same way — treat as USER data, not cleanable cache.
@@ -42,9 +65,16 @@ var curated = []Rule{
 		},
 	},
 	{
-		Name: "opencode", Installer: "other",
+		Name: "opencode", Installer: "other", Category: CategoryAgent,
 		DataDirs: []DataDirRule{
 			dd(platform.XDGData, "opencode", TierUser, "data"),
+			// AI 语义子目录（2026-09-30 实测：snapshot 158M、storage 94M、
+			// bin 123M、log 59M；opencode.db 会话数据库文件位于父目录，
+			// 由树下钻 subKind 标注 session-db 仅报告）
+			dd(platform.XDGData, "opencode/snapshot", TierSafe, KindIndex),
+			dd(platform.XDGData, "opencode/storage", TierUser, KindSession),
+			dd(platform.XDGData, "opencode/bin", TierSafe, KindRuntime),
+			dd(platform.XDGData, "opencode/log", TierSafe, KindLogs),
 			dd(platform.XDGConfig, "opencode", TierUser, "config"),
 			// oh-my-opencode 是 opencode 的插件/主题框架（配置目录），归属 opencode
 			dd(platform.XDGConfig, "oh-my-opencode", TierUser, "config"),
@@ -56,6 +86,9 @@ var curated = []Rule{
 			// 安装目录（bin + node_modules，194MB 级）：opencode-plugins 等
 			// 伴随命令经 companion 家族归并后随行认领
 			dd(platform.Home, ".opencode", TierUser, "install"),
+			// OpenCode.app 桌面端（2026-09-30 实测 ai.opencode.desktop 1.1G）
+			dd(platform.MacAppSupport, "ai.opencode.desktop", TierUser, "data"),
+			dd(platform.MacAppSupport, "@opencode-ai", TierUser, "data"),
 		},
 	},
 	{
@@ -184,15 +217,29 @@ var curated = []Rule{
 		},
 	},
 	{
-		Name: "dsh", Installer: "npm",
+		Name: "dsh", Installer: "npm", Category: CategoryAgent,
+		// 桌面端为 DeepSeek Harness.app（@deepseek-ai 数据目录）
+		Apps: []string{"DeepSeek Harness"},
 		DataDirs: []DataDirRule{
 			dd(platform.Home, ".dsh", TierUser, "data"), // profiles/sessions/agent/telemetry
+			// AI 语义子目录（2026-09-30 实测：dsh-runtimes 361M、sessions 84M、
+			// profiles 27M、attachments 16M）
+			dd(platform.Home, ".dsh/dsh-runtimes", TierSafe, KindRuntime),
+			dd(platform.Home, ".dsh/sessions", TierUser, KindSession),
+			dd(platform.Home, ".dsh/profiles", TierUser, "config"),
+			dd(platform.Home, ".dsh/attachments", TierUser, KindArtifacts),
+			// DeepSeek Harness 桌面端数据
+			dd(platform.MacAppSupport, "@deepseek-ai", TierUser, "data"),
 		},
 	},
 	{
-		Name: "pi", Installer: "npm",
+		Name: "pi", Installer: "npm", Category: CategoryAgent,
 		DataDirs: []DataDirRule{
 			dd(platform.Home, ".pi", TierUser, "data"),
+			// AI 语义子目录（2026-09-30 实测：agent/npm 375M、agent/sessions 175M）
+			dd(platform.Home, ".pi/agent/npm", TierSafe, KindRuntime),
+			dd(platform.Home, ".pi/agent/sessions", TierUser, KindSession),
+			dd(platform.Home, ".pi/context-mode", TierSafe, "cache"),
 		},
 	},
 	{
@@ -200,9 +247,21 @@ var curated = []Rule{
 		Name: "omp", Aliases: []string{"oh-my-pi"}, Installer: "npm",
 	},
 	{
-		Name: "codex", Installer: "other",
+		Name: "codex", Installer: "other", Category: CategoryAgent,
+		// 桌面端承载于 ChatGPT.app（bundle id com.openai.codex）
+		Apps: []string{"ChatGPT"},
 		DataDirs: []DataDirRule{
 			dd(platform.Home, ".codex", TierUser, "data"),
+			// AI 语义子目录（2026-09-30 实测：plugins 316M、packages 311M、
+			// sessions 176M、archived_sessions 25M；logs_2.sqlite 与
+			// thread_history_1.sqlite 会话数据库文件由树下钻 subKind 标注）
+			dd(platform.Home, ".codex/sessions", TierUser, KindSession),
+			dd(platform.Home, ".codex/archived_sessions", TierUser, KindSession),
+			dd(platform.Home, ".codex/plugins", TierSafe, KindRuntime),
+			dd(platform.Home, ".codex/packages", TierSafe, KindRuntime),
+			// Codex 桌面端数据（Electron Chromium profile）
+			dd(platform.MacAppSupport, "Codex", TierUser, "data"),
+			dd(platform.MacAppSupport, "com.openai.codex", TierUser, "data"),
 		},
 		Cleanables: []CleanRule{
 			// Only leftover install-staging dirs are cleanable; the active
