@@ -13,6 +13,8 @@ export interface Tool {
     name: string; aliases: string[]; installer: string;
     version: string; updatedAt: string; homepage: string; description: string;
     family?: string; // 家族合并根名（如 "nodejs"）；空 = 普通单工具
+    category?: string; // AI 编目类别（agent / ai-ide）；空 = 通用 CLI 工具
+    uninstalled?: boolean; // AI 条目无二进制且桌面端缺失：数据为已卸载残留
     binaries: Binary[]; dataDirs: DataDir[]; cleanables: Cleanable[];
     footprintBytes: number; cleanableBytes: number; userBytes: number;
 }

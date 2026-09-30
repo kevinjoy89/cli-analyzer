@@ -18,7 +18,7 @@ import { setPanelView, setSelected, setSortDir, setSortKey } from "./state";
 import type { SortKey } from "./state";
 import { hb } from "./lib/format";
 import { fmtTime, t } from "./lib/i18n";
-import { kindLabel, orphanRootLabel } from "./lib/labels";
+import { categoryLabel, isSessionDBKind, kindLabel, orphanRootLabel } from "./lib/labels";
 import { computeTrendPaths } from "./lib/trends";
 import type { Cleanable, DataDir, Grower, Point, Tool } from "./lib/types";
 import {
@@ -181,8 +181,15 @@ export function renderToolList() {
             tool.cleanableBytes > 0
                 ? `<span class="cleanable-flag">✓</span>`
                 : "";
+        // AI 编目：类别徽章与「已卸载」标注（数据残留的已卸载工具）
+        const cat = tool.category
+            ? `<span class="cat-badge">${esc(categoryLabel(tool.category))}</span>`
+            : "";
+        const un = tool.uninstalled
+            ? `<span class="uninst-badge">${esc(t("ui.tool.uninstalled"))}</span>`
+            : "";
         row.innerHTML = `
-            <span class="tool-name" title="${esc(tool.name)}">${esc(tool.name)}</span>
+            <span class="tool-name" title="${esc(tool.name)}">${esc(tool.name)}${cat}${un}</span>
             <span class="ver">${esc(tool.version || "—")}</span>
             <span class="num">${hb(tool.footprintBytes)}</span>
             <span class="num clean">${hb(tool.cleanableBytes)}${clean}</span>
@@ -363,6 +370,13 @@ export function renderDetail() {
     const installer = tool.installer
         ? `<span class="badge installer">${esc(tool.installer)}</span>`
         : "";
+    // AI 编目徽章：类别 + 「已卸载」（全部形态缺失，数据为残留）
+    const catBadge = tool.category
+        ? `<span class="badge installer">${esc(categoryLabel(tool.category))}</span>`
+        : "";
+    const uninstBadge = tool.uninstalled
+        ? `<span class="badge installer uninst">${esc(t("ui.tool.uninstalled"))}</span>`
+        : "";
     const metaItems: string[] = [];
     // 安装来源：本地化名称（未知来源回退原始值）
     let sourceName = "";
@@ -418,6 +432,18 @@ export function renderDetail() {
     // 全部归因目录（安装根除外）都是可处置项：kind/tier 是信息标签，
     // 勾选即代表用户决策，应用不再替用户裁决"能不能删"。
     const cleanables = tool.cleanables;
+
+    // 会话数据库（session-db，仅报告）：归因展示但不生成可处置项，
+    // 说明文案见 ui.sessionDb.note（design D2 安全红线）
+    const reportOnlyDirs = tool.dataDirs.filter((d) => isSessionDBKind(d.kind));
+    const reportHtml = reportOnlyDirs.length
+        ? `<div class="detail-section"><h4>${esc(t("ui.kindLabel.session-db"))}</h4><div class="detail-list">${reportOnlyDirs
+              .map(
+                  (d) =>
+                      `<div class="detail-item"><span class="badge safe">${esc(kindLabel(d.kind))}</span><span class="path" title="${esc(d.path)}">${esc(d.path)}</span><span class="size">${hb(d.bytes)}</span></div><div class="report-note">${esc(t("ui.sessionDb.note"))}</div>`,
+              )
+              .join("")}</div></div>`
+        : "";
     const cleanHtml = cleanables.length
         ? `<div class="detail-list">${cleanables
               .map((c) => {
@@ -444,10 +470,11 @@ export function renderDetail() {
           "</span></div></div>";
 
     body.innerHTML = `
-        <div class="detail-head"><h2>${esc(tool.name)}</h2>${installer}</div>
+        <div class="detail-head"><h2>${esc(tool.name)}</h2>${installer}${catBadge}${uninstBadge}</div>
         ${metaHtml}
         <div class="detail-section"><h4>${esc(t("ui.sectionBinaries"))}</h4>${binaries}</div>
         ${installHtml ? `<div class="detail-section"><h4>${esc(t("ui.sectionInstallRoot"))}</h4>${installHtml}</div>` : ""}
+        ${reportHtml}
         <div class="detail-section"><h4>${esc(t("ui.sectionSafe"))}</h4>${cleanHtml}</div>
         <div class="detail-actions">
             <button id="cleanBtn" class="btn danger">${esc(t("ui.cleanSelected"))}</button>
@@ -564,6 +591,15 @@ function subRows(c: Cleanable, parentSelected: boolean): string {
             const rel = s.path.startsWith(base)
                 ? s.path.slice(base.length)
                 : s.path;
+            // 会话数据库子项（opencode.db 等）：仅报告，不提供处置操作
+            if (isSessionDBKind(s.kind ?? "")) {
+                return `<div class="detail-item sub-row report-only">
+                <span class="sub-path" title="${esc(s.path)}">${esc(rel)}</span>
+                <span class="sub-kind">${esc(kindLabel(s.kind ?? ""))}</span>
+                <span class="size muted">${hb(s.bytes)}</span>
+            </div>
+            <div class="report-note">${esc(t("ui.sessionDb.note"))}</div>`;
+            }
             const selectable = !!s.id;
             if (!selectable) {
                 return `<div class="detail-item sub-row">

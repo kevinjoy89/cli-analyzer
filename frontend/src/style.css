@@ -374,6 +374,39 @@ body.platform-linux #header { padding-top: 10px; }
 .badge.user { background: color-mix(in srgb, var(--user) 18%, transparent); color: var(--user); border: 1px solid color-mix(in srgb, var(--user) 45%, transparent); }
 .badge.installer { background: color-mix(in srgb, var(--amber) 18%, transparent); color: var(--amber); border: 1px solid color-mix(in srgb, var(--amber) 45%, transparent); }
 
+/* AI 编目徽章（add-ai-tool-catalog）：工具行的类别标签与「已卸载」标注 */
+.cat-badge {
+    font-size: 9px;
+    padding: 1px 6px;
+    margin-left: 6px;
+    border-radius: 999px;
+    vertical-align: 1px;
+    font-family: var(--mono);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.uninst-badge,
+.badge.uninst {
+    font-size: 9px;
+    padding: 1px 6px;
+    margin-left: 6px;
+    border-radius: 999px;
+    vertical-align: 1px;
+    font-family: var(--mono);
+    background: color-mix(in srgb, var(--danger, #e5484d) 14%, transparent);
+    color: var(--danger, #e5484d);
+    border: 1px solid color-mix(in srgb, var(--danger, #e5484d) 40%, transparent);
+}
+.badge.uninst { margin-left: 0; }
+
+/* 会话数据库「仅报告」说明：跟随条目/子项展示，无处置操作 */
+.report-note {
+    font-size: 11px;
+    color: var(--muted, var(--text-secondary, #999));
+    padding: 2px 0 6px 28px;
+}
+
 .detail-section { margin-top: 14px; }
 .detail-section h4 {
     margin: 0 0 6px;
