@@ -8,7 +8,7 @@
 
 ### Requirement: 厂商排除表
 
-应用 SHALL 维护已知 GUI 产品厂商的排除规则表。每条规则 MUST 包含厂商模式与可选例外列表。匹配 MUST 采用路径片段精确匹配（大小写不敏感）：路径任一目录片段与模式相等即命中；MUST NOT 使用子串匹配（避免 `code` 命中 `opencode`）。排除表 MUST 统一应用于可执行文件发现与数据目录归因两个环节；产品级短名条目（DataOnly）MUST 仅应用于数据目录归因环节（孤儿过滤），不得拦截可执行文件发现——短名（如 `code`、`amd`）可能是用户的真实 PATH 目录，拦截会误伤其中的工具。代理/网络类 CLI 核心（clash、v2ray、mihomo 等独立二进制）MUST NOT 列入排除表，仅其 GUI 客户端（clash-verge、v2rayN 等）可列入。
+应用 SHALL 维护已知 GUI 产品厂商的排除规则表。每条规则 MUST 包含厂商模式与可选例外列表。匹配 MUST 采用路径片段精确匹配（大小写不敏感）：路径任一目录片段与模式相等即命中；MUST NOT 使用子串匹配（避免 `code` 命中 `opencode`）。排除表 MUST 统一应用于可执行文件发现与数据目录归因两个环节；产品级短名条目（DataOnly）MUST 仅应用于数据目录归因环节（孤儿过滤），不得拦截可执行文件发现——短名（如 `code`、`amd`）可能是用户的真实 PATH 目录，拦截会误伤其中的工具。代理/网络类 CLI 核心（clash、v2ray、mihomo 等独立二进制）MUST NOT 列入排除表，仅其 GUI 客户端（clash-verge、v2rayN 等）可列入。例外：AI 编目条目（ai-tool-catalog）的目录归因 MUST 在排除表判定之前完成，命中编目即豁免排除，AI IDE 的数据目录不因「GUI 应用」身份被排除归因；排除表对其余非 AI 的 GUI 产品照旧生效。
 
 #### Scenario: 命中厂商模式的安装目录整体排除
 
@@ -39,6 +39,12 @@ THEN 该目录下的可执行文件仍作为工具扫描，但数据根下未认
 WHEN 数据根下存在未认领目录 `~/.config/mihomo`（mihomo 核心为独立 CLI 二进制）
 
 THEN 该目录仍为孤儿数据候选（仅 GUI 客户端目录 clash-verge/v2rayN 等被排除）
+
+#### Scenario: AI 编目条目豁免排除表
+
+WHEN AI 编目包含 VS Code 且排除表命中其厂商模式
+
+THEN VS Code 的编目数据目录（如 `~/Library/Application Support/Code`）仍被归因并带 AI 语义标注
 
 ### Requirement: 纯 CLI 产品例外
 
