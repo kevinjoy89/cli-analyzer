@@ -123,9 +123,12 @@ func TestAISessionDBReportOnly(t *testing.T) {
 
 // TestAIUninstalledResidue 校验已卸载 AI 工具的残留归因（design D3）：
 // 数据存在 + 无二进制 + 桌面端缺失 → uninstalled 标注；且目录被条目认领。
+//
+// 断言涉及 MacAppSupport 根（~/Library/Application Support），该根只在
+// darwin 上解析出路径，故根不可用时跳过。
 func TestAIUninstalledResidue(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("AI 归因测试基于 unix HOME 布局")
+	if platform.Root(platform.MacAppSupport) == "" {
+		t.Skip("残留归因断言依赖 macOS 的 Application Support 根")
 	}
 	td := t.TempDir()
 	t.Setenv("HOME", td)
@@ -210,10 +213,13 @@ func TestSubKindSessionDBFiles(t *testing.T) {
 }
 
 // TestAIIDEWorkspaceData 校验 VS Code 的 AI IDE 编目：workspaceStorage 按
-// workspace-data 标注，JoyCoder 与 CodeBuddy 独立归因为独立 AI IDE
+// workspace-data 标注，JoyCoder 与 CodeBuddy 独立归因为独立 AI IDE。
+//
+// 断言涉及 MacAppSupport 根（~/Library/Application Support），该根只在
+// darwin 上解析出路径，故根不可用时跳过。
 func TestAIIDEWorkspaceData(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("AI 归因测试基于 unix HOME 布局")
+	if platform.Root(platform.MacAppSupport) == "" {
+		t.Skip("AI IDE 归因断言依赖 macOS 的 Application Support 根")
 	}
 	td := t.TempDir()
 	t.Setenv("HOME", td)
