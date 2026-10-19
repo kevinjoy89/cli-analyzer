@@ -43,6 +43,7 @@ type CleanRule struct {
 // Rule is the curated entry for one tool.
 type Rule struct {
 	Name        string
+	DisplayName string // 友好展示名称（为空时回退为 Name）
 	Aliases     []string
 	Installer   string
 	Homepage    string // official website, shown in the GUI detail panel

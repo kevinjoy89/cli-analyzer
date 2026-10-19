@@ -10,7 +10,7 @@ import (
 // 条目存在、类别正确、桌面端宿主应用已登记。
 func TestAICatalogEntries(t *testing.T) {
 	tbl := Load()
-	agents := []string{"zcode", "agy", "workbuddy", "u1s1", "copilot", "gemini", "dsh", "pi", "kimi", "codex", "claude", "opencode", "mimocode"}
+	agents := []string{"zcode", "agy", "workbuddy", "u1s1", "copilot", "dsh", "pi", "kimi", "codex", "claude", "opencode", "mimocode"}
 	for _, name := range agents {
 		r := tbl.Lookup(name)
 		if r == nil {
@@ -21,7 +21,7 @@ func TestAICatalogEntries(t *testing.T) {
 			t.Errorf("%q category = %q, want %q", name, r.Category, CategoryAgent)
 		}
 	}
-	ides := []string{"code", "trae-cn", "marscode"}
+	ides := []string{"code", "trae-cn", "marscode", "joycoder", "codebuddy"}
 	for _, name := range ides {
 		r := tbl.Lookup(name)
 		if r == nil {
@@ -33,7 +33,7 @@ func TestAICatalogEntries(t *testing.T) {
 		}
 	}
 	// 已卸载残留条目必须登记桌面端应用名（已卸载判定依据）
-	for _, name := range []string{"trae-cn", "marscode", "gemini", "zcode", "agy"} {
+	for _, name := range []string{"trae-cn", "marscode", "zcode", "agy", "joycoder", "codebuddy"} {
 		r := tbl.Lookup(name)
 		if r != nil && len(r.Apps) == 0 {
 			t.Errorf("%q 未登记 Apps（已卸载判定需要桌面端宿主名）", name)

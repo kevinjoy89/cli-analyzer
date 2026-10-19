@@ -10,7 +10,7 @@ export interface Cleanable {
 }
 
 export interface Tool {
-    name: string; aliases: string[]; installer: string;
+    name: string; displayName?: string; aliases: string[]; installer: string;
     version: string; updatedAt: string; homepage: string; description: string;
     family?: string; // 家族合并根名（如 "nodejs"）；空 = 普通单工具
     category?: string; // AI 编目类别（agent / ai-ide）；空 = 通用 CLI 工具

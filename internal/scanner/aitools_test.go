@@ -170,7 +170,7 @@ func TestAIUninstalledResidue(t *testing.T) {
 }
 
 // TestAIActiveToolNotUninstalled 校验对照面：二进制在（或桌面端宿主在）的
-// AI 条目不标注已卸载。
+// AI 条目不标注已卸载
 func TestAIActiveToolNotUninstalled(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("AI 归因测试基于 unix HOME 布局")
@@ -179,14 +179,11 @@ func TestAIActiveToolNotUninstalled(t *testing.T) {
 	t.Setenv("HOME", td)
 	mkdirAll(t, filepath.Join(td, ".gemini"))
 
-	tools := aiAttrHarnessAt(t, td, []string{"gemini"})
-	gm := tools["gemini"]
-	// 本机 Gemini 2.app 已安装（非测试环境可注入），且 gemini 条目的数据
-	// 目录存在——此处验证无二进制但有桌面端宿主时不标注已卸载的前提是
-	// AppsInstalled 命中；测试环境无法保证 /Applications 状态，因此仅在
-	// AppsInstalled 返回 true 时断言。
-	if platform.AppsInstalled([]string{"Gemini 2"}) && gm.uninstalled {
-		t.Error("gemini 有桌面端宿主时不应标注已卸载")
+	tools := aiAttrHarnessAt(t, td, []string{"agy"})
+	ag := tools["agy"]
+	// 本机 Antigravity.app 安装状态可被 AppsInstalled 探测
+	if platform.AppsInstalled([]string{"Antigravity"}) && ag.uninstalled {
+		t.Error("Antigravity 有桌面端宿主时不应标注已卸载")
 	}
 }
 
@@ -213,7 +210,7 @@ func TestSubKindSessionDBFiles(t *testing.T) {
 }
 
 // TestAIIDEWorkspaceData 校验 VS Code 的 AI IDE 编目：workspaceStorage 按
-// workspace-data 标注，AI 扩展伴侣目录（JoyCoder）一并归因。
+// workspace-data 标注，JoyCoder 与 CodeBuddy 独立归因为独立 AI IDE
 func TestAIIDEWorkspaceData(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("AI 归因测试基于 unix HOME 布局")
@@ -222,11 +219,11 @@ func TestAIIDEWorkspaceData(t *testing.T) {
 	t.Setenv("HOME", td)
 	mkdirAll(t, filepath.Join(td, "Library", "Application Support", "Code", "User", "workspaceStorage"))
 	mkdirAll(t, filepath.Join(td, "Library", "Application Support", "JoyCoder"))
+	mkdirAll(t, filepath.Join(td, "Library", "Application Support", "CodeBuddyExtension"))
 
-	tools := aiAttrHarnessAt(t, td, []string{"code"})
+	tools := aiAttrHarnessAt(t, td, []string{"code", "joycoder", "codebuddy", "agy"})
 	cd := tools["code"]
 	ws := false
-	companion := false
 	for _, d := range cd.dataDirs {
 		switch d.Path {
 		case filepath.Join(td, "Library", "Application Support", "Code", "User", "workspaceStorage"):
@@ -235,14 +232,53 @@ func TestAIIDEWorkspaceData(t *testing.T) {
 			}
 			ws = true
 		case filepath.Join(td, "Library", "Application Support", "JoyCoder"):
-			companion = true
+			t.Error("JoyCoder 不应再归因到 code 条目")
 		}
 	}
 	if !ws {
 		t.Error("workspaceStorage 未按 workspace-data 归因")
 	}
-	if !companion {
-		t.Error("AI 扩展伴侣目录（JoyCoder）未归因到 code 条目")
+
+	// 校验 JoyCoder 独立归因
+	jc := tools["joycoder"]
+	jcFound := false
+	for _, d := range jc.dataDirs {
+		if d.Path == filepath.Join(td, "Library", "Application Support", "JoyCoder") {
+			jcFound = true
+		}
+	}
+	if !jcFound {
+		t.Error("JoyCoder 数据目录未独立归因")
+	}
+
+	// 校验 CodeBuddy 独立归因
+	cb := tools["codebuddy"]
+	cbFound := false
+	for _, d := range cb.dataDirs {
+		if d.Path == filepath.Join(td, "Library", "Application Support", "CodeBuddyExtension") {
+			cbFound = true
+		}
+	}
+	if !cbFound {
+		t.Error("CodeBuddyExtension 数据目录未独立归因")
+	}
+
+	// 校验 agy 归因了 ~/.gemini 且 DisplayName 正确
+	agy := tools["agy"]
+	agyGeminiFound := false
+	for _, d := range agy.dataDirs {
+		if d.Path == filepath.Join(td, ".gemini") {
+			agyGeminiFound = true
+		}
+	}
+	if !agyGeminiFound {
+		t.Error("agy 未归因 ~/.gemini 数据目录")
+	}
+	if cd.displayName != "Visual Studio Code" {
+		t.Errorf("code.displayName = %q, want Visual Studio Code", cd.displayName)
+	}
+	if agy.displayName != "Antigravity" {
+		t.Errorf("agy.displayName = %q, want Antigravity", agy.displayName)
 	}
 }
 

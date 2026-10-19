@@ -4,7 +4,13 @@ import type { Tool } from './types';
 
 // 与 Go JSON 契约同构的最小 Tool 构造（grouping 只消费 name/aliases/
 // category/footprintBytes）。
-function tool(name: string, category?: string, footprintBytes = 0, aliases?: string[]): Tool {
+function tool(
+    name: string,
+    category?: string,
+    footprintBytes = 0,
+    aliases?: string[],
+    uninstalled?: boolean,
+): Tool {
     return {
         name,
         aliases: aliases ?? [name + '-alias'],
@@ -14,6 +20,7 @@ function tool(name: string, category?: string, footprintBytes = 0, aliases?: str
         homepage: '',
         description: '',
         category,
+        uninstalled,
         binaries: [],
         dataDirs: [],
         cleanables: [],
@@ -31,6 +38,12 @@ describe('matchesFilter', () => {
         expect(matchesFilter(tool('opencode', 'agent'), 'OPEN')).toBe(true);
         expect(matchesFilter(tool('kimi', 'agent', 0, ['kimi-code']), 'kimi-code')).toBe(true);
         expect(matchesFilter(tool('git'), 'npm')).toBe(false);
+    });
+    it('命中 displayName（大小写不敏感）', () => {
+        const t = tool('code', 'ai-ide');
+        t.displayName = 'Visual Studio Code';
+        expect(matchesFilter(t, 'studio')).toBe(true);
+        expect(matchesFilter(t, 'visual')).toBe(true);
     });
 });
 
@@ -71,6 +84,17 @@ describe('groupTools', () => {
         const { ai, others } = groupTools([], '');
         expect(ai.tools).toHaveLength(0);
         expect(others.footprintBytes).toBe(0);
+    });
+
+    it('已卸载且无占用的工具被排除在列表外', () => {
+        const list = [
+            tool('marscode', 'ai-ide', 0, undefined, true),
+            tool('trae-cn', 'ai-ide', 10, undefined, true),
+            tool('claude', 'agent', 20),
+        ];
+        const { ai } = groupTools(list, '');
+        expect(ai.tools.map((t) => t.name)).toEqual(['trae-cn', 'claude']);
+        expect(ai.footprintBytes).toBe(30);
     });
 });
 

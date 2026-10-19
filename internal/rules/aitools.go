@@ -55,7 +55,7 @@ var aiCurated = []Rule{
 	{
 		// ZCode：agent harness（CLI 数据 + ZCode.app 桌面端）。cli/agents
 		// 1.2G 的构成待确认（见 design Open Questions），先随父目录归因。
-		Name: "zcode", Installer: "other", Category: CategoryAgent,
+		Name: "zcode", DisplayName: "ZCode", Installer: "other", Category: CategoryAgent,
 		Apps: []string{"ZCode"},
 		DataDirs: []DataDirRule{
 			dd(platform.Home, ".zcode", TierUser, "data"),
@@ -72,14 +72,12 @@ var aiCurated = []Rule{
 	},
 	{
 		// Antigravity：Google 的 agent（agy CLI + Antigravity.app 桌面端 +
-		// Antigravity Tools.app 伴侣）。注意「Antigravity IDE」是另一产品
-		// （VS Code fork 形态的 AI IDE），本机未安装、勿混编。AppSupport/
-		// Antigravity 为 Electron 数据（2026-09-30 实测 113M）；agy CLI 的
-		// 数据目录位置待确认。
-		Name: "agy", Aliases: []string{"antigravity"}, Installer: "local-bin",
+		// Antigravity Tools.app 伴侣）。CLI 数据位于 ~/.gemini 根目录
+		Name: "agy", DisplayName: "Antigravity", Aliases: []string{"antigravity"}, Installer: "local-bin",
 		Category: CategoryAgent,
 		Apps:     []string{"Antigravity", "Antigravity Tools"},
 		DataDirs: []DataDirRule{
+			dd(platform.Home, ".gemini", TierUser, "data"),
 			ddDesktop(platform.MacAppSupport, "Antigravity", TierUser, "data"),
 			ddDesktop(platform.MacAppSupport, "com.lbjlaq.antigravity-tools", TierUser, "data"),
 			dd(platform.AppData, "Antigravity", TierUser, "data"),
@@ -87,8 +85,8 @@ var aiCurated = []Rule{
 	},
 	{
 		// WorkBuddy：腾讯 agent 桌面端（Electron）。logs 696M + traces 266M
-		// 是单体最大的纯日志堆积（2026-09-30 实测）。
-		Name: "workbuddy", Installer: "other", Category: CategoryAgent,
+		// 是单体最大的纯日志堆积（2026-09-30 实测）
+		Name: "workbuddy", DisplayName: "WorkBuddy", Installer: "other", Category: CategoryAgent,
 		Apps: []string{"WorkBuddy"},
 		DataDirs: []DataDirRule{
 			dd(platform.Home, ".workbuddy", TierUser, "data"),
@@ -103,9 +101,8 @@ var aiCurated = []Rule{
 		},
 	},
 	{
-		// u1s1：pi 生态的桌面发行版（io.u1s1.app，主二进制 pi-agent-desktop）。
-		// 其 CLI 形态是否复用 pi 条目（~/.pi）见 design Open Questions。
-		Name: "u1s1", Installer: "other", Category: CategoryAgent,
+		// u1s1：pi 生态的桌面发行版（io.u1s1.app，主二进制 pi-agent-desktop）
+		Name: "u1s1", DisplayName: "u1s1", Installer: "other", Category: CategoryAgent,
 		Apps: []string{"u1s1"},
 		DataDirs: []DataDirRule{
 			dd(platform.Home, ".u1s1", TierUser, "data"),
@@ -116,37 +113,24 @@ var aiCurated = []Rule{
 		},
 	},
 	{
-		Name: "copilot", Installer: "other", Category: CategoryAgent,
+		Name: "copilot", DisplayName: "GitHub Copilot", Installer: "other", Category: CategoryAgent,
 		DataDirs: []DataDirRule{
 			// GitHub Copilot CLI 配置（2026-09-30 实测 84K）
 			dd(platform.Home, ".copilot", TierUser, "config"),
 			dd(platform.AppData, "copilot", TierUser, "data"),
 		},
 	},
-	{
-		// Gemini：CLI 已卸载但数据残留（~/.gemini 563M），Gemini 2.app 桌面端
-		// 仍在用——桌面端数据归入同一条目，条目不标注「已卸载」（有形态在）。
-		Name: "gemini", Installer: "other", Category: CategoryAgent,
-		Apps: []string{"Gemini 2"},
-		DataDirs: []DataDirRule{
-			dd(platform.Home, ".gemini", TierUser, "data"),
-			ddDesktop(platform.MacAppSupport, "Gemini 2", TierUser, "data"),
-			ddDesktop(platform.MacAppSupport, "cloud-code", TierUser, "data"),
-		},
-	},
 	// ---- AI IDE ----
 	{
-		// VS Code：AI IDE 宿主（+AI 扩展伴侣 JoyCoder / CodeBuddy）。
-		// workspaceStorage 1.3G 是 IDE 工作区存储（2026-09-30 实测）。
-		Name: "code", Aliases: []string{"vscode"}, Installer: "other",
+		// VS Code：AI IDE 宿主
+		// workspaceStorage 1.3G 是 IDE 工作区存储（2026-09-30 实测）
+		Name: "code", DisplayName: "Visual Studio Code", Aliases: []string{"vscode"}, Installer: "other",
 		Category: CategoryAIIde,
 		Apps:     []string{"Visual Studio Code"},
 		DataDirs: []DataDirRule{
 			ddDesktop(platform.MacAppSupport, "Code", TierUser, "data"),
 			ddDesktop(platform.MacAppSupport, "Code/User/workspaceStorage", TierUser, KindWorkspaceData),
 			ddDesktop(platform.MacAppSupport, "Code/CachedData", TierSafe, "cache"),
-			ddDesktop(platform.MacAppSupport, "JoyCoder", TierUser, "data"),
-			ddDesktop(platform.MacAppSupport, "CodeBuddyExtension", TierUser, "data"),
 			// Windows 官方数据路径镜像
 			ddDesktop(platform.AppData, "Code", TierUser, "data"),
 			ddDesktop(platform.AppData, `Code\User\workspaceStorage`, TierUser, KindWorkspaceData),
@@ -154,8 +138,29 @@ var aiCurated = []Rule{
 		},
 	},
 	{
-		// Trae CN：字节 AI IDE（本机已卸载，数据残留约 1.2G）。
-		Name: "trae-cn", Installer: "other", Category: CategoryAIIde,
+		// JoyCoder：独立的 AI IDE
+		Name: "joycoder", DisplayName: "JoyCoder", Installer: "other",
+		Category: CategoryAIIde,
+		Apps:     []string{"JoyCoder"},
+		DataDirs: []DataDirRule{
+			ddDesktop(platform.MacAppSupport, "JoyCoder", TierUser, "data"),
+			ddDesktop(platform.MacAppSupport, "JoyCoder/CachedData", TierSafe, "cache"),
+			ddDesktop(platform.AppData, "JoyCoder", TierUser, "data"),
+		},
+	},
+	{
+		// CodeBuddy：独立的 AI IDE
+		Name: "codebuddy", DisplayName: "CodeBuddy", Installer: "other",
+		Category: CategoryAIIde,
+		Apps:     []string{"CodeBuddy", "CodeBuddyExtension"},
+		DataDirs: []DataDirRule{
+			ddDesktop(platform.MacAppSupport, "CodeBuddyExtension", TierUser, "data"),
+			ddDesktop(platform.AppData, "CodeBuddyExtension", TierUser, "data"),
+		},
+	},
+	{
+		// Trae CN：字节 AI IDE（本机已卸载，数据残留约 1.2G）
+		Name: "trae-cn", DisplayName: "Trae CN", Installer: "other", Category: CategoryAIIde,
 		Apps: []string{"Trae CN"},
 		DataDirs: []DataDirRule{
 			ddDesktop(platform.Home, ".trae-cn", TierUser, "data"),
@@ -165,8 +170,8 @@ var aiCurated = []Rule{
 	},
 	{
 		// MarsCode：豆包 AI IDE（Trae 前身，本机已卸载）。残留几乎全是
-		// .ckg 代码知识图谱索引（2026-09-30 实测 3.9G，可再生）。
-		Name: "marscode", Installer: "other", Category: CategoryAIIde,
+		// .ckg 代码知识图谱索引（2026-09-30 实测 3.9G，可再生）
+		Name: "marscode", DisplayName: "MarsCode", Installer: "other", Category: CategoryAIIde,
 		Apps: []string{"MarsCode"},
 		DataDirs: []DataDirRule{
 			ddDesktop(platform.Home, ".marscode", TierUser, "data"),

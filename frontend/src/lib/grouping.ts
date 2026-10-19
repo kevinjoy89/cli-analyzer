@@ -10,6 +10,7 @@ export function matchesFilter(t: Tool, q: string): boolean {
     if (!ql) return true;
     return (
         t.name.toLowerCase().includes(ql) ||
+        (t.displayName ? t.displayName.toLowerCase().includes(ql) : false) ||
         t.aliases.some((a) => a.toLowerCase().includes(ql))
     );
 }
@@ -30,6 +31,8 @@ export function groupTools(
     const others: Tool[] = [];
     for (const t of tools) {
         if (!matchesFilter(t, q)) continue;
+        // 已卸载且无占用的工具不应出现在列表中（即使在内置回收站中未清空）
+        if (t.uninstalled && t.footprintBytes === 0) continue;
         if (t.category) ai.push(t);
         else others.push(t);
     }

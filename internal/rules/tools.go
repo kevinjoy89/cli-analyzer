@@ -11,7 +11,7 @@ import (
 // scanner from the installer type, not listed here.
 var curated = []Rule{
 	{
-		Name: "claude", Aliases: []string{"claude-code"}, Installer: "versioned", Category: CategoryAgent,
+		Name: "claude", DisplayName: "Claude Code", Aliases: []string{"claude-code"}, Installer: "versioned", Category: CategoryAgent,
 		DataDirs: []DataDirRule{
 			// 配置/状态混合根（settings.json、todos、cache、backups 等）
 			dd(platform.Home, ".claude", TierUser, "data"),
@@ -33,7 +33,7 @@ var curated = []Rule{
 		},
 	},
 	{
-		Name: "kimi", Aliases: []string{"kimi-code"}, Installer: "other", Category: CategoryAgent,
+		Name: "kimi", DisplayName: "Kimi Code", Aliases: []string{"kimi-code"}, Installer: "other", Category: CategoryAgent,
 		// 桌面端为 Kimi Code.app（Electron）；kimi-desktop 是 Kimi 聊天助手，
 		// 不属于本条目。
 		Apps: []string{"Kimi Code"},
@@ -52,7 +52,7 @@ var curated = []Rule{
 		},
 	},
 	{
-		Name: "mimocode", Aliases: []string{"mimo"}, Installer: "other", Category: CategoryAgent,
+		Name: "mimocode", DisplayName: "mimocode", Aliases: []string{"mimo"}, Installer: "other", Category: CategoryAgent,
 		DataDirs: []DataDirRule{
 			dd(platform.XDGData, "mimocode", TierUser, "data"),
 			// 会话快照/索引（opencode fork 同构；mimocode.db 会话数据库文件
@@ -68,7 +68,7 @@ var curated = []Rule{
 		},
 	},
 	{
-		Name: "opencode", Installer: "other", Category: CategoryAgent,
+		Name: "opencode", DisplayName: "OpenCode", Installer: "other", Category: CategoryAgent,
 		DataDirs: []DataDirRule{
 			dd(platform.XDGData, "opencode", TierUser, "data"),
 			// AI 语义子目录（2026-09-30 实测：snapshot 158M、storage 94M、
@@ -220,7 +220,7 @@ var curated = []Rule{
 		},
 	},
 	{
-		Name: "dsh", Installer: "npm", Category: CategoryAgent,
+		Name: "dsh", DisplayName: "DeepSeek Harness", Installer: "npm", Category: CategoryAgent,
 		// 桌面端为 DeepSeek Harness.app（@deepseek-ai 数据目录）
 		Apps: []string{"DeepSeek Harness"},
 		DataDirs: []DataDirRule{
@@ -250,7 +250,7 @@ var curated = []Rule{
 		Name: "omp", Aliases: []string{"oh-my-pi"}, Installer: "npm",
 	},
 	{
-		Name: "codex", Installer: "other", Category: CategoryAgent,
+		Name: "codex", DisplayName: "Codex CLI", Installer: "other", Category: CategoryAgent,
 		// 桌面端承载于 ChatGPT.app（bundle id com.openai.codex）
 		Apps: []string{"ChatGPT"},
 		DataDirs: []DataDirRule{

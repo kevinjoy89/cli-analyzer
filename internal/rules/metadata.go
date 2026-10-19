@@ -45,6 +45,8 @@ var metaByName = map[string]Meta{
 	"git":           {"https://git-scm.com", "tool.desc.git"},
 	"pip":           {"https://pypi.org", "tool.desc.pip"},
 	"trae-cn":       {"https://www.trae.com.cn", "tool.desc.trae-cn"},
+	"joycoder":      {"", "tool.desc.joycoder"},
+	"codebuddy":     {"", "tool.desc.codebuddy"},
 	"summarize":     {"", "tool.desc.summarize"},
 	"codegraph":     {"", "tool.desc.codegraph"},
 	"skillhub":      {"", "tool.desc.skillhub"},

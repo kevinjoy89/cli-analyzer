@@ -253,3 +253,55 @@ func TestAttributeCacheKindCleanable(t *testing.T) {
 		t.Errorf("cleanables = %+v, want a SAFE cache item", tb.cleanables)
 	}
 }
+
+/**
+ * 校验已卸载且无占用的工具在 finalize 中被剪枝排除
+ *
+ * @param t 测试控制对象
+ */
+func TestFinalizeUninstalledZeroFootprintPruned(t *testing.T) {
+	td := t.TempDir()
+	emptyDir := filepath.Join(td, "empty-dir")
+	if err := os.MkdirAll(emptyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	tools := map[string]*toolBuilder{
+		// 已卸载且无物理占用（仅含 0 字节空目录）：应被剪枝排除
+		"marscode": {
+			name:        "marscode",
+			category:    "ai-ide",
+			uninstalled: true,
+			footprint:   0,
+			dataDirs: []DataDir{
+				{Path: emptyDir, Bytes: 0, Tier: TierUser, Kind: "data"},
+			},
+			cleanables: []Cleanable{
+				{Tool: "marscode", Path: emptyDir, Bytes: 0, Tier: TierUser, Kind: "data"},
+			},
+		},
+		// 已卸载但有残留占用：应保留供清理处置
+		"trae-cn": {
+			name:        "trae-cn",
+			category:    "ai-ide",
+			uninstalled: true,
+			footprint:   1024,
+			cleanables: []Cleanable{
+				{Tool: "trae-cn", Path: emptyDir, Bytes: 1024, Tier: TierUser, Kind: "data"},
+			},
+		},
+		// 幽灵 cleanables（规则派生但物理路径不存在，footprint 为 0）：应被剪枝排除
+		"ghost": {
+			name:      "ghost",
+			footprint: 0,
+			cleanables: []Cleanable{
+				{Tool: "ghost", Path: filepath.Join(td, "non-existent"), Bytes: 0, Tier: TierSafe},
+			},
+		},
+	}
+
+	res := finalize(tools, []string{"marscode", "trae-cn", "ghost"}, Options{})
+	if len(res.Tools) != 1 || res.Tools[0].Name != "trae-cn" {
+		t.Fatalf("res.Tools = %+v, want only trae-cn", res.Tools)
+	}
+}

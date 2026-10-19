@@ -265,8 +265,9 @@ function makeToolRow(tool: Tool): HTMLDivElement {
     const un = tool.uninstalled
         ? `<span class="uninst-badge">${esc(t("ui.tool.uninstalled"))}</span>`
         : "";
+    const dispName = tool.displayName || tool.name;
     row.innerHTML = `
-        <span class="tool-name" title="${esc(tool.name)}">${esc(tool.name)}${cat}${un}</span>
+        <span class="tool-name"><span class="tool-name-text" title="${esc(dispName)}">${esc(dispName)}</span>${cat}${un}</span>
         <span class="ver">${esc(tool.version || "—")}</span>
         <span class="num">${hb(tool.footprintBytes)}</span>
         <span class="num clean">${hb(tool.cleanableBytes)}${clean}</span>
@@ -554,8 +555,9 @@ export function renderDetail() {
           esc(t("ui.noCleanable")) +
           "</span></div></div>";
 
+    const dispName = tool.displayName || tool.name;
     body.innerHTML = `
-        <div class="detail-head"><h2>${esc(tool.name)}</h2>${installer}${catBadge}${uninstBadge}</div>
+        <div class="detail-head"><h2>${esc(dispName)}</h2>${installer}${catBadge}${uninstBadge}</div>
         ${metaHtml}
         ${formHtml}
         <div class="detail-section"><h4>${esc(t("ui.sectionBinaries"))}</h4>${binaries}</div>

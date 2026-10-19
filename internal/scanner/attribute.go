@@ -33,6 +33,7 @@ type toolBuilder struct {
 	footprint   int64
 	version     string
 	updatedAt   string
+	displayName string
 	homepage    string
 	description string
 	// family 是工具家族合并根名（"nodejs"）；普通单工具为空。
@@ -200,6 +201,7 @@ func attribute(tools map[string]*toolBuilder, order []string, ruleTable *rules.T
 		}
 		// AI 编目：类别 + 已卸载判定（无二进制且桌面端宿主应用缺失 → 残留）。
 		if cur := ruleTable.Lookup(id); cur != nil {
+			tb.displayName = cur.DisplayName
 			tb.category = cur.Category
 			if cur.Category != "" && len(tb.binaries) == 0 && !platform.AppsInstalled(cur.Apps) {
 				tb.uninstalled = true
@@ -741,6 +743,20 @@ func finalize(tools map[string]*toolBuilder, order []string, opts Options) *Scan
 			keptDD = append(keptDD, d)
 		}
 		tb.dataDirs = keptDD
+		// 剪枝不存在的 cleanables：与 dataDirs 类似，规则派生的 cleanables 若在磁盘上不存在
+		// 必须在空工具判定之前剪枝，避免阻碍空工具修剪
+		keptCleanables := tb.cleanables[:0]
+		for _, c := range tb.cleanables {
+			if _, err := os.Lstat(c.Path); err == nil || c.Bytes > 0 {
+				keptCleanables = append(keptCleanables, c)
+			}
+		}
+		tb.cleanables = keptCleanables
+		// 已卸载且无占用的工具不应出现在列表中（即使在内置回收站中未清空）：
+		// 已卸载工具仅为展示数据残留；若无占用（0 字节残留或无残留），不作为活跃工具亦无清理价值
+		if tb.uninstalled && tb.footprint == 0 {
+			continue
+		}
 		if tb.footprint == 0 && len(tb.binaries) == 0 && len(tb.cleanables) == 0 && len(tb.dataDirs) == 0 {
 			continue
 		}
@@ -752,14 +768,6 @@ func finalize(tools map[string]*toolBuilder, order []string, opts Options) *Scan
 			aliases = append(aliases, a)
 		}
 		sort.Strings(aliases)
-		// Drop cleanables whose path no longer exists (deleted between scans).
-		kept := tb.cleanables[:0]
-		for _, c := range tb.cleanables {
-			if _, err := os.Lstat(c.Path); err == nil || c.Bytes > 0 {
-				kept = append(kept, c)
-			}
-		}
-		tb.cleanables = kept
 		for i := range tb.cleanables {
 			if tb.cleanables[i].Sub == nil {
 				tb.cleanables[i].Sub = []SubEntry{}
@@ -783,7 +791,7 @@ func finalize(tools map[string]*toolBuilder, order []string, opts Options) *Scan
 			tb.cleanables = []Cleanable{}
 		}
 		out = append(out, Tool{
-			Name: tb.name, Aliases: aliases, Installer: string(tb.installer),
+			Name: tb.name, DisplayName: tb.displayName, Aliases: aliases, Installer: string(tb.installer),
 			Version: tb.version, UpdatedAt: tb.updatedAt,
 			Homepage: tb.homepage, Description: tb.description,
 			Family: tb.family, Package: tb.pkg,

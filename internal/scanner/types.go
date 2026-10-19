@@ -149,6 +149,7 @@ type Cleanable struct {
 // Tool aggregates everything attributed to one CLI identity.
 type Tool struct {
 	Name        string   `json:"name"`
+	DisplayName string   `json:"displayName,omitempty"` // 友好展示名称（为空时回退为 Name）
 	Aliases     []string `json:"aliases"`
 	Installer   string   `json:"installer"`
 	Version     string   `json:"version"`           // current version, when known

@@ -291,7 +291,7 @@ body.platform-linux #header { padding-top: 10px; }
 .tool-list { overflow-y: auto; flex: 1; }
 .tool-header, .tool-row {
     display: grid;
-    grid-template-columns: 180px 92px 92px 92px 92px;
+    grid-template-columns: minmax(180px, 1fr) 76px 84px 84px 84px;
     gap: 6px;
     align-items: center;
     min-width: 0;
@@ -333,9 +333,16 @@ body.platform-linux #header { padding-top: 10px; }
 .tool-row.selected { background: var(--sel-bg); box-shadow: inset 3px 0 0 var(--accent); }
 .tool-name {
     min-width: 0;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+}
+.tool-name-text {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    flex: 0 1 auto;
 }
 .num { font-family: var(--mono); text-align: right; font-size: 12px; white-space: nowrap; }
 .ver { font-family: var(--mono); font-size: 11px; color: var(--muted); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -379,6 +386,8 @@ body.platform-linux #header { padding-top: 10px; }
 
 /* AI 编目徽章（add-ai-tool-catalog）：工具行的类别标签与「已卸载」标注 */
 .cat-badge {
+    flex-shrink: 0;
+    white-space: nowrap;
     font-size: 9px;
     padding: 1px 6px;
     margin-left: 6px;
@@ -399,6 +408,8 @@ body.platform-linux #header { padding-top: 10px; }
 }
 .uninst-badge,
 .badge.uninst {
+    flex-shrink: 0;
+    white-space: nowrap;
     font-size: 9px;
     padding: 1px 6px;
     margin-left: 6px;

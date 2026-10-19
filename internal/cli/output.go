@@ -34,8 +34,12 @@ func printTable(res *scanner.ScanResult) {
 		if len(t.Binaries) == 0 {
 			cmds = "-"
 		}
+		name := t.Name
+		if t.DisplayName != "" {
+			name = t.DisplayName
+		}
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-			t.Name, cmds, humanBytes(t.Footprint), humanBytes(t.Cleanable), humanBytes(t.User), t.Installer)
+			name, cmds, humanBytes(t.Footprint), humanBytes(t.Cleanable), humanBytes(t.User), t.Installer)
 	}
 	fmt.Fprint(w, i18n.T("cli.totalsRow", map[string]any{
 		"footprint": humanBytes(res.Totals.Footprint),
