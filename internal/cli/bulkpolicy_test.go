@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"cli-analyzer/internal/config"
-	"cli-analyzer/internal/rules"
 	"cli-analyzer/internal/scanner"
 )
 
@@ -52,20 +51,26 @@ func runCleanDryRun(t *testing.T, extra ...string) scanner.CleanReport {
 	return rep
 }
 
-// TestBulkCustomKindNotSelectedByDefault 是本变更的核心安全默认：
-// 用户规则包声明的自定义 Kind，未配置时不进 clean --all。
-func TestBulkCustomKindNotSelectedByDefault(t *testing.T) {
-	dir := t.TempDir()
-	myCache := filepath.Join(dir, "mycache")
-	if err := os.MkdirAll(myCache, 0o755); err != nil {
+// mkCustomKindTool 构造一个只含自定义 Kind 条目的扫描工具。
+func mkCustomKindTool(t *testing.T, kind string) (scanner.Tool, string) {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "custom")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	setupBulkEnv(t, scanner.Tool{
+	return scanner.Tool{
 		Name: "mytool", Installer: "other",
 		Cleanables: []scanner.Cleanable{
-			{ID: "mytool|my-cache|" + myCache, Tool: "mytool", Path: myCache, Bytes: 100, Kind: "my-cache"},
+			{ID: "mytool|" + kind + "|" + dir, Tool: "mytool", Path: dir, Bytes: 100, Kind: kind},
 		},
-	})
+	}, dir
+}
+
+// TestBulkCustomKindNotSelectedByDefault 是本变更的核心安全默认：
+// 自定义 Kind 未配置时不进 clean --all。
+func TestBulkCustomKindNotSelectedByDefault(t *testing.T) {
+	tool, _ := mkCustomKindTool(t, "my-cache")
+	setupBulkEnv(t, tool)
 
 	rep := runCleanDryRun(t)
 	if len(rep.Deleted) != 0 {
@@ -75,38 +80,20 @@ func TestBulkCustomKindNotSelectedByDefault(t *testing.T) {
 
 // TestBulkCustomKindSelectedWhenConfigured 校验配置追加后能进批量。
 func TestBulkCustomKindSelectedWhenConfigured(t *testing.T) {
-	dir := t.TempDir()
-	myCache := filepath.Join(dir, "mycache")
-	if err := os.MkdirAll(myCache, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	setupBulkEnv(t, scanner.Tool{
-		Name: "mytool", Installer: "other",
-		Cleanables: []scanner.Cleanable{
-			{ID: "mytool|my-cache|" + myCache, Tool: "mytool", Path: myCache, Bytes: 100, Kind: "my-cache"},
-		},
-	})
+	tool, dir := mkCustomKindTool(t, "my-cache")
+	setupBulkEnv(t, tool)
 	saveConfig(t, func(c *config.Config) { c.Clean.BulkKinds = []string{"my-cache"} })
 
 	rep := runCleanDryRun(t)
-	if len(rep.Deleted) != 1 || rep.Deleted[0] != myCache {
+	if len(rep.Deleted) != 1 || rep.Deleted[0] != dir {
 		t.Errorf("configured custom kind should be selected, got %v", rep.Deleted)
 	}
 }
 
 // TestBulkExcludeRemovesBuiltin 校验 bulkExclude 能踢掉内置 Kind。
 func TestBulkExcludeRemovesBuiltin(t *testing.T) {
-	dir := t.TempDir()
-	cacheDir := filepath.Join(dir, "cachedir")
-	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	setupBulkEnv(t, scanner.Tool{
-		Name: "mytool", Installer: "other",
-		Cleanables: []scanner.Cleanable{
-			{ID: "mytool|cache|" + cacheDir, Tool: "mytool", Path: cacheDir, Bytes: 100, Kind: "cache"},
-		},
-	})
+	tool, _ := mkCustomKindTool(t, "cache")
+	setupBulkEnv(t, tool)
 
 	// 默认会选中
 	if rep := runCleanDryRun(t); len(rep.Deleted) != 1 {
@@ -122,72 +109,14 @@ func TestBulkExcludeRemovesBuiltin(t *testing.T) {
 
 // TestBulkRuntimeNotSelected 校验 runtime（TierSafe 但不可批量）不进批量。
 func TestBulkRuntimeNotSelected(t *testing.T) {
-	dir := t.TempDir()
-	rt := filepath.Join(dir, "runtime")
-	if err := os.MkdirAll(rt, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	setupBulkEnv(t, scanner.Tool{
-		Name: "mytool", Installer: "other",
-		Cleanables: []scanner.Cleanable{
-			{ID: "mytool|runtime|" + rt, Tool: "mytool", Path: rt, Bytes: 100, Kind: "runtime"},
-		},
-	})
+	tool, _ := mkCustomKindTool(t, "runtime")
+	setupBulkEnv(t, tool)
+
 	if rep := runCleanDryRun(t); len(rep.Deleted) != 0 {
 		t.Errorf("runtime must not be bulk-selected (safe != bulk-cleanable), got %v", rep.Deleted)
 	}
 	// 但 --include-data 时纳入
 	if rep := runCleanDryRun(t, "--include-data"); len(rep.Deleted) != 1 {
 		t.Errorf("--include-data should include runtime, got %v", rep.Deleted)
-	}
-}
-
-// TestUserRuleKindIntegratesWithPolicy 端到端：规则包声明的自定义 kind
-// 在配置声明后能进批量清理（覆盖「规则包 → 扫描 → 批量选择」整条链路）。
-//
-// 用真实规则目录：userRulesDir 是包级变量，通过 rules 包导出的
-// UserRulesDir() 拿到实际位置，把规则包写进去（测试环境已用 HOME 隔离）。
-func TestUserRuleKindIntegratesWithPolicy(t *testing.T) {
-	rulesDir := rules.UserRulesDir()
-	if rulesDir == "" {
-		t.Skip("user rules dir unavailable")
-	}
-	if err := os.MkdirAll(rulesDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	pack := `{
-  "schemaVersion": 1,
-  "rules": [{
-    "name": "packtool",
-    "dataDirs": [{"path": "` + filepath.Join(t.TempDir(), "pack-cache") + `", "tier": "safe", "kind": "pack-cache"}]
-  }]
-}`
-	if err := os.WriteFile(filepath.Join(rulesDir, "pack.json"), []byte(pack), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	// 规则包加载与 kind 归属由 internal/rules/user_test.go 覆盖；
-	// 这里只验证策略层对自定义 kind 的处理：未配置不选、配置后选。
-	setupBulkEnv(t)
-	custom := filepath.Join(t.TempDir(), "pack-cache")
-	if err := os.MkdirAll(custom, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	// 重新写缓存，含自定义 kind 条目
-	if err := scanner.SaveCache(&scanner.ScanResult{Tools: []scanner.Tool{{
-		Name: "packtool", Installer: "other",
-		Cleanables: []scanner.Cleanable{
-			{ID: "packtool|pack-cache|" + custom, Tool: "packtool", Path: custom, Bytes: 10, Kind: "pack-cache"},
-		},
-	}}}); err != nil {
-		t.Fatal(err)
-	}
-
-	if rep := runCleanDryRun(t); len(rep.Deleted) != 0 {
-		t.Errorf("rule-pack kind must not be bulk by default, got %v", rep.Deleted)
-	}
-	saveConfig(t, func(c *config.Config) { c.Clean.BulkKinds = []string{"pack-cache"} })
-	if rep := runCleanDryRun(t); len(rep.Deleted) != 1 {
-		t.Errorf("configured rule-pack kind should be selected, got %v", rep.Deleted)
 	}
 }
