@@ -73,9 +73,7 @@ export interface FormSubtotals {
 export function formSubtotals(
     dirs: Array<{ path: string; bytes: number; form?: string }>,
 ): FormSubtotals {
-    const maximal = dirs.filter(
-        (d) => !dirs.some((o) => o.path !== d.path && pathInside(o.path, d.path)),
-    );
+    const maximal = keepMaximalPaths(dirs);
     let desktop = 0;
     let cli = 0;
     for (const d of maximal) {
@@ -83,4 +81,14 @@ export function formSubtotals(
         else cli += d.bytes;
     }
     return { desktop, cli };
+}
+
+// keepMaximalPaths 只保留极大路径：某个条目的路径严格位于另一条目之内时，
+// 它随外层条目一起处置，不再单独计入合计。这是「可处置合计」与「形态小计」
+// 共用的唯一去重口径（后端 cleaner 的 isInside 同义）。
+// 抽成函数而不是各处内联：CLI 与 GUI 的合计必须一致，两套手写实现会分叉。
+export function keepMaximalPaths<T extends { path: string }>(items: T[]): T[] {
+    return items.filter(
+        (it) => !items.some((o) => o.path !== it.path && pathInside(o.path, it.path)),
+    );
 }
