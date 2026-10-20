@@ -37,9 +37,13 @@ CLI Analyzer 扫描系统上安装的 CLI 工具，归因每个工具的总磁�
 - **占用趋势**：每次扫描自动追加历史快照；GUI 趋势视图（手写 SVG 折线）展示总占用/可处置随时间的变化与可处置增量 Top 5，并在某工具可处置量超过阈值时以铃铛徽标提醒（点击可查看待处置工具并快速跳转，阈值可在"首选项"配置）
 - **树形明细**：可处置项展开显示一级子目录占用（如 `~/.npm` → `_cacache` 10G / `_npx` 764M），可只勾选部分子项单独处置；子路径删除同样经过完整性守卫（必须是扫描归因过的父项子路径）
 - **内置更新**：启动时自动检查 GitHub Releases 是否有新版本（可在「首选项 → 更新」关闭，带 4h 限流缓存）；发现新版提示下载并展示进度条，下载后校验 SHA256 校验和，再打开安装包由你手动完成安装。CLI 侧：`cli-analyzer update check`。注意：新版本发布后 4h 内可能因缓存尚未刷新而不提示，稍候即会弹出
-- **标准卸载**：不知道卸载命令？工具自动识别安装来源（brew / npm / pipx / cargo…），给出标准卸载命令并可选代跑，随后检测残留的配置/缓存目录——默认移入内置回收站（可恢复）；永久删除残留是用户的显式选择。系统关键工具拒绝卸载。CLI：`cli-analyzer uninstall <工具>`
+- **标准卸载**：不知道卸载命令？工具自动识别安装来源（brew / npm / pipx / cargo…），给出标准卸载命令并可选代跑，随后检测残留的配置/缓存目录——默认移入内置回收站（可恢复）；永久删除残留是用户的显式选择。系统关键工具拒绝卸载。CLI：`cli-analyzer uninstall <工具>`（`--dry-run` 只看计划不动手）
+- **可脚本化 CLI**：每个子命令都支持 `--json`（`-j`），输出**单行紧凑 JSON**，顶层带 `schemaVersion` 与 `kind`，脚本据此判断报告类型（`scan` / `clean` / `trash-list` / `trends` / `uninstall` / `app-update` / `tool-check` / `tool-upgrade` / `residue` / `baseline-diff`）；`--pretty` 缩进输出。`scan --top N` 截断大结果；`scan --baseline <文件> [--fail-on-grow <大小>]` 与上一次扫描对比，某工具可处置空间增长超阈时退出码非 0，可直接当 CI 门禁。契约**只增不删**，由 CI 里的结构快照测试冻结（见 [docs/adr/0002](docs/adr/0002-cleanable-actionable-and-contract-compat.md)）
+- **用户规则包**：新 CLI / AI 工具出现得比发版快。把 JSON 放进 `<数据目录>/rules.d/`，扫描时与内置规则表一起加载（同名条目**整条替换**内置条目）。单条写坏不会让扫描失败：问题会出现在 `scan --json` 的 `ruleErrors` 里。格式与校验规则见 [docs/user-rules.md](docs/user-rules.md)
+- **残留闭环**：`uninstall` 会把「卸了什么、留下什么」落盘；之后 `cli-analyzer residue [--days N]` 报告「卸载已满 N 天、残留仍在」的工具（带当前大小），处理完用 `--forget <工具>` 收尾
+- **可验证的恢复**：移入内置回收站前先写清单（文件数 + 顶层项），`trash restore` 恢复后能**核对**内容是否完整，而不只是「命令成功了」
 - **多语言界面**：简体中文 / 繁體中文 / English 三种语言，默认跟随系统，可在「首选项 → 语言」切换（前端即时生效；macOS 原生菜单重启后生效）
-- **双接口**：CLI（`scan` / `clean` / `cache` / `trash` / `trends` / `update` / `version`）+ 原生 GUI
+- **双接口**：CLI（`scan` / `clean` / `cache` / `trash` / `trends` / `update` / `upgrade` / `uninstall` / `residue` / `version`）+ 原生 GUI
 
 ## 安装
 
