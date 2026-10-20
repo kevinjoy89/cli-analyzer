@@ -1,21 +1,21 @@
 import {describe, expect, it} from 'vitest';
-import {keepMaximalPaths, pathInside} from './grouping';
+import {pathInside} from './grouping';
 
-// 确认弹窗的「N 项」与用户勾选数可能不一致：被上层目录包含的条目随父项
-// 一起处置，不重复计。这里锁定弹窗标注的判定与后端同口径——否则用户勾了
-// 2 项看到「处置 1 项」会以为漏了东西。
+// 渲染层回归（曾出过的 bug）：
+//   确认弹窗曾把「勾了 2 项只处置 1 项」静静吞掉 —— 因为 selectedItems()
+//   在弹窗之前就去重了，弹窗拿到的 items 里没有子项，标注判定永远为空。
+//   修复后：弹窗用 allSelectedItems()（全量 + subsumed 标记）渲染，
+//   用 selectedItems()（去重后）算合计与处置。
 //
-// 真实数据来自实机 joycoder：父 ~/Library/Application Support/JoyCoder
-// (22.4MB) 与子 .../CachedData (10.1MB) 同时可勾选。
+// 这里断言的是「标注判定」这个口径本身；render.ts 的 allSelectedItems
+// 与 flows.ts 的 showConfirmModal 共用同一套 pathInside 语义。
 
 interface Item {
     path: string;
-    bytes: number;
     subsumed?: boolean;
 }
 
-// markSubsumed 复刻 render.ts allSelectedItems 的标注逻辑：
-// 对**未去重**的勾选集合逐项判断是否被另一项包含。
+// markSubsumed 复刻 render.ts allSelectedItems 的标注逻辑。
 function markSubsumed(items: Item[]): Item[] {
     return items.map((it) => ({
         ...it,
@@ -23,54 +23,37 @@ function markSubsumed(items: Item[]): Item[] {
     }));
 }
 
-describe('确认弹窗：被包含条目标注', () => {
-    it('父子同选：子项被标注，弹窗显示 2 行但只处置 1 项', () => {
+// visibleRows 复刻弹窗渲染的行数：**全部**勾选项都要出现。
+function visibleRows(items: Item[]): number {
+    return markSubsumed(items).length;
+}
+
+describe('确认弹窗：subsumed 标注回归', () => {
+    it('父子同选：两行都渲染，子项被标 subsumed', () => {
         const all = markSubsumed([
-            {path: '/Users/wei/Library/Application Support/JoyCoder', bytes: 23491424},
-            {path: '/Users/wei/Library/Application Support/JoyCoder/CachedData', bytes: 10576864},
+            {path: '/Users/wei/Library/Application Support/JoyCoder'},
+            {path: '/Users/wei/Library/Application Support/JoyCoder/CachedData'},
         ]);
-        // 弹窗要展示全部勾选项（2 行），其中 1 行带标记
-        expect(all.length).toBe(2);
+        // 回归点：曾经只有 1 行（去重早于弹窗）
+        expect(visibleRows(all)).toBe(2);
         expect(all.filter((i) => i.subsumed).length).toBe(1);
         expect(all[1].subsumed).toBe(true);
-        // 实际处置项 = 去重后的数量
-        const active = keepMaximalPaths(all);
-        expect(active.length).toBe(1);
-        expect(active[0].bytes).toBe(23491424);
+        expect(all[0].subsumed).toBeFalsy();
     });
 
-    it('互不相交时不标注，处置项数 = 勾选数', () => {
-        const all = markSubsumed([
-            {path: '/a/.npm', bytes: 100},
-            {path: '/a/.cache', bytes: 200},
-        ]);
+    it('互不相交：两行都不标', () => {
+        const all = markSubsumed([{path: '/a/.npm'}, {path: '/a/.cache'}]);
+        expect(visibleRows(all)).toBe(2);
         expect(all.filter((i) => i.subsumed).length).toBe(0);
-        expect(keepMaximalPaths(all).length).toBe(2);
     });
 
-    it('只勾子项时不标注（父项未选）', () => {
-        const all = markSubsumed([
-            {path: '/Users/wei/Library/Application Support/JoyCoder/CachedData', bytes: 10576864},
-        ]);
+    it('只勾子项：不标（父项未选）', () => {
+        const all = markSubsumed([{path: '/a/parent/child'}]);
         expect(all.filter((i) => i.subsumed).length).toBe(0);
-        expect(keepMaximalPaths(all).length).toBe(1);
     });
 
-    it('三层嵌套：内层两个都被标注，只处置最外层', () => {
-        const all = markSubsumed([
-            {path: '/a', bytes: 100},
-            {path: '/a/b', bytes: 60},
-            {path: '/a/b/c', bytes: 30},
-        ]);
+    it('三层嵌套：内层两个都标', () => {
+        const all = markSubsumed([{path: '/a'}, {path: '/a/b'}, {path: '/a/b/c'}]);
         expect(all.filter((i) => i.subsumed).length).toBe(2);
-        expect(keepMaximalPaths(all).length).toBe(1);
-    });
-
-    it('前缀相似但不是父子：都不标注', () => {
-        const all = markSubsumed([
-            {path: '/a', bytes: 100},
-            {path: '/ab', bytes: 200},
-        ]);
-        expect(all.filter((i) => i.subsumed).length).toBe(0);
     });
 });

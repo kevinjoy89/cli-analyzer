@@ -40,9 +40,9 @@ type toolBuilder struct {
 	cliVersion     string
 	desktopVersion string
 	updatedAt      string
-	displayName string
-	homepage    string
-	description string
+	displayName    string
+	homepage       string
+	description    string
 	// family 是工具家族合并根名（"nodejs"）；普通单工具为空。
 	family string
 	// category 是 AI 编目类别（agent / ai-ide）；空 = 通用 CLI 工具。
@@ -605,6 +605,7 @@ func (b *toolBuilder) currentVersion() string {
 	}
 	return ""
 }
+
 // updatedAtTime returns the newest mtime (RFC3339) among the tool's install
 // root and its binaries — a proxy for "last updated / installed".
 func (b *toolBuilder) updatedAtTime() string {

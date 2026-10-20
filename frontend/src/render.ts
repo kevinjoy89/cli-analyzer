@@ -18,6 +18,7 @@ import {
 import { setOthersExpanded, setPanelView, setSelected, setSortDir, setSortKey } from "./state";
 import type { SortKey } from "./state";
 import { hb, shortPath } from "./lib/format";
+import { versionCellHtml } from "./lib/version";
 import { formSubtotals, groupTools, keepMaximalPaths, pathInside } from "./lib/grouping";
 import { fmtTime, t } from "./lib/i18n";
 import { categoryLabel, isSessionDBKind, kindLabel, orphanRootLabel } from "./lib/labels";
@@ -132,18 +133,10 @@ const COLUMNS: Array<{ key: SortKey; labelKey: string; sortable: boolean }> = [
 // 不做悬浮提示，也不写「版本不一致」文案——把两个值直接摆出来，
 // 是否相同用户一眼就能看出来，多说一句反而啰嗦。
 function versionCell(tool: Tool): string {
-    const cli = tool.cliVersion || "";
-    const desk = tool.desktopVersion || "";
-
-    // 两种形态都有版本：分行列，各自带来源前缀
-    if (cli && desk) {
-        return `<span class="ver ver-stack">` +
-            `<span class="ver-line">${esc(t("ui.versionCliShort"))} ${esc(cli)}</span>` +
-            `<span class="ver-line">${esc(t("ui.versionDesktopShort"))} ${esc(desk)}</span>` +
-            `</span>`;
-    }
-    // 只有一种形态（或无形态区分）：单行，不加前缀
-    return `<span class="ver">${esc(cli || desk || tool.version || "—")}</span>`;
+    return versionCellHtml(tool, {
+        cli: t("ui.versionCliShort"),
+        desktop: t("ui.versionDesktopShort"),
+    });
 }
 
 function sortTools(tools: Tool[]): Tool[] {
