@@ -213,24 +213,37 @@ export function showOrphanConfirm(paths: string[]) {
 }
 
 // ---- confirm modal ----
-export function showConfirmModal(items: PickItem[]) {
+export function showConfirmModal(items: PickItem[], all: PickItem[] = items) {
     const total = items.reduce((a, c) => a + c.bytes, 0);
     el("modalTitle").textContent = t("ui.confirmClean", {
         n: items.length,
         size: hb(total),
     });
     el("modalConfirm").textContent = t("ui.confirmCleanBtn"); // 未认领确认弹窗可能改过按钮文案，这里复位
+
+    // all 是**用户实际勾选的**全部条目（可能含被父项包含的子项），items 是
+    // 去重后真正要处置的。两者不同时必须解释，否则用户勾 2 项看到「处置 1 项」
+    // 会以为漏了东西。subsumed 标记由 allSelectedItems 算好（不能在这里从
+    // items 推——items 已经被去重掉了）。
+    const subsumed = all.filter((it) => it.subsumed);
+    const active = items.length;
+
     el("modalBody").innerHTML =
-        items
-            .map(
-                (c) =>
-                    `<div class="clean-row">
+        all
+            .map((c) => {
+                const inside = !!c.subsumed;
+                return `<div class="clean-row${inside ? " subsumed" : ""}">
             <span class="badge safe">${esc(renderKindLabel(c.kind))}</span>
-            <span class="path" style="flex:1;font-family:var(--mono);font-size:11px;white-space:normal;word-break:break-all">${esc(c.path)}</span>
+            <span class="path" style="flex:1;font-family:var(--mono);font-size:11px;white-space:normal;word-break:break-all">${esc(c.path)}${
+                    inside ? `<span class="subsumed-note">${esc(t("ui.confirmSubsumed"))}</span>` : ""
+                }</span>
             <span class="size" style="font-family:var(--mono);color:var(--clean);white-space:nowrap">${hb(c.bytes)}</span>
-        </div>`,
-            )
+        </div>`;
+            })
             .join("") +
+        (subsumed.length
+            ? `<div class="warn">${esc(t("ui.confirmSubsumedNote", { n: subsumed.length, active }))}</div>`
+            : "") +
         '<div class="warn">' +
         esc(t("ui.safeOnly")) +
         "</div>";

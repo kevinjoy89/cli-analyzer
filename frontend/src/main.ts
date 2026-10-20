@@ -113,7 +113,9 @@ async function init() {
     render.setUninstallHandler((n) => flows.startUninstall(n));
     render.setUpgradeHandler((n) => flows.startToolUpgrade(n));
     render.setOrphanConfirmHandler((paths) => flows.showOrphanConfirm(paths));
-    render.setConfirmHandler((items: render.PickItem[]) => flows.showConfirmModal(items));
+    render.setConfirmHandler((items: render.PickItem[], all: render.PickItem[]) =>
+        flows.showConfirmModal(items, all),
+    );
     flows.setApplyI18n(applyI18n);
 
     initMenuBar();

@@ -18,7 +18,7 @@ import {
 import { setOthersExpanded, setPanelView, setSelected, setSortDir, setSortKey } from "./state";
 import type { SortKey } from "./state";
 import { hb } from "./lib/format";
-import { formSubtotals, groupTools, keepMaximalPaths } from "./lib/grouping";
+import { formSubtotals, groupTools, keepMaximalPaths, pathInside } from "./lib/grouping";
 import { fmtTime, t } from "./lib/i18n";
 import { categoryLabel, isSessionDBKind, kindLabel, orphanRootLabel } from "./lib/labels";
 import { computeTrendPaths } from "./lib/trends";
@@ -33,7 +33,7 @@ import {
 let uninstallHandler: ((name: string) => void) | null = null;
 let upgradeHandler: ((name: string) => void) | null = null;
 let orphanConfirmHandler: ((paths: string[]) => void) | null = null;
-let confirmHandler: ((items: PickItem[]) => void) | null = null;
+let confirmHandler: ((items: PickItem[], all: PickItem[]) => void) | null = null;
 export function setUninstallHandler(fn: (name: string) => void) {
     uninstallHandler = fn;
 }
@@ -43,7 +43,7 @@ export function setUpgradeHandler(fn: (name: string) => void) {
 export function setOrphanConfirmHandler(fn: (paths: string[]) => void) {
     orphanConfirmHandler = fn;
 }
-export function setConfirmHandler(fn: (items: PickItem[]) => void) {
+export function setConfirmHandler(fn: (items: PickItem[], all: PickItem[]) => void) {
     confirmHandler = fn;
 }
 
@@ -618,7 +618,7 @@ export function renderDetail() {
     cleanBtn.disabled = selectedCleanIds.size === 0;
     cleanBtn.onclick = () => {
         if (selectedCleanIds.size === 0) return;
-        confirmHandler?.(selectedItems(tool));
+        confirmHandler?.(selectedItems(tool), allSelectedItems(tool));
     };
     el<HTMLButtonElement>("uninstallBtn").onclick = () =>
         uninstallHandler?.(tool.name);
@@ -731,8 +731,15 @@ export interface PickItem {
     path: string;
     bytes: number;
     kind: string;
+    // subsumed 标记该项被另一个选中条目包含（它随后者一起处置，不单独计数）。
+    // 不能在这里就把它们滤掉：确认弹窗需要看到它们才能向用户解释
+    // 「勾了 2 项为何只处置 1 项」。过滤交给 selectedItems。
+    subsumed?: boolean;
 }
-export function selectedItems(t: Tool): PickItem[] {
+
+// allSelectedItems 解析勾选集合，**保留**被包含项并标记 subsumed。
+// 给确认弹窗用：它要展示全部勾选项并解释哪些随父项一起处置。
+export function allSelectedItems(t: Tool): PickItem[] {
     const out: PickItem[] = [];
     for (const c of t.cleanables) {
         if (selectedCleanIds.has(c.id)) {
@@ -740,7 +747,6 @@ export function selectedItems(t: Tool): PickItem[] {
             continue;
         }
         for (const s of c.sub ?? []) {
-            // 子项用精确类型（_logs → 日志），未携带时继承父项
             if (s.id && selectedCleanIds.has(s.id))
                 out.push({
                     id: s.id,
@@ -750,10 +756,17 @@ export function selectedItems(t: Tool): PickItem[] {
                 });
         }
     }
+    return out.map((it) => ({
+        ...it,
+        subsumed: out.some((o) => o.path !== it.path && pathInside(o.path, it.path)),
+    }));
+}
+
+export function selectedItems(t: Tool): PickItem[] {
     // 父子同选去重：被所选父路径包含的子路径随父项处置，不重复计入
-    // 确认合计（后端 cleaner 同口径跳过，见 cln.subsumed）。
+    // 确认合计与 Clean 调用（后端 cleaner 同口径跳过，见 cln.subsumed）。
     // 与形态小计共用 keepMaximalPaths，两处口径不会再分叉。
-    return keepMaximalPaths(out);
+    return keepMaximalPaths(allSelectedItems(t));
 }
 
 // ---- bell panel ----
