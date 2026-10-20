@@ -13,7 +13,12 @@ import (
 //
 // Size semantics: physical bytes (allocated blocks) on Unix, apparent size on
 // Windows. Hard-linked files are counted once per path (v1 accepted
-// limitation). Symlinks are never followed.
+// limitation), and APFS clonefile copies — which have their own inodes but
+// share physical blocks — are counted in full for every path. Measured
+// overhead of the hard-link part is 0.05%–0.43% on real machines; the clone
+// part cannot be detected cheaply in user space. See
+// docs/adr/0003-no-inode-dedup-clone-limitation.md. Symlinks are never
+// followed.
 type Sizer struct {
 	// Workers caps concurrent directory walks; 0 means GOMAXPROCS.
 	Workers int

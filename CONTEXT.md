@@ -2,6 +2,8 @@
 
 识别本机上通过各类包管理器与脚本安装的 CLI 工具，量化其磁盘占用、区分可清理数据，并代跑标准卸载/升级命令。CLI 与 GUI（Wails）共用同一套领域模型。
 
+> 本文件是本项目的术语表（glossary），只定义语言，不放规格与实现决策。
+
 ## Language
 
 ### 扫描与归因
@@ -19,16 +21,32 @@ _Avoid_: 命令（命令名只是它的 Name）
 _Avoid_: 来源（口语可用，术语统一为 Installer）、package manager
 
 **Footprint（总占用）**:
-工具二进制与其归因数据目录的磁盘总字节数。
+工具二进制与其归因数据目录的磁盘总字节数，按极大路径求和（互为祖先的目录不重复计）。
 _Avoid_: 大小、size（易与单目录字节数混淆）
 
+**Install footprint（安装占用）**:
+Footprint 中属于安装形态的那一部分：CLI 安装根与桌面端应用包。用户数据与可处置项都不算。
+_Avoid_: 安装大小、程序占用
+
+**Actionable item（可处置项）**:
+工具名下**可以被用户处置的目录条目**（一个归因目录 = 一个可处置项），是集合而不是字节数。每个条目带 Kind 标签与处置描述，是否处置由用户决定。
+_Avoid_: 可清理（那是字节合计，见 Cleanable）、垃圾项
+
 **Cleanable（可清理）**:
-工具名下按清理规则（缓存/日志/旧版本等）识别出的可安全删除的数据条目。
-_Avoid_: 垃圾、junk
+工具名下全部 Actionable item 的字节合计，按极大路径口径求和——父子条目并存时子目录字节不重复计入，故恒不超过 Footprint。
+_Avoid_: 垃圾、junk、可处置（指条目集合时用 Actionable item）
 
 **User bytes（用户数据）**:
-工具名下不可再生成的用户数据字节数（配置、会话历史等），清理建议中只提示不代删。
-_Avoid_: 用户占用
+Footprint 减去 Cleanable 后的余额：安装占用与不可再生成的用户数据（配置、会话历史等）。
+_Avoid_: 用户占用、残留字节
+
+**Form（形态）**:
+同一个 Tool 的存在形式。CLI form 指 PATH 上的可执行入口与其 dotdir/XDG 数据；Desktop form 指桌面端宿主应用包与其 AppSupport 数据。一个 Tool 可同时有两种形态。
+_Avoid_: 端、版本（形态不是版本）
+
+**Form subtotal（形态小计）**:
+按 Form 分组的占用合计，用于回答「桌面端占多少、CLI 占多少」；同样按极大路径求和。
+_Avoid_: 形态大小
 
 **Orphan（孤儿数据）**:
 数据根下未被任何 Tool 认领的顶层目录（经非 CLI 排除体系过滤后仍无主者）。
@@ -53,11 +71,11 @@ _Avoid_: 废纸篓、Recycle Bin
 _Avoid_: 清空（"清空回收站"即 Purge 全部项）、永久删除以外的模糊说法
 
 **Upgrade（升级）**:
-将已安装工具更到新版本的代跑动作（brew upgrade / npm update -g / 官方自升级子命令）。
+将已安装工具更到新版本的代跑动作（brew upgrade / npm update -g / 官方自升级子命令）。命令面：`upgrade check <tool>` / `upgrade run <tool>`（旧的 `update check <tool>` / `update run <tool>` 为兼容别名）。
 _Avoid_: 更新（Update 专指应用自身）
 
 **Update（应用更新）**:
-cli-analyzer 自身的版本检查、下载、校验与安装。
+cli-analyzer 自身的版本检查、下载、校验与安装。命令面：`update check`（不带工具参数）。
 _Avoid_: 与工具 Upgrade 混用"更新"
 
 **Probe（探测）**:
