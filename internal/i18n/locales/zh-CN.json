@@ -151,7 +151,7 @@
   "cli.moveToTrash": "移入回收站",
   "cli.cleanSummary_one": "{action} {n} 项，释放 {size}",
   "cli.cleanSummary_other": "{action} {n} 项，释放 {size}",
-  "cli.skipped": "跳过: {path}",
+  "cli.skipped": "跳过: {path} — {reason}",
   "cli.errors": "错误: {msg}",
   "cli.dryRun": "（dry-run：未实际删除）",
   "cli.tableHeader": "工具\t命令\t总占用\t可处置\t安装占用\t来源",

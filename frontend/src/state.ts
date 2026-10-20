@@ -3,7 +3,10 @@
 import type { ReminderConfig, ScanResult, Tool, TrendsResult } from './lib/types';
 
 // ---- 与 Go JSON 契约对应的前端接口类型（契约单一来源 lib/types.ts 之外的前端私有类型）----
-export interface CleanReport { dryRun: boolean; deleted: string[]; freedBytes: number; skipped: string[]; errors: string[] }
+export interface CleanReport { dryRun: boolean; deleted: string[]; freedBytes: number; skipped: SkippedItem[]; errors: string[] }
+// SkippedItem 是一项未被处置的条目与原因。reason 是稳定码（脚本可用），
+// message 是后端已本地化的文案（直接展示）。
+export interface SkippedItem { id?: string; path: string; reason: string; message: string }
 export interface TrashInfoData { items: number; totalBytes: number; earliestExpiresAt: string }
 export interface TrashItem { id: string; original: string; tool: string; kind: string; bytes: number; trashedAt: string; expiresAt: string }
 export interface TrashConfig { retentionDays: number; expireAction: string; useTrash: boolean }

@@ -31,8 +31,11 @@ func TestCleanDedupesSubsumedSelections(t *testing.T) {
 	if rep.Freed != 100 {
 		t.Errorf("释放字节应按父项单份计 100，得到 %d", rep.Freed)
 	}
-	if len(rep.Skipped) != 1 || !strings.Contains(rep.Skipped[0], child) {
+	if len(rep.Skipped) != 1 || !strings.Contains(rep.Skipped[0].Path, child) {
 		t.Errorf("子项应入 Skipped，得到 %v", rep.Skipped)
+	}
+	if rep.Skipped[0].Reason != SkipSubsumed {
+		t.Errorf("跳过原因码 = %q, want %q", rep.Skipped[0].Reason, SkipSubsumed)
 	}
 	// 仅选子项时正常处置（不受去重影响）
 	rep2 := Clean(res, []string{"marscode|index|" + child}, true)

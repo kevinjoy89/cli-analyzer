@@ -80,7 +80,7 @@ func cleanContractSample() *scanner.CleanReport {
 		DryRun:  true,
 		Deleted: []string{"/d"},
 		Freed:   1,
-		Skipped: []string{"/s (subsumed)"},
+		Skipped: []scanner.SkippedItem{{ID: "/s", Path: "/s", Reason: "subsumed", Message: "subsumed"}},
 		Errors:  []string{},
 	}
 }

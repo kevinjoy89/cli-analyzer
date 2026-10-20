@@ -13,7 +13,15 @@ import (
 // SchemaVersion is the version of the CLI's machine-readable output contract.
 // It is bumped only for breaking changes; additive fields do not bump it.
 // See docs/adr/0002-cleanable-actionable-and-contract-compat.md.
-const SchemaVersion = 1
+//
+// History:
+//
+//	1 — initial contract
+//	2 — clean report's `skipped` changed from []string to []SkippedItem
+//	    ({id,path,reason,message}); the reason used to be embedded in the
+//	    string as "<path> (<reason>)", which was unparseable for scripts
+//	    and unlocalizable for the GUI.
+const SchemaVersion = 2
 
 // Report kinds. Each JSON document carries one of these in its top-level
 // `kind` field so consumers can tell report types apart without guessing.

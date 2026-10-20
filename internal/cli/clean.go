@@ -125,7 +125,7 @@ func runClean(args []string) int {
 		}
 		fmt.Fprint(stdout(), i18n.T("cli.cleanSummary", map[string]any{"action": modeWord, "n": len(report.Deleted), "size": humanBytes(report.Freed)}), "\n")
 		for _, s := range report.Skipped {
-			fmt.Fprintf(stdout(), "%s\n", i18n.T("cli.skipped", map[string]any{"path": s}))
+			fmt.Fprintf(stdout(), "%s\n", i18n.T("cli.skipped", map[string]any{"path": s.Path, "reason": s.Message}))
 		}
 		for _, e := range report.Errors {
 			fmt.Fprintf(stdout(), "%s\n", i18n.T("cli.errors", map[string]any{"msg": e}))

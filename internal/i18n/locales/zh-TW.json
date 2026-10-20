@@ -151,7 +151,7 @@
   "cli.moveToTrash": "移入資源回收筒",
   "cli.cleanSummary_one": "{action} {n} 項，釋放 {size}",
   "cli.cleanSummary_other": "{action} {n} 項，釋放 {size}",
-  "cli.skipped": "略過: {path}",
+  "cli.skipped": "略過: {path} — {reason}",
   "cli.errors": "錯誤: {msg}",
   "cli.dryRun": "（dry-run：未實際刪除）",
   "cli.tableHeader": "工具\t命令\t總佔用\t可處置\t安裝佔用\t來源",

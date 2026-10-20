@@ -255,8 +255,11 @@ func (s *ScannerService) probeAll() {
 	runtime.EventsEmit(s.ctx, "probe:done", string(b))
 }
 
-// Clean deletes the given SAFE items (by ID) and returns a CleanReport JSON.
-// The cleaner layer hard-rejects any non-SAFE item regardless of caller flags.
+// Clean deletes the given items (by ID) and returns a CleanReport JSON.
+// Tiers are informational labels, not a gate: the caller decides what to
+// dispose of. The cleaner layer re-checks integrity guards (absolute path, no
+// "..", not a protected system root, not the trash root, not the tool's
+// current version path) at delete time.
 func (s *ScannerService) Clean(ids []string, dryRun bool) string {
 	s.mu.Lock()
 	res := s.last
@@ -264,7 +267,7 @@ func (s *ScannerService) Clean(ids []string, dryRun bool) string {
 	report := scanner.CleanReport{
 		Errors:  []string{"no scan result available"},
 		Deleted: []string{},
-		Skipped: []string{},
+		Skipped: []scanner.SkippedItem{},
 	}
 	if res != nil {
 		report = cleaner.Clean(res, ids, dryRun)

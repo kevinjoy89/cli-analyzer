@@ -310,12 +310,12 @@ func TestCleanSubUsesPreciseKind(t *testing.T) {
 // （大小写不敏感纵深防御）：任何来源的删除请求都不能命中系统目录。
 func TestCleanGuardRejectsWindowsRoots(t *testing.T) {
 	for _, p := range []string{`C:\Windows`, `c:\windows`, `C:\Program Files`, `C:\PROGRAM FILES (X86)`} {
-		if reason := guard(&scanner.Cleanable{Path: p, Tier: scanner.TierSafe}); reason == "" {
+		if reason := guard(&scanner.Cleanable{Path: p, Tier: scanner.TierSafe}); reason.Code == "" {
 			t.Errorf("guard(%q) 应拒绝 Windows 系统根", p)
 		}
 	}
 	// 合法 cleanable（用户缓存）仍放行（unix 上无法真实创建，直接检查路径判断）
-	if reason := guard(&scanner.Cleanable{Path: filepath.Join(t.TempDir(), "cache"), Tier: scanner.TierSafe}); reason != "" {
+	if reason := guard(&scanner.Cleanable{Path: filepath.Join(t.TempDir(), "cache"), Tier: scanner.TierSafe}); reason.Code != "" {
 		t.Errorf("合法路径被拒绝: %v", reason)
 	}
 }
@@ -328,7 +328,10 @@ func TestCleanMessagesLocalized(t *testing.T) {
 	i18n.SetLocale("zh-CN")
 	t.Cleanup(func() { i18n.SetLocale("zh-CN") })
 	// guard 消息同样本地化
-	if reason := guard(&scanner.Cleanable{Path: "/", Tier: scanner.TierSafe}); strings.Contains(reason, "forbidden system root") {
-		t.Errorf("guard 消息未本地化: %q", reason)
+	if reason := guard(&scanner.Cleanable{Path: "/", Tier: scanner.TierSafe}); strings.Contains(reason.Message, "forbidden system root") {
+		t.Errorf("guard 消息未本地化: %q", reason.Message)
+	}
+	if reason := guard(&scanner.Cleanable{Path: "/", Tier: scanner.TierSafe}); reason.Code != SkipForbiddenRoot {
+		t.Errorf("原因码 = %q, want %q", reason.Code, SkipForbiddenRoot)
 	}
 }

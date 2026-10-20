@@ -60,7 +60,7 @@ func clean(result *scanner.ScanResult, ids []string, dryRun bool, permanent bool
 	report := scanner.CleanReport{
 		DryRun:  dryRun,
 		Deleted: []string{},
-		Skipped: []string{},
+		Skipped: []scanner.SkippedItem{},
 		Errors:  []string{},
 	}
 	if result == nil {
@@ -128,11 +128,15 @@ func clean(result *scanner.ScanResult, ids []string, dryRun bool, permanent bool
 	for _, id := range ids {
 		if c, ok := byID[id]; ok {
 			if subsumed(c.Path) {
-				report.Skipped = append(report.Skipped, c.Path+" ("+i18n.T("cln.subsumed")+")")
+				report.Skipped = append(report.Skipped, scanner.SkippedItem{
+					ID: id, Path: c.Path, Reason: SkipSubsumed, Message: i18n.T("cln.subsumed"),
+				})
 				continue
 			}
-			if reason := guard(c); reason != "" {
-				report.Skipped = append(report.Skipped, c.Path+" ("+reason+")")
+			if r := guard(c); r.Code != "" {
+				report.Skipped = append(report.Skipped, scanner.SkippedItem{
+					ID: id, Path: c.Path, Reason: r.Code, Message: r.Message,
+				})
 				continue
 			}
 			remove(c.Path, c.Bytes, c.Tool, c.Kind)
@@ -140,11 +144,15 @@ func clean(result *scanner.ScanResult, ids []string, dryRun bool, permanent bool
 		}
 		if si, ok := subs[id]; ok {
 			if subsumed(si.sub.Path) {
-				report.Skipped = append(report.Skipped, si.sub.Path+" ("+i18n.T("cln.subsumed")+")")
+				report.Skipped = append(report.Skipped, scanner.SkippedItem{
+					ID: id, Path: si.sub.Path, Reason: SkipSubsumed, Message: i18n.T("cln.subsumed"),
+				})
 				continue
 			}
-			if reason := guardSub(si.parent.Path, si.sub.Path); reason != "" {
-				report.Skipped = append(report.Skipped, si.sub.Path+" ("+reason+")")
+			if r := guardSub(si.parent.Path, si.sub.Path); r.Code != "" {
+				report.Skipped = append(report.Skipped, scanner.SkippedItem{
+					ID: id, Path: si.sub.Path, Reason: r.Code, Message: r.Message,
+				})
 				continue
 			}
 			// 子项用扫描器给出的精确类型（~/.npm/_logs → logs，而非父项的 cache）；
@@ -156,51 +164,74 @@ func clean(result *scanner.ScanResult, ids []string, dryRun bool, permanent bool
 			remove(si.sub.Path, si.sub.Bytes, si.parent.Tool, kind)
 			continue
 		}
-		report.Skipped = append(report.Skipped, id+" ("+i18n.T("cln.unknownItem")+")")
+		report.Skipped = append(report.Skipped, scanner.SkippedItem{
+			ID: id, Reason: SkipUnknownItem, Message: i18n.T("cln.unknownItem"),
+		})
 	}
 	return report
 }
 
-// guard returns "" when the item may be deleted, else a reason string.
-func guard(c *scanner.Cleanable) string {
+// 跳过原因码。稳定值，脚本可依赖；文案变化不影响它。
+const (
+	// SkipSubsumed：选中的条目被另一个选中项（祖先目录）包含，随其一起处置。
+	SkipSubsumed = "subsumed"
+	// SkipUnknownItem：id 不在本次快照里（旧缓存或手工拼的 id）。
+	SkipUnknownItem = "unknown-item"
+	// 以下来自完整性守卫（guard / guardSub）。
+	SkipNotAbsolute    = "not-absolute"
+	SkipDirtyPath      = "dirty-path"
+	SkipForbiddenRoot  = "forbidden-root"
+	SkipTrashRoot      = "trash-root"
+	SkipCurrentVersion = "current-version"
+	SkipNotInside      = "not-inside-parent"
+)
+
+// guard returns "" when the item may be deleted, else a reason.
+// reason.Code 是稳定码（脚本用），reason.Message 是本地化文案（人看）。
+type skipReason struct {
+	Code    string
+	Message string
+}
+
+func guard(c *scanner.Cleanable) skipReason {
 	if !filepath.IsAbs(c.Path) {
-		return i18n.T("cln.guardNotAbs")
+		return skipReason{SkipNotAbsolute, i18n.T("cln.guardNotAbs")}
 	}
 	clean := filepath.Clean(c.Path)
 	if clean != c.Path {
-		return i18n.T("cln.guardDirty")
+		return skipReason{SkipDirtyPath, i18n.T("cln.guardDirty")}
 	}
 	if forbidden(clean) {
-		return i18n.T("cln.guardForbidden")
+		return skipReason{SkipForbiddenRoot, i18n.T("cln.guardForbidden")}
 	}
 	if clean == trash.Root() {
-		return i18n.T("cln.guardTrashRoot")
+		return skipReason{SkipTrashRoot, i18n.T("cln.guardTrashRoot")}
 	}
 	if c.CurrentPath != "" && clean == filepath.Clean(c.CurrentPath) {
-		return i18n.T("cln.guardCurrent")
+		return skipReason{SkipCurrentVersion, i18n.T("cln.guardCurrent")}
 	}
-	return ""
+	return skipReason{}
 }
 
 // guardSub verifies a sub-entry path may be deleted: it must be absolute,
 // clean, not itself a forbidden root, and strictly inside its owning cleanable
 // directory (so an id can never reach outside the parent).
-func guardSub(parent, p string) string {
+func guardSub(parent, p string) skipReason {
 	if !filepath.IsAbs(p) {
-		return i18n.T("cln.guardNotAbs")
+		return skipReason{SkipNotAbsolute, i18n.T("cln.guardNotAbs")}
 	}
 	clean := filepath.Clean(p)
 	if clean != p {
-		return i18n.T("cln.guardDirty")
+		return skipReason{SkipDirtyPath, i18n.T("cln.guardDirty")}
 	}
 	if forbidden(clean) {
-		return i18n.T("cln.guardForbidden")
+		return skipReason{SkipForbiddenRoot, i18n.T("cln.guardForbidden")}
 	}
 	rel, err := filepath.Rel(parent, p)
 	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return i18n.T("cln.guardNotInside")
+		return skipReason{SkipNotInside, i18n.T("cln.guardNotInside")}
 	}
-	return ""
+	return skipReason{}
 }
 
 // isInside reports whether p is strictly inside dir (p != dir, no error,

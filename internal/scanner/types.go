@@ -207,8 +207,26 @@ type CleanReport struct {
 	DryRun  bool     `json:"dryRun"`
 	Deleted []string `json:"deleted"`
 	Freed   int64    `json:"freedBytes"`
-	Skipped []string `json:"skipped"`
-	Errors  []string `json:"errors"`
+	// Skipped lists the items that were not disposed of, each with a
+	// machine-readable reason code plus the localized human text. Codes:
+	// subsumed (a selected ancestor is disposed of instead), unknown-item
+	// (the id is not in this snapshot), and the guard reasons
+	// (not-absolute / dirty-path / forbidden-root / trash-root /
+	// current-version / not-inside-parent).
+	Skipped []SkippedItem `json:"skipped"`
+	Errors  []string      `json:"errors"`
+}
+
+// SkippedItem is one item that was left alone, and why.
+type SkippedItem struct {
+	// ID is the cleanable or sub-entry id the caller asked for.
+	ID string `json:"id,omitempty"`
+	// Path is the filesystem path that was not touched.
+	Path string `json:"path"`
+	// Reason is a stable code for scripts; never localized.
+	Reason string `json:"reason"`
+	// Message is the localized explanation shown to humans.
+	Message string `json:"message"`
 }
 
 // Options controls a scan.

@@ -151,7 +151,7 @@
   "cli.moveToTrash": "Move to trash",
   "cli.cleanSummary_one": "{action} {n} item, freed {size}",
   "cli.cleanSummary_other": "{action} {n} items, freed {size}",
-  "cli.skipped": "Skipped: {path}",
+  "cli.skipped": "Skipped: {path} — {reason}",
   "cli.errors": "Errors: {msg}",
   "cli.dryRun": "(dry-run: nothing deleted)",
   "cli.tableHeader": "Tool\tCmd\tTotal\tActionable\tInstall\tSource",

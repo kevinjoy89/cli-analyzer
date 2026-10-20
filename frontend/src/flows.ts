@@ -256,13 +256,21 @@ export function showConfirmModal(items: PickItem[], all: PickItem[] = items) {
                 await Clean(ids, false),
             );
             const del = (rep.deleted ?? []).length;
-            const skipped = (rep.skipped ?? []).length;
+            const skippedItems = rep.skipped ?? [];
+            const skipped = skippedItems.length;
             const hasErr = (rep.errors ?? []).length > 0;
             const extra = skipped ? t("ui.cleanSkipped", { n: skipped }) : "";
             showToast(
                 t("ui.cleanDone", { del, size: hb(rep.freedBytes), extra }),
                 hasErr,
             );
+            // 跳过的原因不再藏在字符串里：逐项打日志，排查时不用猜。
+            if (skipped) {
+                console.warn(
+                    "clean skipped:",
+                    skippedItems.map((s) => `${s.path} — ${s.reason} (${s.message})`),
+                );
+            }
             selectedCleanIds.clear();
             if (del > 0 && result) {
                 // 本地立即刷新详情，无需等整体重扫
