@@ -7,6 +7,7 @@ import (
 	"text/tabwriter"
 
 	"cli-analyzer/internal/i18n"
+	"cli-analyzer/internal/platform"
 	"cli-analyzer/internal/scanner"
 )
 
@@ -119,6 +120,34 @@ func parseSize(s string) (int64, error) {
 	return int64(f * float64(mult)), nil
 }
 
+// shortPath 把用户主目录前缀换成 `~`，缩短终端里长路径的展示宽度。
+// 与前端 lib/format.ts 的 shortPath 同口径：只替换主目录本身或其子路径
+// （`/Users/wei2` 不能误判），保留原分隔符，home 为空时原样返回。
+// 仅用于展示；JSON 契约里的路径仍是绝对路径。
+func shortPath(p string) string {
+	home := platform.HomeDir()
+	if p == "" || home == "" {
+		return p
+	}
+	trim := func(s string) string {
+		return strings.TrimRight(s, "/\\")
+	}
+	tp, th := trim(p), trim(home)
+	if th == "" {
+		return p
+	}
+	if tp == th {
+		return "~"
+	}
+	if strings.HasPrefix(tp, th) {
+		sep := tp[len(th)]
+		if sep == '/' || sep == '\\' {
+			return "~" + tp[len(th):]
+		}
+	}
+	return p
+}
+
 // humanBytes renders a byte count compactly (e.g. "1.2 GB").
 // 后缀表覆盖 int64 全范围：最大 9.2 EiB 对应 exp=5，故需 6 个后缀
 // （K/M/G/T/P/E），此前 4 个后缀在 n ≥ 1 PiB 时 "KMGT"[4] 越界 panic。
@@ -179,7 +208,7 @@ func printCleanables(res *scanner.ScanResult, onlyTools []string) {
 			continue
 		}
 		for _, c := range t.Cleanables {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.Name, humanBytes(c.Bytes), c.Kind, c.Path)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.Name, humanBytes(c.Bytes), c.Kind, shortPath(c.Path))
 			total += c.Bytes
 			shown++
 		}

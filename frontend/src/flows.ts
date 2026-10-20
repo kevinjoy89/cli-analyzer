@@ -194,7 +194,7 @@ export function showOrphanConfirm(paths: string[]) {
             .map(
                 (i) =>
                     `<div class="clean-row">
-            <span class="path" style="flex:1;font-family:var(--mono);font-size:11px;white-space:normal;word-break:break-all">${esc(i.path)}</span>
+            <span class="path" style="flex:1;font-family:var(--mono);font-size:11px;white-space:normal;word-break:break-all">${esc(render.dispPath(i.path))}</span>
             <span class="size" style="font-family:var(--mono);color:var(--muted);white-space:nowrap">${hb(i.bytes)}</span>
         </div>`,
             )
@@ -234,7 +234,7 @@ export function showConfirmModal(items: PickItem[], all: PickItem[] = items) {
                 const inside = !!c.subsumed;
                 return `<div class="clean-row${inside ? " subsumed" : ""}">
             <span class="badge safe">${esc(renderKindLabel(c.kind))}</span>
-            <span class="path" style="flex:1;font-family:var(--mono);font-size:11px;white-space:normal;word-break:break-all">${esc(c.path)}${
+            <span class="path" style="flex:1;font-family:var(--mono);font-size:11px;white-space:normal;word-break:break-all">${esc(render.dispPath(c.path))}${
                     inside ? `<span class="subsumed-note">${esc(t("ui.confirmSubsumed"))}</span>` : ""
                 }</span>
             <span class="size" style="font-family:var(--mono);color:var(--clean);white-space:nowrap">${hb(c.bytes)}</span>
@@ -366,7 +366,7 @@ export async function refreshTrashList() {
             return `
         <div class="trash-row">
             <span class="ktag ${tone}">${esc(label)}</span>
-            <span class="tpath" title="${esc(it.original)}">${esc(it.original)}</span>
+            <span class="tpath" title="${esc(it.original)}">${esc(render.dispPath(it.original))}</span>
             <span class="tsize">${hb(it.bytes)}</span>
             <span class="tmeta" title="${esc(meta)}">${meta}</span>
             <button class="ibtn" data-restore="${esc(it.id)}" title="${esc(t("ui.restore"))}">${RESTORE_ICON}</button>
