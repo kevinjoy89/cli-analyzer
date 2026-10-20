@@ -199,7 +199,9 @@ func (s *ScannerService) probeAll() {
 	var targets []target
 	for i := range res.Tools {
 		t := &res.Tools[i]
-		if t.Version != "" || len(t.Binaries) == 0 {
+		// 条件是 CLIVersion 为空而非 Version：Version 可能已被桌面端版本
+		// 兜底填上，拿它跳过会让双形态工具永远探测不到 CLI 版本。
+		if t.CLIVersion != "" || len(t.Binaries) == 0 {
 			continue
 		}
 		b := t.Binaries[0]
@@ -243,8 +245,13 @@ func (s *ScannerService) probeAll() {
 	}
 	changed := false
 	for _, u := range results {
-		if u.v != "" && s.last.Tools[u.idx].Version == "" {
-			s.last.Tools[u.idx].Version = u.v
+		if u.v != "" && s.last.Tools[u.idx].CLIVersion == "" {
+			s.last.Tools[u.idx].CLIVersion = u.v
+			// Version 仅在空时兜底，不覆盖已有的桌面版本
+			if s.last.Tools[u.idx].Version == "" {
+				s.last.Tools[u.idx].Version = u.v
+			}
+			recomputeMismatch(&s.last.Tools[u.idx])
 			changed = true
 		}
 	}
@@ -253,6 +260,12 @@ func (s *ScannerService) probeAll() {
 	}
 	b, _ := json.Marshal(s.last)
 	runtime.EventsEmit(s.ctx, "probe:done", string(b))
+}
+
+// recomputeMismatch 重算双版本差异标记（GUI 后台探测写回版本后必须重算，
+// 否则界面不会出现叹号）。与 scanner.finalize 里的判定同口径。
+func recomputeMismatch(t *scanner.Tool) {
+	t.VersionMismatch = t.CLIVersion != "" && t.DesktopVersion != "" && t.CLIVersion != t.DesktopVersion
 }
 
 // Clean deletes the given items (by ID) and returns a CleanReport JSON.
@@ -1066,7 +1079,11 @@ func (s *ScannerService) reprobeToolVersion(name string) {
 			return
 		}
 		if v, ok := probe.CachedOrRun(b.Real, b.Path, b.Size); ok && v != "" {
-			t.Version = v
+			t.CLIVersion = v
+			if t.Version == "" {
+				t.Version = v
+			}
+			recomputeMismatch(t)
 		}
 		probe.Save() // 持久化探测缓存（probe-versions.json）
 		return

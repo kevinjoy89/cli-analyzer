@@ -16,6 +16,11 @@ import (
 	"cli-analyzer/internal/scanner"
 )
 
+// probeBudget 是 CLI 同步探测版本的时间预算。设为 8s：足够覆盖几十个快工具
+// （每个 <100ms）与几个慢的（mimo 1.3s），又不至于让 `scan` 看起来卡死。
+// 超过预算的工具本轮留空，下次启动会从上次停下的地方继续（见 FillVersions）。
+const probeBudget = 8 * time.Second
+
 func runScan(args []string) int {
 	fs := flag.NewFlagSet("scan", flag.ContinueOnError)
 	jsonOut := fs.Bool("j", false, "output JSON")
@@ -63,8 +68,11 @@ func runScan(args []string) int {
 	}
 
 	sortTools(res, *order)
-	// 健康探测：缓存优先，总预算 2s（挂起工具按 3s 单条超时中断，不会拖垮输出）
-	probe.FillVersions(res.Tools, 2*time.Second)
+	// 健康探测：缓存优先。预算原本固定 2s，但 155 个待探测工具里只要前几个
+	// 慢一点（mimo 单次就要 1.3s）预算就光了，后面全部拿不到版本——表现为
+	// 「版本永远显示 —」且因为遍历顺序固定，每次都是同一批工具遭殃。
+	// 现改为：先填缓存命中（零成本），再用剩余预算探测未命中的。
+	probe.FillVersions(res.Tools, probeBudget)
 
 	// --baseline：输出增量而不是整份扫描结果。基线文件就是一份 `scan --json`。
 	if *baselinePath != "" {

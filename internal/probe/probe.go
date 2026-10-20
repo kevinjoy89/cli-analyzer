@@ -155,7 +155,18 @@ type entry struct {
 	MtimeNs int64  `json:"mtimeNs"`
 	Version string `json:"version,omitempty"`
 	Ok      bool   `json:"ok"`
+	// Failures counts consecutive failed probes for this exact
+	// (path,size,mtime). A failure is often transient — the tool needs a TTY,
+	// was mid-upgrade, or the 3s budget was exhausted because several probes
+	// ran at once — so it must not be cached forever. See shouldRetry.
+	Failures int `json:"failures,omitempty"`
 }
+
+// maxCachedFailures is how many failed probes are trusted before the entry is
+// considered authoritative. Below it, a cached failure is retried on the next
+// run: a binary that never answers --version costs one timeout per launch,
+// which is cheaper than a version that stays blank forever.
+const maxCachedFailures = 3
 
 // cacheVersion 是探测缓存格式版本：extractVersion 规则变化（如版本串归一化）
 // 后旧缓存里的原始输出字符串不再正确，必须整体失效重新探测。
@@ -172,7 +183,15 @@ var (
 	cache     = map[string]entry{}
 )
 
-func cachePath() string { return filepath.Join(platform.CacheRoot(), "probe-versions.json") }
+func cachePath() string { return cachePathFn() }
+
+// cachePathFn 可被测试替换（指向隔离的临时文件）。
+var cachePathFn = func() string {
+	return filepath.Join(platform.CacheRoot(), "probe-versions.json")
+}
+
+// probeVersionFn 可被测试替换：避免真实执行子进程。
+var probeVersionFn = ProbeVersion
 
 func loadCache() {
 	cacheOnce.Do(func() {
@@ -220,10 +239,32 @@ func Save() {
 	_ = platform.RenameReplace(tmpName, p)
 }
 
+// cachedOnly 只查缓存（不执行探测）：键匹配且是成功结果时返回值。
+// FillVersions 用它把「零成本命中」与「需要起子进程」分开，预算耗尽后仍能
+// 把已缓存版本填上。
+func cachedOnly(real string, size int64) (string, bool) {
+	st, err := os.Stat(real)
+	if err != nil {
+		return "", false
+	}
+	mtime := st.ModTime().UnixNano()
+	loadCache()
+	cacheMu.Lock()
+	e, hit := cache[real]
+	cacheMu.Unlock()
+	if hit && e.Size == size && e.MtimeNs == mtime && e.Ok {
+		return e.Version, true
+	}
+	return "", false
+}
+
 // CachedOrRun 优先命中缓存（键 = real path + size + mtime）；未命中则以
 // execPath 执行探测并写回内存缓存。execPath 通常与 real 相同；对按 argv[0]
 // 分派的调度器（OrbStack xbin/docker-tools 等）必须用 PATH 入口（符号链接
 // 名）执行，否则调度器拒绝（unsupported argv0 "docker-tools"）。
+//
+// 失败不会永久缓存：见 maxCachedFailures。命中成功结果时零成本返回；命中
+// 失败结果且尚未达上限时重试，避免一次偶然超时把版本永久钉成空。
 func CachedOrRun(real, execPath string, size int64) (string, bool) {
 	st, err := os.Stat(real)
 	if err != nil {
@@ -235,11 +276,20 @@ func CachedOrRun(real, execPath string, size int64) (string, bool) {
 	e, hit := cache[real]
 	cacheMu.Unlock()
 	if hit && e.Size == size && e.MtimeNs == mtime {
-		return e.Version, e.Ok
+		if e.Ok || e.Failures >= maxCachedFailures {
+			return e.Version, e.Ok
+		}
+		// 未达上限的失败：继续往下重新探测
 	}
-	v, ok := ProbeVersion(execPath)
+	v, ok := probeVersionFn(execPath)
 	cacheMu.Lock()
-	cache[real] = entry{Size: size, MtimeNs: mtime, Version: v, Ok: ok}
+	ne := entry{Size: size, MtimeNs: mtime, Version: v, Ok: ok}
+	if !ok && hit && e.Size == size && e.MtimeNs == mtime {
+		ne.Failures = e.Failures + 1
+	} else if !ok {
+		ne.Failures = 1
+	}
+	cache[real] = ne
 	cacheMu.Unlock()
 	return v, ok
 }

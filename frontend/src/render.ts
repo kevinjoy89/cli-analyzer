@@ -17,7 +17,7 @@ import {
 } from "./state";
 import { setOthersExpanded, setPanelView, setSelected, setSortDir, setSortKey } from "./state";
 import type { SortKey } from "./state";
-import { hb } from "./lib/format";
+import { hb, shortPath } from "./lib/format";
 import { formSubtotals, groupTools, keepMaximalPaths, pathInside } from "./lib/grouping";
 import { fmtTime, t } from "./lib/i18n";
 import { categoryLabel, isSessionDBKind, kindLabel, orphanRootLabel } from "./lib/labels";
@@ -30,6 +30,19 @@ import {
 } from "../wailsjs/go/gui/ScannerService";
 
 // ---- 回调注册（main.ts init 注入，避免 render → flows 循环依赖）----
+
+// homeDir 返回当前扫描结果里的主目录（roots.home 第一项），供路径简写用。
+// 拿不到就返回空串——shortPath 会原样返回路径，不会猜测。
+function homeDir(): string {
+    return result?.roots?.home?.[0] ?? "";
+}
+
+// dispPath 把绝对路径变成展示形式（主目录前缀 → `~`）。
+// 只用于显示；调用方的 title 仍保留完整路径供核对。
+export function dispPath(p: string): string {
+    return shortPath(p, homeDir());
+}
+
 let uninstallHandler: ((name: string) => void) | null = null;
 let upgradeHandler: ((name: string) => void) | null = null;
 let orphanConfirmHandler: ((paths: string[]) => void) | null = null;
@@ -110,6 +123,28 @@ const COLUMNS: Array<{ key: SortKey; labelKey: string; sortable: boolean }> = [
     { key: "cleanable", labelKey: "ui.colCleanable", sortable: true },
     { key: "user", labelKey: "ui.colUser", sortable: true },
 ];
+
+// versionCell 渲染版本单元格。双形态工具的两个版本分行展示：
+//
+//   CLI 2.1.0
+//   桌面端 1.0.2
+//
+// 不做悬浮提示，也不写「版本不一致」文案——把两个值直接摆出来，
+// 是否相同用户一眼就能看出来，多说一句反而啰嗦。
+function versionCell(tool: Tool): string {
+    const cli = tool.cliVersion || "";
+    const desk = tool.desktopVersion || "";
+
+    // 两种形态都有版本：分行列，各自带来源前缀
+    if (cli && desk) {
+        return `<span class="ver ver-stack">` +
+            `<span class="ver-line">${esc(t("ui.versionCliShort"))} ${esc(cli)}</span>` +
+            `<span class="ver-line">${esc(t("ui.versionDesktopShort"))} ${esc(desk)}</span>` +
+            `</span>`;
+    }
+    // 只有一种形态（或无形态区分）：单行，不加前缀
+    return `<span class="ver">${esc(cli || desk || tool.version || "—")}</span>`;
+}
 
 function sortTools(tools: Tool[]): Tool[] {
     const dir = sortDir;
@@ -268,7 +303,7 @@ function makeToolRow(tool: Tool): HTMLDivElement {
     const dispName = tool.displayName || tool.name;
     row.innerHTML = `
         <span class="tool-name"><span class="tool-name-text" title="${esc(dispName)}">${esc(dispName)}</span>${cat}${un}</span>
-        <span class="ver">${esc(tool.version || "—")}</span>
+        ${versionCell(tool)}
         <span class="num">${hb(tool.footprintBytes)}</span>
         <span class="num clean">${hb(tool.cleanableBytes)}${clean}</span>
         ${installCell}`;
@@ -468,7 +503,18 @@ export function renderDetail() {
         metaItems.push(
             `<span class="meta-item">${esc(t("ui.installerSource"))} <b>${esc(sourceName)}</b></span>`,
         );
-    if (tool.version)
+    // 版本：双形态工具分别列出 CLI 与桌面端。不写「不一致」提醒——
+    // 两个值摆在那里，相同还是不同用户自己就能判断。
+    if (tool.cliVersion)
+        metaItems.push(
+            `<span class="meta-item">${esc(t("ui.versionCli"))} <b>${esc(tool.cliVersion)}</b></span>`,
+        );
+    if (tool.desktopVersion)
+        metaItems.push(
+            `<span class="meta-item">${esc(t("ui.versionDesktop"))} <b>${esc(tool.desktopVersion)}</b></span>`,
+        );
+    // 只有单一版本（无形态区分）时仍显示一行
+    if (!tool.cliVersion && !tool.desktopVersion && tool.version)
         metaItems.push(
             `<span class="meta-item">${esc(t("ui.version"))} <b>${esc(tool.version)}</b></span>`,
         );
@@ -496,7 +542,7 @@ export function renderDetail() {
         ? `<div class="detail-list">${tool.binaries
               .map(
                   (b) =>
-                      `<div class="detail-item"><span class="badge safe">bin</span><span class="path" title="${esc(b.real)}">${esc(b.real)}</span><span class="size">${hb(b.size)}</span></div>`,
+                      `<div class="detail-item"><span class="badge safe">bin</span><span class="path" title="${esc(b.real)}">${esc(dispPath(b.real))}</span><span class="size">${hb(b.size)}</span></div>`,
               )
               .join("")}</div>`
         : '<div class="detail-list"><div class="detail-item"><span class="muted">' +
@@ -510,7 +556,7 @@ export function renderDetail() {
         ? `<div class="detail-list">${installDirs
               .map(
                   (d) =>
-                      `<div class="detail-item"><span class="badge ${d.tier}">${d.tier}</span><span class="path" title="${esc(d.path)}">${esc(d.path)}</span><span class="size ${d.tier}">${hb(d.bytes)}</span><span class="keep">${esc(kindLabel(d.kind))}</span></div>`,
+                      `<div class="detail-item"><span class="badge ${d.tier}">${d.tier}</span><span class="path" title="${esc(d.path)}">${esc(dispPath(d.path))}</span><span class="size ${d.tier}">${hb(d.bytes)}</span><span class="keep">${esc(kindLabel(d.kind))}</span></div>`,
               )
               .join("")}</div>`
         : "";
@@ -526,7 +572,7 @@ export function renderDetail() {
         ? `<div class="detail-section"><h4>${esc(t("ui.kindLabel.session-db"))}</h4><div class="detail-list">${reportOnlyDirs
               .map(
                   (d) =>
-                      `<div class="detail-item"><span class="badge safe">${esc(kindLabel(d.kind))}</span><span class="path" title="${esc(d.path)}">${esc(d.path)}</span><span class="size">${hb(d.bytes)}</span></div><div class="report-note">${esc(t("ui.sessionDb.note"))}</div>`,
+                      `<div class="detail-item"><span class="badge safe">${esc(kindLabel(d.kind))}</span><span class="path" title="${esc(d.path)}">${esc(dispPath(d.path))}</span><span class="size">${hb(d.bytes)}</span></div><div class="report-note">${esc(t("ui.sessionDb.note"))}</div>`,
               )
               .join("")}</div></div>`
         : "";
@@ -544,7 +590,7 @@ export function renderDetail() {
                     ${toggle}
                     <input type="checkbox" data-id="${esc(c.id)}" ${checked}/>
                     <span class="badge safe">${esc(kindLabel(c.kind))}</span>
-                    <span class="path" title="${esc(c.path)}">${esc(c.path)}</span>
+                    <span class="path" title="${esc(c.path)}">${esc(dispPath(c.path))}</span>
                     <span class="size clean">${hb(c.bytes)}</span>
                     <span class="keep">${c.keep ? esc(c.keep) : ""}</span>
                 </div>${expanded ? subRows(c, selectedCleanIds.has(c.id)) : ""}

@@ -26,6 +26,7 @@ tools[].cleanables[].sub[].kind: string
 tools[].cleanables[].sub[].path: string
 tools[].cleanables[].tier: string
 tools[].cleanables[].tool: string
+tools[].cliVersion: string
 tools[].dataDirs[].bytes: number
 tools[].dataDirs[].form: string
 tools[].dataDirs[].kind: string
@@ -33,6 +34,7 @@ tools[].dataDirs[].path: string
 tools[].dataDirs[].root: string
 tools[].dataDirs[].tier: string
 tools[].description: string
+tools[].desktopVersion: string
 tools[].displayName: string
 tools[].family: string
 tools[].footprintBytes: number
@@ -44,6 +46,7 @@ tools[].uninstalled: bool
 tools[].updatedAt: string
 tools[].userBytes: number
 tools[].version: string
+tools[].versionMismatch: bool
 totals.cleanableBytes: number
 totals.footprintBytes: number
 totals.userBytes: number

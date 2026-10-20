@@ -59,8 +59,13 @@ func scanContractSample() *scanner.ScanResult {
 			Package:     "pkg",
 			Category:    "agent",
 			Uninstalled: true,
-			Binaries:    []scanner.Binary{{Name: "x", Path: "/x", Real: "/x"}},
-			DataDirs:    []scanner.DataDir{{Path: "/d", Kind: "cache", Tier: scanner.TierSafe, Bytes: 1, Root: "home", Form: "desktop"}},
+			// 双版本字段也必须在样例里填上，否则 omitempty 会让它们不进快照，
+			// 等于契约没冻结住。
+			CLIVersion:      "2.1.0",
+			DesktopVersion:  "1.0.2",
+			VersionMismatch: true,
+			Binaries:        []scanner.Binary{{Name: "x", Path: "/x", Real: "/x"}},
+			DataDirs:        []scanner.DataDir{{Path: "/d", Kind: "cache", Tier: scanner.TierSafe, Bytes: 1, Root: "home", Form: "desktop"}},
 			Cleanables: []scanner.Cleanable{{
 				ID: "x|cache|/d", Tool: "x", Path: "/d", Bytes: 1, Tier: scanner.TierSafe, Kind: "cache",
 				Sub: []scanner.SubEntry{{Path: "/d/s", Bytes: 1, ID: "x|cache|/d::/d/s", Kind: "cache"}},

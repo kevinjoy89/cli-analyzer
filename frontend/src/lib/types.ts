@@ -12,6 +12,9 @@ export interface Cleanable {
 export interface Tool {
     name: string; displayName?: string; aliases: string[]; installer: string;
     version: string; updatedAt: string; homepage: string; description: string;
+    // 双形态工具的两个版本（CLI 二进制探测 / 桌面 .app 包）。两者都已知
+    // 且不同时 versionMismatch 为 true，界面显示双版本 + 叹号。
+    cliVersion?: string; desktopVersion?: string; versionMismatch?: boolean;
     family?: string; // 家族合并根名（如 "nodejs"）；空 = 普通单工具
     category?: string; // AI 编目类别（agent / ai-ide）；空 = 通用 CLI 工具
     uninstalled?: boolean; // AI 条目无二进制且桌面端缺失：数据为已卸载残留

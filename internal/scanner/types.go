@@ -152,12 +152,25 @@ type Tool struct {
 	DisplayName string   `json:"displayName,omitempty"` // 友好展示名称（为空时回退为 Name）
 	Aliases     []string `json:"aliases"`
 	Installer   string   `json:"installer"`
-	Version     string   `json:"version"`           // current version, when known
-	UpdatedAt   string   `json:"updatedAt"`         // RFC3339 mtime of newest install file
-	Homepage    string   `json:"homepage"`          // official website (curated metadata)
-	Description string   `json:"description"`       // one-line summary (curated metadata)
-	Family      string   `json:"family,omitempty"`  // 家族合并根名（如 "nodejs"）；空 = 普通单工具。前端据此把 aliases 展示为「包含工具」而非「别名」。
-	Package     string   `json:"package,omitempty"` // 真实包名（npmToolID 映射时与 Name 不同；npm 查询/卸载/升级按此寻址）
+	// Version is the version to show in the single-version column: the CLI
+	// version when known, else the desktop version. Kept for backward
+	// compatibility and for tools that only have one form.
+	Version string `json:"version"`
+	// CLIVersion is the version reported by the PATH binary (--version probe or
+	// the versioned/brew/pyenv current version). Empty when unknown.
+	CLIVersion string `json:"cliVersion,omitempty"`
+	// DesktopVersion is the version read from the desktop app bundle's
+	// Info.plist. Empty when there is no desktop form.
+	DesktopVersion string `json:"desktopVersion,omitempty"`
+	// VersionMismatch is true when both versions are known and differ — the
+	// dual-form tool is running two different builds, which the UI flags rather
+	// than hiding behind one arbitrarily chosen number.
+	VersionMismatch bool     `json:"versionMismatch,omitempty"`
+	UpdatedAt       string   `json:"updatedAt"`    // RFC3339 mtime of newest install file
+	Homepage        string   `json:"homepage"`     // official website (curated metadata)
+	Description     string   `json:"description"`  // one-line summary (curated metadata)
+	Family          string   `json:"family,omitempty"`  // 家族合并根名（如 "nodejs"）；空 = 普通单工具。前端据此把 aliases 展示为「包含工具」而非「别名」。
+	Package         string   `json:"package,omitempty"` // 真实包名（npmToolID 映射时与 Name 不同；npm 查询/卸载/升级按此寻址）
 	// Category 是 AI 编目类别（agent / ai-ide）；空 = 通用 CLI 工具。
 	Category string `json:"category,omitempty"`
 	// Uninstalled 表示 AI 编目条目的全部形态均已缺失（无二进制且桌面端

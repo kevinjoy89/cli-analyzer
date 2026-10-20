@@ -18,6 +18,9 @@ import (
 // appBundlePaths 可注入（测试用）：AI 条目桌面端 .app 包路径解析。
 var appBundlePaths = platform.AppBundlePaths
 
+// appBundleVersion 可注入（测试用）：从 .app 包读版本号。
+var appBundleVersion = platform.AppBundleVersion
+
 // toolBuilder accumulates everything for one tool during a scan.
 type toolBuilder struct {
 	name        string
@@ -32,7 +35,11 @@ type toolBuilder struct {
 	measure     []string // paths to walk for footprint/cleanable sizing
 	footprint   int64
 	version     string
-	updatedAt   string
+	// cliVersion / desktopVersion 分别记录两种形态的版本：双形态工具可能
+	// 跑不同构建（kimi: CLI 2.1.0 vs 桌面 1.0.2），合并成一个数会掩盖差异。
+	cliVersion     string
+	desktopVersion string
+	updatedAt      string
 	displayName string
 	homepage    string
 	description string
@@ -194,6 +201,12 @@ func attribute(tools map[string]*toolBuilder, order []string, ruleTable *rules.T
 	for _, id := range order {
 		tb := tools[id]
 		tb.version = tb.currentVersion()
+		// cliVersion 只在**确实有 PATH 二进制**时才等于当前版本：没有二进制的
+		// 工具（纯桌面端，如 WorkBuddy）不该凭空得一个 CLI 版本，否则界面会
+		// 画出「CLI 5.7.7」这种并不存在的形态。
+		if len(tb.binaries) > 0 {
+			tb.cliVersion = tb.version
+		}
 		tb.updatedAt = tb.updatedAtTime()
 		if m := ruleTable.Meta(id); m.Homepage != "" || m.Description != "" {
 			tb.homepage = m.Homepage
@@ -215,6 +228,19 @@ func attribute(tools map[string]*toolBuilder, order []string, ruleTable *rules.T
 					if st, err := os.Stat(p); err == nil && st.IsDir() {
 						tb.dataDirs = append(tb.dataDirs, DataDir{Path: p, Tier: TierUser, Kind: "install", Form: rules.FormDesktop})
 						tb.addMeasure(p)
+						// 桌面端版本：这类工具常常没有 PATH 二进制，--version
+						// 探测无从下手（安装着却显示 —）。应用包自带版本号，
+						// 与 CLI 版本**分开记录**：两者不一致时界面要能同时
+						// 展示并提醒，而不是任选一个掩盖差异（kimi 就是
+						// CLI 2.1.0 / 桌面 1.0.2 的双版本工具）。
+						if v := appBundleVersion(p); v != "" {
+							if tb.desktopVersion == "" {
+								tb.desktopVersion = v
+							}
+							if tb.version == "" {
+								tb.version = v
+							}
+						}
 					}
 				}
 			}
@@ -579,7 +605,6 @@ func (b *toolBuilder) currentVersion() string {
 	}
 	return ""
 }
-
 // updatedAtTime returns the newest mtime (RFC3339) among the tool's install
 // root and its binaries — a proxy for "last updated / installed".
 func (b *toolBuilder) updatedAtTime() string {
@@ -790,9 +815,13 @@ func finalize(tools map[string]*toolBuilder, order []string, opts Options) *Scan
 		if tb.cleanables == nil {
 			tb.cleanables = []Cleanable{}
 		}
+		// 双版本：两个形态都已知且不同时标出差异（界面据此显示叹号 +
+		// 悬停展开，而不是任选一个版本掩盖另一形态的存在）。
+		mismatch := tb.cliVersion != "" && tb.desktopVersion != "" && tb.cliVersion != tb.desktopVersion
 		out = append(out, Tool{
 			Name: tb.name, DisplayName: tb.displayName, Aliases: aliases, Installer: string(tb.installer),
-			Version: tb.version, UpdatedAt: tb.updatedAt,
+			Version: tb.version, CLIVersion: tb.cliVersion, DesktopVersion: tb.desktopVersion,
+			VersionMismatch: mismatch, UpdatedAt: tb.updatedAt,
 			Homepage: tb.homepage, Description: tb.description,
 			Family: tb.family, Package: tb.pkg,
 			Category: tb.category, Uninstalled: tb.uninstalled,

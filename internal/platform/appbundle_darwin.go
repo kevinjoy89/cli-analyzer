@@ -3,6 +3,8 @@
 package platform
 
 import (
+	"bytes"
+	"encoding/xml"
 	"os"
 	"path/filepath"
 	"strings"
@@ -75,4 +77,48 @@ func AppBundlePaths(apps []string) []string {
 		}
 	}
 	return out
+}
+
+// AppBundleVersion 读 .app 包 Info.plist 里的版本号（CFBundleShortVersionString，
+// 缺失时回退 CFBundleVersion）。桌面端工具往往没有 PATH 二进制，--version 探测
+// 无从下手，但应用包自己就带着版本：这是「装着却显示 —」的根因。
+// 返回空表示读不到（非 macOS、包不存在、plist 无版本键）。
+func AppBundleVersion(appPath string) string {
+	plist := filepath.Join(appPath, "Contents", "Info.plist")
+	b, err := os.ReadFile(plist)
+	if err != nil {
+		return ""
+	}
+	// plist 是 <key>X</key><string>Y</string> 交替的平铺结构，不是按 key 命名
+	// 的元素，encoding/xml 的 struct tag 匹配不上——必须按事件流扫描。
+	// 用标准库而非 PlistBuddy：无外部依赖，且可在测试里构造输入。
+	vals := map[string]string{}
+	dec := xml.NewDecoder(bytes.NewReader(b))
+	var pendingKey string
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			break
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			switch t.Name.Local {
+			case "key":
+				var s string
+				if err := dec.DecodeElement(&s, &t); err == nil {
+					pendingKey = strings.TrimSpace(s)
+				}
+			case "string":
+				var s string
+				if err := dec.DecodeElement(&s, &t); err == nil && pendingKey != "" {
+					vals[pendingKey] = strings.TrimSpace(s)
+					pendingKey = ""
+				}
+			}
+		}
+	}
+	if v := vals["CFBundleShortVersionString"]; v != "" {
+		return v
+	}
+	return vals["CFBundleVersion"]
 }

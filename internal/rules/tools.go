@@ -69,6 +69,8 @@ var curated = []Rule{
 	},
 	{
 		Name: "opencode", DisplayName: "OpenCode", Installer: "other", Category: CategoryAgent,
+		// OpenCode.app 存在时把桌面端包计入安装占用并读出版本（双形态工具）。
+		Apps: []string{"OpenCode"},
 		DataDirs: []DataDirRule{
 			dd(platform.XDGData, "opencode", TierUser, "data"),
 			// AI 语义子目录（2026-09-30 实测：snapshot 158M、storage 94M、
