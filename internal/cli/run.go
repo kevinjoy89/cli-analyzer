@@ -68,6 +68,18 @@ func usage() {
 	fmt.Fprintln(stdout(), i18n.T("cli.usage"))
 }
 
+// Subcommands 返回 cli 认识的子命令名（不含 help/version 这类元命令）。
+// 供 main.go 的白名单测试守住「新增子命令忘了加进分发」这类漏发。
+func Subcommands() []string {
+	return []string{"scan", "clean", "cache", "trash", "trends", "update", "upgrade", "uninstall", "residue"}
+}
+
+// UsageMentions 报告 usage 文本里是否提到了某个子命令。
+// 用于测试：新增子命令时忘了写进用法会红。
+func UsageMentions(name string) bool {
+	return strings.Contains(i18n.T("cli.usage"), "cli-analyzer "+name)
+}
+
 // reorderFlags moves "-" prefixed arguments before positional ones so that
 // `scan pylint --json` behaves like `scan --json pylint` (Go's flag package
 // stops at the first non-flag argument).

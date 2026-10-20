@@ -130,12 +130,17 @@ func buildMenu() *menu.Menu {
 	return appMenu
 }
 
-// main dispatches on argv: scan/clean/cache/trash/trends/version run as a CLI;
-// gui or no arguments open the Wails desktop window. One binary, both interfaces.
+// main dispatches on argv: scan/clean/cache/trash/trends/update/upgrade/
+// uninstall/residue/version run as a CLI; gui or no arguments open the Wails
+// desktop window. One binary, both interfaces.
+//
+// 新增子命令时必须同时加进这个白名单：否则 `cli-analyzer <新命令>` 会落到
+// GUI 分支弹出一个窗口，而不是执行 CLI（upgrade / residue 就漏过）。
 func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
-		case "scan", "clean", "cache", "trash", "trends", "update", "uninstall", "version", "--version", "-v", "help", "-h", "--help":
+		case "scan", "clean", "cache", "trash", "trends", "update", "upgrade", "uninstall", "residue",
+			"version", "--version", "-v", "help", "-h", "--help":
 			os.Exit(cli.Run(os.Args[1:]))
 		}
 		// 横线开头的参数不是 GUI 标志（Wails 窗口不接收 CLI 参数）：交给
