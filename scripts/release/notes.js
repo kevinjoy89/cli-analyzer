@@ -32,12 +32,28 @@ console.log('本地自检通过:', notesPath, `(${notes.length} chars)`);
 if (verifyOnly) process.exit(0);
 
 (async () => {
-  // 按 tag 找 release id（不再硬编码）
-  const list = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${encodeURIComponent(tag)}`, {
-    headers: { Accept: 'application/vnd.github+json', Authorization: 'Bearer ' + token },
-  });
-  if (!list.ok) { console.error('查找 release 失败:', list.status, await list.text()); process.exit(1); }
-  const rel = await list.json();
+  // 按 tag 找 release id（不再硬编码）。
+  // 注意：/releases/tags/<tag> 对 draft release 返回 404（GitHub 的已知行为，
+  // 该接口只返回已发布 release）——本项目的工作流总是先建 draft，所以 404 时
+  // 必须回退到列表接口按 tag_name 匹配（含 draft）。
+  const headers = { Accept: 'application/vnd.github+json', Authorization: 'Bearer ' + token };
+  let rel = null;
+  const byTag = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${encodeURIComponent(tag)}`, { headers });
+  if (byTag.ok) {
+    rel = await byTag.json();
+  } else if (byTag.status === 404) {
+    const listRes = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=100`, { headers });
+    if (!listRes.ok) { console.error('列出 releases 失败:', listRes.status, await listRes.text()); process.exit(1); }
+    const all = await listRes.json();
+    rel = all.find((r) => r.tag_name === tag) || null;
+    if (!rel) {
+      console.error(`FAIL: 找不到 tag=${tag} 的 release（含 draft），请确认 Release 工作流已完成`);
+      process.exit(1);
+    }
+  } else {
+    console.error('查找 release 失败:', byTag.status, await byTag.text());
+    process.exit(1);
+  }
 
   const res = await fetch(`https://api.github.com/repos/${repo}/releases/${rel.id}`, {
     method: 'PATCH',
