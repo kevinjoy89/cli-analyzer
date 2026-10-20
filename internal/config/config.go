@@ -60,11 +60,25 @@ const (
 	LangEn = "en"
 )
 
+// CleanConfig 是批量清理策略的配置项（见 ADR 0005）。
+//
+// 批量清理资格**不能**由 Tier 推导：Tier 表达「能否安全删除」，
+// 批量资格表达「默认替用户全选时该不该包含」，两者不同
+// （runtime 是 safe 但删了会立即破坏工具可用性）。
+type CleanConfig struct {
+	// BulkKinds 追加可批量清理的 Kind（内置默认之外）。用户自定义 Kind
+	// 走这里——新 Kind 默认**不**具备批量资格。
+	BulkKinds []string `json:"bulkKinds,omitempty"`
+	// BulkExclude 从内置默认里剔除 Kind（如不想让 cache 进一键全选）。
+	BulkExclude []string `json:"bulkExclude,omitempty"`
+}
+
 // Config 是应用的本地配置
 type Config struct {
 	Trash    TrashConfig    `json:"trash"`
 	Reminder ReminderConfig `json:"reminder"`
 	Update   UpdateConfig   `json:"update"`
+	Clean    CleanConfig    `json:"clean"`
 	// Language 界面语言，默认 auto（跟随系统）
 	Language string `json:"language,omitempty"`
 }

@@ -9,10 +9,19 @@ import (
 	"strings"
 
 	"cli-analyzer/internal/cleaner"
+	"cli-analyzer/internal/cleanpolicy"
 	"cli-analyzer/internal/config"
 	"cli-analyzer/internal/i18n"
 	"cli-analyzer/internal/scanner"
 )
+
+// includeDataKinds 是 --include-data 纳入批量的「数据类」Kind。
+// 与 cleanpolicy 的内置白名单正交：前者是用户显式要求纳入，后者是默认范围。
+var includeDataKinds = map[string]bool{
+	"config": true, "data": true, "state": true, "toolchain": true,
+	"runtime": true, "session": true, "plugins": true, "artifacts": true,
+	"checkpoint": true, "workspace-data": true,
+}
 
 func runClean(args []string) int {
 	fs := flag.NewFlagSet("clean", flag.ContinueOnError)
@@ -62,35 +71,56 @@ func runClean(args []string) int {
 		return 0
 	}
 	if len(items) == 0 {
+		// --json 下也必须输出 JSON（契约：stdout 只含一份 JSON 文档）。
+		// 这是第二条纯文本分支，早先同样违反了契约。
+		if *jsonOut {
+			_ = emitJSON(KindClean, scanner.CleanReport{
+				DryRun:  *dryRun,
+				Deleted: []string{},
+				Skipped: []scanner.SkippedItem{},
+				Errors:  []string{},
+			}, *pretty)
+			return 0
+		}
 		fmt.Fprintln(stdout(), i18n.T("cli.noCleanable"))
 		return 0
 	}
 
-	// --all 的保护性默认：只批量选择"清理类"（缓存/旧版本/备份/下载，以及
-	// AI 编目中的可再生代码索引/遥测/日志），config/data/state/toolchain/
-	// runtime 等会改变工具可用状态或承载用户数据的"数据类"需 --include-data
-	// 或逐项指定 id。这是防误操作的默认值，不是门槛——用户随时可以显式覆盖。
-	// （runtime 可重下但删除会即时破坏工具可用性，故不在默认批量内；
-	// session-db 在扫描端已被排除为仅报告，永远不会出现在 items 里。）
-	cleanKinds := map[string]bool{"cache": true, "old-version": true, "backup": true, "download": true,
-		"index": true, "telemetry": true, "logs": true}
-	if *includeData {
-		for _, k := range []string{"config", "data", "state", "toolchain", "logs", "runtime",
-			"session", "plugins", "artifacts", "checkpoint", "workspace-data"} {
-			cleanKinds[k] = true
+	// --all 的保护性默认：只批量选择「可批量清理」的 Kind。判定交给
+	// cleanpolicy（CLI 与 GUI 共用，见 ADR 0005）——Tier 不能当批量资格用：
+	// runtime 是 safe 但删了会立即破坏工具可用性。
+	//
+	// --include-data 仍保留：它把 user 类也纳入批量（config/data/state/
+	// toolchain/runtime/session/plugins/artifacts/checkpoint/workspace-data），
+	// 与 Kind 白名单是两条正交的途径。
+	cfg := config.Load()
+	bulkOK := func(kind string) bool {
+		if cleanpolicy.BulkEligible(kind, cfg.Clean) {
+			return true
 		}
+		return *includeData && includeDataKinds[kind]
 	}
 
 	var chosen []string
 	if *all {
 		for _, it := range items {
-			if cleanKinds[it.Kind] {
+			if bulkOK(it.Kind) {
 				chosen = append(chosen, it.ID)
 			}
 		}
 		if len(chosen) == 0 {
-			// 批量选择未命中任何"清理类"项（数据类需 --include-data），
-			// 明确提示而非静默清 0 项。
+			// 批量选择未命中任何可批量清理项（数据类需 --include-data）。
+			// --json 下必须仍输出 JSON：契约是「stdout 只含一份 JSON 文档」，
+			// 这里早先直接打纯文本，导致脚本拿到非 JSON 而解析失败。
+			if *jsonOut {
+				_ = emitJSON(KindClean, scanner.CleanReport{
+					DryRun:  *dryRun,
+					Deleted: []string{},
+					Skipped: []scanner.SkippedItem{},
+					Errors:  []string{},
+				}, *pretty)
+				return 0
+			}
 			fmt.Fprintln(stdout(), i18n.T("cli.cleanAllEmpty"))
 			return 0
 		}

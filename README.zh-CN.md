@@ -80,6 +80,10 @@ cli-analyzer clean                   # 交互式逐项确认处置（先入内�
 cli-analyzer clean --dry-run --all   # 只显示处置计划，不删除
 cli-analyzer clean --yes kimi        # 批量处置指定工具的全部"清理类"项
 cli-analyzer clean --all --include-data  # 批量处置也包含 config/data/state 等数据类
+
+# 哪些 Kind 算「可批量清理」可在 config.json 里配置：
+#   "clean": { "bulkKinds": ["my-cache"], "bulkExclude": ["cache"] }
+# 规则包声明的自定义 Kind 默认不进批量清理，需在 bulkKinds 里显式声明。
 cli-analyzer clean --permanent       # 立即彻底删除，跳过内置回收站
 cli-analyzer trash list              # 列出内置回收站项目
 cli-analyzer trash restore <id>      # 恢复一个项目到原路径
@@ -110,7 +114,9 @@ pyenv        -   759.8 MB  0 B        759.8 MB  pyenv
 
 （Node.js 运行时家族 node/npm/npx/corepack/node-gyp 归并为一条 `nodejs`，详情中可查看包含的命令与各自的二进制路径；`~/.npm` 缓存仍是可处置的缓存项。）
 
-**处置模型**：应用只归因并标注每个目录的类型（缓存/配置/数据/旧版本/备份/工具链…），删除与否由你决定。`clean --all` 默认只批量选择"清理类"（缓存/旧版本/备份/下载）——config/data/state 等数据类需显式 `--include-data`。旧版本处置会自动保留当前版本（如 claude 的软链接目标）；cleaner 的完整性守卫仍会拒绝系统根、`..` 路径、回收站本身与当前版本路径。
+**处置模型**：应用只归因并标注每个目录的类型（缓存/配置/数据/旧版本/备份/工具链…），删除与否由你决定。`clean --all` 默认只批量选择**可批量清理的 Kind**（`cache` / `old-version` / `backup` / `download` / `index` / `telemetry` / `logs`）——数据类需显式 `--include-data`，而你自己规则包里声明的 Kind 需在 config.json 的 `clean.bulkKinds` 里声明（见 [docs/user-rules.md](docs/user-rules.md)）。
+
+注意 `tier: safe` **不等于**可批量清理：`runtime` 是可重下的 safe，但它不在批量默认里——删除会立即破坏工具可用性。旧版本处置会自动保留当前版本（如 claude 的软链接目标）；cleaner 的完整性守卫仍会拒绝系统根、`..` 路径、回收站本身与当前版本路径。
 
 **延迟删除**：处置项先搬进应用自带的内置回收站（同文件系统、瞬时完成、可恢复），在保留期（默认 7 天，可在"首选项"配置）内可随时还原；到期后默认移入系统回收站，或按配置彻底删除。GUI 状态栏会展示回收站占用与最早到期时间，`clean --permanent` 可跳过内置回收站。
 

@@ -83,6 +83,10 @@ cli-analyzer clean                   # interactive, per-item disposal (into buil
 cli-analyzer clean --dry-run --all   # show the plan only, delete nothing
 cli-analyzer clean --yes kimi        # dispose of all cleanup-kind items for one tool
 cli-analyzer clean --all --include-data  # batch also includes config/data/state items
+
+# Which kinds count as bulk-cleanable is configurable (config.json):
+#   "clean": { "bulkKinds": ["my-cache"], "bulkExclude": ["cache"] }
+# Custom kinds from rules.d are NOT bulk-cleanable until listed in bulkKinds.
 cli-analyzer clean --permanent       # delete immediately, skip the built-in trash
 cli-analyzer trash list              # list built-in trash items
 cli-analyzer trash restore <id>      # restore an item to its original path
@@ -117,7 +121,7 @@ Total  -     31.5 GB  19.9 GB     11.7 GB   -
 
 (The Node.js runtime family — node / npm / npx / corepack / node-gyp — is merged into a single `nodejs` entry; its detail panel lists every bundled command and binary path, and the `~/.npm` cache stays an actionable cache item.)
 
-**Disposal model**: the app attributes and labels each directory (cache / config / data / old version / backup / toolchain…); deletion is your call. `clean --all` batches only cleanup-kind items (cache / old-version / backup / download) by default — config/data/state need an explicit `--include-data`. Old-version disposal always keeps the current version (e.g. the symlink target for `claude`); the cleaner's integrity guards still refuse system roots, `..` paths, the trash root, and the current version path.
+**Disposal model**: the app attributes and labels each directory (cache / config / data / old version / backup / toolchain…); deletion is your call. `clean --all` batches only bulk-cleanable kinds by default (`cache` / `old-version` / `backup` / `download` / `index` / `telemetry` / `logs`) — data kinds need explicit `--include-data`, and kinds declared by your own rule packs need `clean.bulkKinds` in config.json (see [docs/user-rules.md](docs/user-rules.md)). `tier: safe` is **not** the same as bulk-cleanable: `runtime` is safe but stays out of batch cleaning because removing it breaks the tool immediately.cache / old-version / backup / download) by default — config/data/state need an explicit `--include-data`. Old-version disposal always keeps the current version (e.g. the symlink target for `claude`); the cleaner's integrity guards still refuse system roots, `..` paths, the trash root, and the current version path.
 
 **Deferred deletion**: disposed items are moved into the app's built-in trash first — same filesystem, instant, and recoverable. They stay there for the retention window (default 7 days, configurable in Preferences) and are then purged: by default into the OS trash, or permanently if configured. The GUI status bar shows the trash occupancy and the earliest expiry, so "disposed" and "space released" stay distinct. Use `clean --permanent` to bypass the built-in trash.
 

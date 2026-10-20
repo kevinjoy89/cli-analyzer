@@ -73,3 +73,27 @@
 ## 注意
 
 规则包只影响**归因与标注**，不改变删除行为：每个归因目录仍然是「可处置项」，删不删由用户在 GUI/CLI 里决定，删除前照常经过完整性守卫（绝对路径、无 `..`、不在系统根、不是回收站根、不是当前版本路径）。
+
+## 自定义 Kind 与 `clean --all`
+
+规则包里声明的 `kind` 默认**不会**被 `clean --all` 选中。这是安全侧默认：你自己加的规则不会因为标了 `tier: "safe"` 就被一键批量清掉。
+
+要让某个 Kind 进入批量清理，在 `config.json` 里声明：
+
+```json
+{
+  "clean": {
+    "bulkKinds": ["my-cache"],
+    "bulkExclude": ["cache"]
+  }
+}
+```
+
+- `bulkKinds`：**追加**可批量清理的 Kind（内置默认之外）
+- `bulkExclude`：从内置默认里**剔除**（如不想让 cache 进一键全选）
+- 最终集合 = `(内置默认 ∪ bulkKinds) − bulkExclude`，剔除优先
+- 内置默认：`cache` / `old-version` / `backup` / `download` / `index` / `telemetry` / `logs`
+
+**注意 `tier` 不等于批量资格**：`runtime` 标为 `safe`（捆绑运行时确实可重下），但它不在批量默认里——删除会立即破坏工具可用性。两个问题不同：`tier` 回答「能否安全删除」，批量资格回答「默认替用户全选时该不该包含」。详见 `docs/adr/0005-tier-is-not-bulk-cleanable.md`。
+
+批量策略只影响 `--all` 的默认选择，不影响逐项确认或显式指定 id 的处置。
