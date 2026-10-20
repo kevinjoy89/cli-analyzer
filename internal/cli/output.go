@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"text/tabwriter"
@@ -8,6 +9,107 @@ import (
 	"cli-analyzer/internal/i18n"
 	"cli-analyzer/internal/scanner"
 )
+
+// SchemaVersion is the version of the CLI's machine-readable output contract.
+// It is bumped only for breaking changes; additive fields do not bump it.
+// See docs/adr/0002-cleanable-actionable-and-contract-compat.md.
+const SchemaVersion = 1
+
+// Report kinds. Each JSON document carries one of these in its top-level
+// `kind` field so consumers can tell report types apart without guessing.
+const (
+	KindScan         = "scan"
+	KindClean        = "clean"
+	KindCache        = "cache"
+	KindTrashList    = "trash-list"
+	KindTrashRestore = "trash-restore"
+	KindTrashEmpty   = "trash-empty"
+	KindTrends       = "trends"
+	KindUninstall    = "uninstall"
+	KindAppUpdate    = "app-update"
+	KindToolCheck    = "tool-check"
+	KindToolUpgrade  = "tool-upgrade"
+	KindBaseline     = "baseline-diff"
+	KindResidue      = "residue"
+)
+
+// emitJSON writes payload to stdout as a single JSON document carrying
+// `schemaVersion` and `kind` alongside the payload's own fields (flat, not
+// nested — existing consumers keep reading the same top-level keys).
+//
+// Compact by default (one line, pipe-friendly); pretty=true indents it for
+// human reading. Array payloads are wrapped as {"...", "items": [...]}
+// because a bare array has nowhere to put the contract fields.
+func emitJSON(kind string, payload any, pretty bool) error {
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(b, &doc); err != nil {
+		// payload 不是 JSON 对象（数组或标量）：用 items 包起来。
+		doc = map[string]any{"items": json.RawMessage(b)}
+	}
+	doc["schemaVersion"] = SchemaVersion
+	doc["kind"] = kind
+
+	var out []byte
+	if pretty {
+		out, err = json.MarshalIndent(doc, "", "  ")
+	} else {
+		out, err = json.Marshal(doc)
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(stdout(), string(out))
+	return nil
+}
+
+// emitJSONError writes a machine-readable error document. Kept separate so
+// error reports still carry the contract fields and remain distinguishable
+// from a successful report of the same kind.
+func emitJSONError(kind string, fields map[string]any, pretty bool) {
+	doc := map[string]any{"error": true}
+	for k, v := range fields {
+		doc[k] = v
+	}
+	_ = emitJSON(kind, doc, pretty)
+}
+
+// parseSize parses a human byte size ("500MB", "1.5GiB", "1024").
+// Used by --fail-on-grow so thresholds can be written naturally in CI.
+func parseSize(s string) (int64, error) {
+	s = strings.TrimSpace(strings.ToUpper(s))
+	if s == "" {
+		return 0, fmt.Errorf("empty size")
+	}
+	mult := int64(1)
+	units := []struct {
+		suffix string
+		mult   int64
+	}{
+		{"KIB", 1 << 10}, {"MIB", 1 << 20}, {"GIB", 1 << 30}, {"TIB", 1 << 40},
+		{"KB", 1000}, {"MB", 1000 * 1000}, {"GB", 1000 * 1000 * 1000}, {"TB", 1000 * 1000 * 1000 * 1000},
+		{"K", 1 << 10}, {"M", 1 << 20}, {"G", 1 << 30}, {"T", 1 << 40},
+		{"B", 1},
+	}
+	for _, u := range units {
+		if strings.HasSuffix(s, u.suffix) {
+			mult = u.mult
+			s = strings.TrimSpace(strings.TrimSuffix(s, u.suffix))
+			break
+		}
+	}
+	var f float64
+	if _, err := fmt.Sscanf(s, "%f", &f); err != nil {
+		return 0, fmt.Errorf("invalid size %q", s)
+	}
+	if f < 0 {
+		return 0, fmt.Errorf("negative size %q", s)
+	}
+	return int64(f * float64(mult)), nil
+}
 
 // humanBytes renders a byte count compactly (e.g. "1.2 GB").
 // 后缀表覆盖 int64 全范围：最大 9.2 EiB 对应 exp=5，故需 6 个后缀

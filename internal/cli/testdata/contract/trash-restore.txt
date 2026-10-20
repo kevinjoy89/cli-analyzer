@@ -1,0 +1,4 @@
+id: string
+kind: string
+restored: string
+schemaVersion: number

@@ -93,9 +93,13 @@ func (r CleanRule) Resolve() string {
 type Table struct {
 	byName map[string]*Rule
 	order  []string
+	// userErrors 是加载用户规则包时遇到的问题（逐条）。扫描不因它失败，
+	// 但 CLI/GUI 可以展示，避免「我写的规则为什么没生效」无从查起。
+	userErrors []string
 }
 
-// Load builds the table from the curated entries.
+// Load builds the table from the curated entries, then layers the user's own
+// rule packs (<DataRoot>/rules.d/*.json) on top.
 func Load() *Table {
 	t := &Table{byName: map[string]*Rule{}}
 	for i := range curated {
@@ -113,8 +117,22 @@ func Load() *Table {
 		t.byName[r.Name] = r
 		t.order = append(t.order, r.Name)
 	}
+
+	// 用户规则包：同名整条替换内置条目，新名字追加。
+	user, errs := loadUserRules(userRulesDir())
+	t.userErrors = errs
+	for i := range user {
+		r := &user[i]
+		if _, exists := t.byName[r.Name]; !exists {
+			t.order = append(t.order, r.Name)
+		}
+		t.byName[r.Name] = r
+	}
 	return t
 }
+
+// UserErrors returns problems encountered while loading user rule packs.
+func (t *Table) UserErrors() []string { return append([]string(nil), t.userErrors...) }
 
 // Lookup returns the curated rule for a tool name (exact match only).
 func (t *Table) Lookup(name string) *Rule { return t.byName[name] }

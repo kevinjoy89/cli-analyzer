@@ -1,0 +1,7 @@
+deleted[]: string
+dryRun: bool
+errors[]: empty
+freedBytes: number
+kind: string
+schemaVersion: number
+skipped[]: string

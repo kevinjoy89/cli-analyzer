@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bufio"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -25,6 +24,7 @@ func runClean(args []string) int {
 	fs.BoolVar(yes, "yes", false, "assume yes")
 	jsonOut := fs.Bool("j", false, "output JSON report")
 	fs.BoolVar(jsonOut, "json", false, "output JSON report")
+	pretty := fs.Bool("pretty", false, "indent JSON output")
 	list := fs.Bool("list", false, "list actionable items and exit")
 	permanent := fs.Bool("permanent", false, "immediately delete, skip the built-in trash")
 	includeData := fs.Bool("include-data", false, "include config/data/state/toolchain items in --all")
@@ -53,6 +53,11 @@ func runClean(args []string) int {
 		items = append(items, t.Cleanables...)
 	}
 	if *list {
+		if *jsonOut {
+			// --list --json：列出可处置项（不处置）
+			_ = emitJSON(KindClean, map[string]any{"dryRun": true, "list": items}, *pretty)
+			return 0
+		}
 		printCleanables(res, filters)
 		return 0
 	}
@@ -112,8 +117,7 @@ func runClean(args []string) int {
 		report = cleaner.Clean(res, chosen, *dryRun)
 	}
 	if *jsonOut {
-		b, _ := json.MarshalIndent(report, "", "  ")
-		fmt.Fprintln(stdout(), string(b))
+		_ = emitJSON(KindClean, report, *pretty)
 	} else {
 		modeWord := i18n.T("cli.delete")
 		if !*permanent && config.Load().Trash.UseTrash {

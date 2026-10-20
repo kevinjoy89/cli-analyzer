@@ -1,0 +1,5 @@
+cleared: bool
+kind: string
+path: string
+present: bool
+schemaVersion: number

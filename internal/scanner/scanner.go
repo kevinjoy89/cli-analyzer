@@ -127,6 +127,9 @@ func scan(opts Options, skipIfUnchanged bool) (*ScanResult, bool, error) {
 	// 孤儿数据始终计算（非 CLI 排除体系过滤后），GUI 与 CLI 共用。
 	res.Unattributed = findUnattributed(tools, order, sizer)
 	res.Errors = sizer.Errors
+	// 用户规则包的加载问题：不阻止扫描，但必须可见（否则「我写的规则为何
+	// 没生效」无从查起）。
+	res.RuleErrors = ruleTable.UserErrors()
 
 	// 扫描耗时必须在写缓存之前计算：SaveCache 序列化的是当前 res，
 	// 若在写缓存之后才赋值，缓存 JSON 里的 scanTimeMs 恒为 0

@@ -3,7 +3,6 @@ package cli
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -19,16 +18,35 @@ import (
 	"cli-analyzer/internal/uninstall"
 )
 
-// runUninstall 处理 `uninstall <tool> [--residue] [--yes] [--permanent] [--json]`。
+// UninstallReport is the machine-readable contract of `uninstall`.
+type UninstallReport struct {
+	Tool            string              `json:"tool"`
+	Installer       string              `json:"installer"`
+	Blocked         bool                `json:"blocked"`
+	OfficialCommand string              `json:"officialCommand"`
+	Runnable        bool                `json:"runnable"`
+	DryRun          bool                `json:"dryRun"`
+	Residue         []uninstall.Residue `json:"residue"`
+	// Deleted lists the residue paths actually disposed of (empty on dry-run).
+	Deleted []string `json:"deleted,omitempty"`
+	Errors  []string `json:"errors,omitempty"`
+}
+
+// runUninstall 处理 `uninstall <tool> [--residue] [--yes] [--permanent] [--dry-run] [--json]`。
 // 退出码：0 成功 / 1 错误 / 2 黑名单或无该工具。
 // 流程：展示标准卸载命令（可代跑）→ 残留检测 → 残留处置（默认移入内置
 // 回收站，可恢复；--permanent 为用户显式选择的永久删除）。
+// --dry-run 只输出计划，不动文件系统、不代跑命令、不写回收站索引。
 func runUninstall(args []string) int {
 	fs := flag.NewFlagSet("uninstall", flag.ContinueOnError)
 	residueOnly := fs.Bool("residue", false, "only list residue, delete nothing")
 	yes := fs.Bool("yes", false, "skip interactive prompts")
 	permanent := fs.Bool("permanent", false, "permanently delete residue (default: built-in trash, recoverable)")
-	jsonOut := fs.Bool("json", false, "output JSON")
+	dryRun := fs.Bool("n", false, "dry run: print the plan, touch nothing")
+	fs.BoolVar(dryRun, "dry-run", false, "dry run")
+	jsonOut := fs.Bool("j", false, "output JSON")
+	fs.BoolVar(jsonOut, "json", false, "output JSON")
+	pretty := fs.Bool("pretty", false, "indent JSON output")
 	fs.SetOutput(stderr())
 	if err := fs.Parse(reorderFlags(args)); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -43,7 +61,7 @@ func runUninstall(args []string) int {
 	name := fs.Arg(0)
 
 	if uninstall.IsBlocked(name) {
-		return uninstallBlocked(name, *jsonOut)
+		return uninstallBlocked(name, *jsonOut, *pretty)
 	}
 
 	res, err := scanner.LoadCache()
@@ -51,8 +69,7 @@ func runUninstall(args []string) int {
 		// 从未扫描：缓存缺失是状态问题，不是工具不存在——错误信息必须
 		// 可区分（此前静默当"未找到工具"处理，用户会被误导去怀疑工具名）
 		if *jsonOut {
-			b, _ := json.Marshal(map[string]any{"tool": name, "error": i18n.T("cli.noScanResult")})
-			fmt.Fprintln(stdout(), string(b))
+			emitJSONError(KindUninstall, map[string]any{"tool": name, "message": i18n.T("cli.noScanResult")}, *pretty)
 		} else {
 			fmt.Fprintln(stderr(), i18n.T("cli.noScanResult"))
 		}
@@ -61,30 +78,67 @@ func runUninstall(args []string) int {
 	tool := findTool(res, name)
 	if tool == nil {
 		if *jsonOut {
-			b, _ := json.Marshal(map[string]any{"tool": name, "error": i18n.T("un.toolNotFound")})
-			fmt.Fprintln(stdout(), string(b))
+			emitJSONError(KindUninstall, map[string]any{"tool": name, "message": i18n.T("un.toolNotFound")}, *pretty)
 		} else {
 			fmt.Fprintf(stderr(), "%s\n", i18n.T("un.toolNotFound"))
 		}
 		return 2
 	}
 	if uninstall.IsBlocked(tool.Name) { // 别名命中黑名单
-		return uninstallBlocked(tool.Name, *jsonOut)
+		return uninstallBlocked(tool.Name, *jsonOut, *pretty)
 	}
 
 	off := uninstall.OfficialFor(*tool)
+	residues := uninstall.Residues(tool.Name, res)
+
+	// 记录卸载事件（残留闭环）：即使后续处置失败，下次 `residue` 仍能提醒。
+	// 预演不记（预演意味着「我还没决定」）。
+	if !*dryRun && !*residueOnly {
+		paths := make([]string, 0, len(residues))
+		for _, r := range residues {
+			paths = append(paths, r.Path)
+		}
+		_ = uninstall.RecordEvent(tool.Name, paths)
+	}
 
 	if *residueOnly {
-		return printResidue(tool.Name, res, *jsonOut)
+		return printResidue(tool.Name, residues, *jsonOut, *pretty)
 	}
+
+	report := UninstallReport{
+		Tool:            tool.Name,
+		Installer:       tool.Installer,
+		OfficialCommand: off.Command,
+		Runnable:        off.Runnable,
+		DryRun:          *dryRun,
+		Residue:         residues,
+	}
+
+	// --dry-run：只输出计划。不代跑命令、不动文件、不写回收站索引——
+	// 预演与真实执行同口径（同一份 residues 列表），但零副作用。
+	if *dryRun {
+		if *jsonOut {
+			_ = emitJSON(KindUninstall, report, *pretty)
+			return 0
+		}
+		fmt.Fprintf(stdout(), "%s: %s\n", i18n.T("un.toolInstaller"), tool.Installer)
+		if off.Command != "" {
+			fmt.Fprintf(stdout(), "%s\n  %s\n", i18n.T("un.officialCmd"), off.Command)
+		} else {
+			fmt.Fprintln(stdout(), i18n.T("un.noOfficialCmd"))
+		}
+		if len(residues) == 0 {
+			fmt.Fprintln(stdout(), i18n.T("un.residueNone"))
+		} else {
+			printResidueList(residues)
+		}
+		fmt.Fprintln(stdout(), i18n.T("un.dryRunPlan"))
+		return 0
+	}
+
 	if *jsonOut {
-		// --json 契约：只输出信息，不执行
-		b, _ := json.Marshal(map[string]any{
-			"tool": tool.Name, "installer": tool.Installer, "blocked": false,
-			"officialCommand": off.Command, "runnable": off.Runnable,
-			"residue": uninstall.Residues(tool.Name, res),
-		})
-		fmt.Fprintln(stdout(), string(b))
+		// --json 契约：只输出信息，不执行（镜像 trash/upgrade）
+		_ = emitJSON(KindUninstall, report, *pretty)
 		return 0
 	}
 
@@ -146,21 +200,23 @@ func runUninstall(args []string) int {
 	return 0
 }
 
-func uninstallBlocked(name string, jsonOut bool) int {
+func uninstallBlocked(name string, jsonOut, pretty bool) int {
 	if jsonOut {
-		b, _ := json.Marshal(map[string]any{"tool": name, "blocked": true, "error": i18n.T("un.blockedSystem")})
-		fmt.Fprintln(stdout(), string(b))
+		emitJSONError(KindUninstall, map[string]any{
+			"tool": name, "blocked": true, "message": i18n.T("un.blockedSystem"),
+		}, pretty)
 	} else {
 		fmt.Fprintf(stderr(), "%s\n", i18n.T("un.blockedSystem"))
 	}
 	return 2
 }
 
-func printResidue(tool string, res *scanner.ScanResult, jsonOut bool) int {
-	rr := uninstall.Residues(tool, res)
+func printResidue(tool string, rr []uninstall.Residue, jsonOut, pretty bool) int {
 	if jsonOut {
-		b, _ := json.Marshal(rr)
-		fmt.Fprintln(stdout(), string(b))
+		if rr == nil {
+			rr = []uninstall.Residue{}
+		}
+		_ = emitJSON(KindUninstall, map[string]any{"tool": tool, "residue": rr}, pretty)
 		return 0
 	}
 	if len(rr) == 0 {

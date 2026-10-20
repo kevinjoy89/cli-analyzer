@@ -62,6 +62,9 @@ func Trash(path string, meta Item) error {
 	if err := os.MkdirAll(itemDir, 0o755); err != nil {
 		return err
 	}
+	// 清单必须在 Rename **之前**统计（此时 path 还在原位置）。
+	// 清单写失败不阻止移入：可逆性是加固，不是前提。
+	manifest := buildManifest(path, meta.Bytes)
 	if err := os.Rename(path, dataDirOf(itemDir)); err != nil {
 		_ = os.Remove(itemDir)
 		return err
@@ -76,7 +79,58 @@ func Trash(path string, meta Item) error {
 		}
 		return err
 	}
+	// 清单在 info.json 落盘之后写：清单失败只意味着「这次不可核对」，
+	// 不影响可恢复性（Restore 对无清单项目照常工作）。
+	_ = writeManifest(itemDir, manifest)
 	return nil
+}
+
+// VerifyItem 用回收站里的清单核对已恢复的 path。
+// manifest/hasManifest 必须在 Restore **之前**取（Restore 会删掉项目目录）。
+func VerifyItem(restoredPath string, manifest Manifest, hasManifest bool) VerifyResult {
+	res := VerifyResult{Path: restoredPath, Files: countFiles(restoredPath)}
+	if !hasManifest {
+		res.Checked = false
+		res.OK = true
+		return res
+	}
+	res.Checked = true
+	res.ExpectedFiles = manifest.Files
+	res.OK = res.Files == manifest.Files
+	for _, top := range manifest.TopPaths {
+		if _, err := os.Lstat(filepath.Join(restoredPath, top)); err != nil {
+			res.Missing = append(res.Missing, top)
+			res.OK = false
+		}
+	}
+	return res
+}
+
+// ManifestOf 读取回收站项目的清单（供恢复前保存）。
+func ManifestOf(id string) (Manifest, bool) {
+	return readManifest(filepath.Join(Root(), id))
+}
+
+// countFiles 统计 path 下的文件数（非目录计 1）。
+func countFiles(path string) int {
+	st, err := os.Lstat(path)
+	if err != nil {
+		return 0
+	}
+	if !st.IsDir() {
+		return 1
+	}
+	n := 0
+	filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !d.IsDir() {
+			n++
+		}
+		return nil
+	})
+	return n
 }
 
 // Restore 将指定项目还原到原路径；原路径被占用时改名还原并返回实际路径

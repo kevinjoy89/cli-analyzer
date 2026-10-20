@@ -46,8 +46,12 @@ func Run(args []string) int {
 		return runTrends(args[1:])
 	case "update":
 		return runUpdate(args[1:])
+	case "upgrade":
+		return runUpgrade(args[1:])
 	case "uninstall":
 		return runUninstall(args[1:])
+	case "residue":
+		return runResidue(args[1:])
 	case "version", "--version", "-v":
 		fmt.Fprintf(stdout(), "cli-analyzer %s (%s, %s)\n", Version, goruntime.GOOS, buildinfo.InstallSource)
 		return 0
@@ -68,12 +72,28 @@ func usage() {
 // `scan pylint --json` behaves like `scan --json pylint` (Go's flag package
 // stops at the first non-flag argument).
 func reorderFlags(args []string) []string {
+	return reorderFlagsWithValue(args, nil)
+}
+
+// reorderFlagsWithValue is reorderFlags that knows which flags take a value.
+// Without that knowledge a value like `--baseline base.json` gets split: the
+// flag moves up, `base.json` stays positional, and the flag then swallows the
+// next flag as its value (`--baseline --json`). valueFlags holds the flag
+// names (without dashes) that consume the following token.
+func reorderFlagsWithValue(args []string, valueFlags map[string]bool) []string {
 	var flags, pos []string
-	for _, a := range args {
-		if strings.HasPrefix(a, "-") {
-			flags = append(flags, a)
-		} else {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if !strings.HasPrefix(a, "-") {
 			pos = append(pos, a)
+			continue
+		}
+		flags = append(flags, a)
+		// `--flag=value` 自带值；`--flag value` 需要把下一个 token 一起带上。
+		name := strings.TrimLeft(a, "-")
+		if !strings.Contains(name, "=") && valueFlags[name] && i+1 < len(args) {
+			i++
+			flags = append(flags, args[i])
 		}
 	}
 	return append(flags, pos...)

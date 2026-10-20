@@ -1,0 +1,5 @@
+days: number
+kind: string
+points: null
+schemaVersion: number
+topGrowers: null

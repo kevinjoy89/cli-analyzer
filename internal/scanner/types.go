@@ -193,6 +193,13 @@ type ScanResult struct {
 	Roots        map[string][]string `json:"roots"` // RootKind -> dirs walked
 	Unattributed []DataDir           `json:"unattributed,omitempty"`
 	Errors       int                 `json:"walkErrors"`
+	// OmittedTools is how many tools were dropped by `scan --top N` (0 = none).
+	// Present only in CLI output; the GUI never truncates.
+	OmittedTools int `json:"omittedTools,omitempty"`
+	// RuleErrors lists problems loading user rule packs
+	// (<DataRoot>/rules.d/*.json). A broken pack never fails the scan; the
+	// errors are surfaced so "my rule did not apply" is diagnosable.
+	RuleErrors []string `json:"ruleErrors,omitempty"`
 }
 
 // CleanReport describes the outcome of a cleanup run.

@@ -65,6 +65,12 @@ jobs:
       - name: Test
         run: go test ./... -cover
 
+      # 契约结构快照：冻结每个 --json 报告的字段名 + JSON 类型。字段被删 /
+      # 改名 / 类型变了会红；只改文案（desc/keep）不会。见 ADR 0002。
+      - name: Verify JSON contract structure
+        shell: bash
+        run: go test ./internal/cli/ -run 'TestContract' -v
+
       - name: Build
         run: go build ./...
 

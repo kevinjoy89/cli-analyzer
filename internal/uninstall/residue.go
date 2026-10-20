@@ -91,6 +91,19 @@ func resolveRule(dr rules.DataDirRule) string {
 	return filepath.Join(base, dr.Sub)
 }
 
+// stillExists 报告 path 是否仍存在，并现算它的大小（残留提醒用）。
+func stillExists(path string) (Residue, bool) {
+	st, err := os.Stat(path)
+	if err != nil {
+		return Residue{}, false
+	}
+	bytes := st.Size()
+	if st.IsDir() {
+		bytes = (&disk.Sizer{}).WalkSize(path)
+	}
+	return Residue{Path: path, Bytes: bytes, Tier: "user"}, true
+}
+
 // TrashResidues 将残留项移入内置回收站（可恢复）。返回成功移入的路径与失败项。
 // 这是残留处置的默认路径；应用自身不再以"安全门槛"替用户裁决，但可恢复的
 // 回收站仍是默认去向（永久删除需用户显式选择 RemoveResidues）。

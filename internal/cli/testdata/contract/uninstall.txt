@@ -1,0 +1,9 @@
+blocked: bool
+dryRun: bool
+installer: string
+kind: string
+officialCommand: string
+residue: null
+runnable: bool
+schemaVersion: number
+tool: string
