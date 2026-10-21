@@ -1,6 +1,7 @@
 package cleaner
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -88,10 +89,14 @@ func TestMaximalPathTotals(t *testing.T) {
 // TestMaximalPathTotalsWindowsSeparators 对应前端同名用例：Windows 反斜杠
 // 路径下 filepath.Rel 仍能识别父子关系。
 func TestMaximalPathTotalsWindowsSeparators(t *testing.T) {
-	// 用 filepath.Join 构造平台原生路径；在非 Windows 上它给正斜杠，
-	// 语义与 Windows 上的反斜杠一致（父目录 + 子目录）。
-	parent := filepath.Join(string(filepath.Separator), "x")
+	// 必须用真实临时目录做基：Windows 上 "/x" 不是绝对路径（缺盘符），
+	// guard 会以 not-absolute 拒绝，测不到去重逻辑。
+	base := t.TempDir()
+	parent := filepath.Join(base, "x")
 	child := filepath.Join(parent, "y")
+	if err := os.MkdirAll(child, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	items := []scanner.Cleanable{
 		mkClean(t, parent, "p", 100),
 		mkClean(t, child, "c", 50),

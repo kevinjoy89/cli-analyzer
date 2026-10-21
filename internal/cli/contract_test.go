@@ -115,10 +115,19 @@ func TestContractStructure(t *testing.T) {
 			if err != nil {
 				t.Fatalf("missing snapshot %s (run with UPDATE_CONTRACT=1 to create): %v", path, err)
 			}
-			if strings.TrimSpace(string(want)) != strings.TrimSpace(got) {
-				t.Errorf("contract structure changed for %s.\n--- snapshot ---\n%s\n--- got ---\n%s\n"+
-					"If this change is intentional, bump SchemaVersion when breaking and re-run with UPDATE_CONTRACT=1.",
-					c.name, want, got)
+			// 统一换行符：Windows 上 git checkout 可能把快照文件写成 CRLF，
+			// 而 emitJSON 在内存里拼的是 LF。不归一化的话每一行都"不同"，
+			// 整个契约测试在 Windows 上必然全红（曾经如此）。
+			wantNorm := strings.ReplaceAll(string(want), "\r\n", "\n")
+			if strings.TrimSpace(wantNorm) != strings.TrimSpace(got) {
+				// 只列出差异行，不整份打印——CI 日志里整份 60 行会把关键信息淹掉。
+				missing, extra := diffLines(wantNorm, got)
+				t.Errorf("contract structure changed for %s.\n"+
+					"in snapshot but not emitted (%d):\n  %s\n"+
+					"emitted but not in snapshot (%d):\n  %s\n"+
+					"If intentional, bump SchemaVersion when breaking and re-run with UPDATE_CONTRACT=1.",
+					c.name, len(missing), strings.Join(missing, "\n  "),
+					len(extra), strings.Join(extra, "\n  "))
 			}
 		})
 	}
@@ -161,6 +170,35 @@ func TestContractCompactIsSingleLine(t *testing.T) {
 			}
 		})
 	}
+}
+
+// diffLines 返回两段文本的行级差异：missing = want 有而 got 无，extra = 反之。
+func diffLines(want, got string) (missing, extra []string) {
+	wantSet := map[string]bool{}
+	for _, l := range strings.Split(strings.TrimSpace(want), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			wantSet[l] = true
+		}
+	}
+	gotSet := map[string]bool{}
+	for _, l := range strings.Split(strings.TrimSpace(got), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			gotSet[l] = true
+		}
+	}
+	for l := range wantSet {
+		if !gotSet[l] {
+			missing = append(missing, l)
+		}
+	}
+	for l := range gotSet {
+		if !wantSet[l] {
+			extra = append(extra, l)
+		}
+	}
+	sort.Strings(missing)
+	sort.Strings(extra)
+	return missing, extra
 }
 
 // shapeOf renders the report as sorted "path: type" lines.

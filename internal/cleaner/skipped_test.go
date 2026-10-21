@@ -3,6 +3,7 @@ package cleaner
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"cli-analyzer/internal/scanner"
@@ -48,20 +49,29 @@ func TestSkippedItemsAreStructured(t *testing.T) {
 // TestGuardReasonsHaveCodes 校验每个 guard 分支都给出稳定码，
 // 而不是只返回一句人话。
 func TestGuardReasonsHaveCodes(t *testing.T) {
+	// 路径必须用平台原生的绝对形式构造：Windows 上 filepath.IsAbs("/a/../b")
+	// 为 false，会先命中 not-absolute 而不是预期原因。
+	base := t.TempDir()
+	forbidden := "/usr/bin"
+	if runtime.GOOS == "windows" {
+		forbidden = `C:\Windows`
+	}
 	cases := []struct {
 		name string
 		c    scanner.Cleanable
 		want string
 	}{
 		{"relative", scanner.Cleanable{Path: "relative/path"}, SkipNotAbsolute},
-		{"dirty", scanner.Cleanable{Path: "/a/../b"}, SkipDirtyPath},
-		{"forbidden", scanner.Cleanable{Path: "/usr/bin"}, SkipForbiddenRoot},
+		// 不能用 filepath.Join：它会自动 Clean 掉 ".."，路径就不“脏”了。
+		// 直接拼一个含冗余段但仍是绝对路径的串。
+		{"dirty", scanner.Cleanable{Path: base + string(filepath.Separator) + "a" + string(filepath.Separator) + ".." + string(filepath.Separator) + "b"}, SkipDirtyPath},
+		{"forbidden", scanner.Cleanable{Path: forbidden}, SkipForbiddenRoot},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			r := guard(&tc.c)
 			if r.Code != tc.want {
-				t.Errorf("code = %q, want %q", r.Code, tc.want)
+				t.Errorf("code = %q, want %q (path=%q)", r.Code, tc.want, tc.c.Path)
 			}
 			if r.Message == "" {
 				t.Error("message should be set alongside the code")
@@ -72,7 +82,8 @@ func TestGuardReasonsHaveCodes(t *testing.T) {
 
 // TestGuardSubNotInside 校验子项越出父目录时给 not-inside-parent。
 func TestGuardSubNotInside(t *testing.T) {
-	r := guardSub("/a/parent", "/a/other")
+	base := t.TempDir()
+	r := guardSub(filepath.Join(base, "parent"), filepath.Join(base, "other"))
 	if r.Code != SkipNotInside {
 		t.Errorf("code = %q, want %q", r.Code, SkipNotInside)
 	}

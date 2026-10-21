@@ -3,6 +3,7 @@ package cleaner
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -327,11 +328,16 @@ func TestCleanGuardRejectsWindowsRoots(t *testing.T) {
 func TestCleanMessagesLocalized(t *testing.T) {
 	i18n.SetLocale("zh-CN")
 	t.Cleanup(func() { i18n.SetLocale("zh-CN") })
+	// 用平台原生的禁删根：Windows 上 "/" 不是绝对路径，会先命中 not-absolute。
+	root := "/"
+	if runtime.GOOS == "windows" {
+		root = `C:\Windows`
+	}
 	// guard 消息同样本地化
-	if reason := guard(&scanner.Cleanable{Path: "/", Tier: scanner.TierSafe}); strings.Contains(reason.Message, "forbidden system root") {
+	if reason := guard(&scanner.Cleanable{Path: root, Tier: scanner.TierSafe}); strings.Contains(reason.Message, "forbidden system root") {
 		t.Errorf("guard 消息未本地化: %q", reason.Message)
 	}
-	if reason := guard(&scanner.Cleanable{Path: "/", Tier: scanner.TierSafe}); reason.Code != SkipForbiddenRoot {
-		t.Errorf("原因码 = %q, want %q", reason.Code, SkipForbiddenRoot)
+	if reason := guard(&scanner.Cleanable{Path: root, Tier: scanner.TierSafe}); reason.Code != SkipForbiddenRoot {
+		t.Errorf("原因码 = %q, want %q (path=%q)", reason.Code, SkipForbiddenRoot, root)
 	}
 }
